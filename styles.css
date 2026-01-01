@@ -1,0 +1,521 @@
+/* Perspecta Slides - Obsidian Plugin Styles */
+
+/* ================================
+   Thumbnail Navigator
+   ================================ */
+
+.perspecta-thumbnail-navigator {
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.perspecta-thumbnail-navigator .navigator-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  position: sticky;
+  top: 0;
+  background: var(--background-primary);
+  z-index: 10;
+}
+
+.perspecta-thumbnail-navigator .navigator-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.perspecta-thumbnail-navigator .slide-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.perspecta-thumbnail-navigator .thumbnail-list {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.perspecta-thumbnail-navigator .thumbnail-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--background-modifier-border);
+  transition: all 0.15s ease;
+}
+
+.perspecta-thumbnail-navigator .thumbnail-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.perspecta-thumbnail-navigator .thumbnail-item.selected {
+  background: var(--background-modifier-active-hover);
+  border-color: var(--interactive-accent);
+}
+
+.perspecta-thumbnail-navigator .slide-number {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 20px;
+}
+
+.perspecta-thumbnail-navigator .thumbnail-preview {
+  flex: 1;
+  min-height: 48px;
+  background: var(--background-secondary);
+  border-radius: 4px;
+  padding: 6px;
+  font-size: 10px;
+  overflow: hidden;
+}
+
+.perspecta-thumbnail-navigator .th-heading {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.perspecta-thumbnail-navigator .th-h1,
+.perspecta-thumbnail-navigator .th-h2 {
+  font-size: 11px;
+}
+
+.perspecta-thumbnail-navigator .th-text {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.perspecta-thumbnail-navigator .th-image {
+  font-size: 14px;
+}
+
+.perspecta-thumbnail-navigator .slide-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.perspecta-thumbnail-navigator .slide-title {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.perspecta-thumbnail-navigator .slide-layout {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+/* ================================
+   Inspector Panel
+   ================================ */
+
+.perspecta-inspector {
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.perspecta-inspector .inspector-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--background-modifier-border);
+  position: sticky;
+  top: 0;
+  background: var(--background-primary);
+  z-index: 10;
+}
+
+.perspecta-inspector .inspector-tab {
+  flex: 1;
+  padding: 10px 12px;
+  text-align: center;
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.perspecta-inspector .inspector-tab:hover {
+  background: var(--background-modifier-hover);
+}
+
+.perspecta-inspector .inspector-tab.active {
+  border-bottom-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+}
+
+.perspecta-inspector .inspector-content {
+  padding: 16px;
+}
+
+.perspecta-inspector .inspector-content h4 {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.perspecta-inspector .inspector-section {
+  margin-bottom: 20px;
+}
+
+.perspecta-inspector .inspector-section h5 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.perspecta-inspector .help-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.perspecta-inspector .format-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.perspecta-inspector .format-button {
+  padding: 6px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.perspecta-inspector .format-button:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+}
+
+/* ================================
+   Presentation View
+   ================================ */
+
+.perspecta-presentation-view {
+  padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--background-secondary);
+}
+
+.perspecta-presentation-view .presentation-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: var(--background-primary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.perspecta-presentation-view .toolbar-title {
+  font-weight: 600;
+}
+
+.perspecta-presentation-view .toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.perspecta-presentation-view .toolbar-actions button {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.perspecta-presentation-view .slide-container {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  overflow: hidden;
+}
+
+.perspecta-presentation-view .slide-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 960px;
+  background: white;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.perspecta-presentation-view .slide-wrapper.aspect-16-9 {
+  aspect-ratio: 16 / 9;
+}
+
+.perspecta-presentation-view .slide-wrapper.aspect-4-3 {
+  aspect-ratio: 4 / 3;
+}
+
+.perspecta-presentation-view .slide-wrapper.aspect-16-10 {
+  aspect-ratio: 16 / 10;
+}
+
+.perspecta-presentation-view .slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  flex-direction: column;
+  padding: 5%;
+}
+
+.perspecta-presentation-view .slide.active {
+  display: flex;
+}
+
+.perspecta-presentation-view .slide.light {
+  background: #fff;
+  color: #000;
+}
+
+.perspecta-presentation-view .slide.dark {
+  background: #000;
+  color: #fff;
+}
+
+.perspecta-presentation-view .slide-header,
+.perspecta-presentation-view .slide-footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 8px 0;
+}
+
+.perspecta-presentation-view .slide-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.perspecta-presentation-view .slide h1 {
+  font-size: 2em;
+  margin: 0 0 0.3em 0;
+}
+
+.perspecta-presentation-view .slide h2 {
+  font-size: 1.6em;
+  margin: 0 0 0.3em 0;
+}
+
+.perspecta-presentation-view .slide h3 {
+  font-size: 1.3em;
+  margin: 0 0 0.3em 0;
+}
+
+.perspecta-presentation-view .slide p {
+  font-size: 1em;
+  margin: 0 0 0.5em 0;
+}
+
+.perspecta-presentation-view .slide img {
+  max-width: 100%;
+  max-height: 80%;
+  object-fit: contain;
+}
+
+/* Layout: Title */
+.perspecta-presentation-view .layout-title .slide-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+/* Layout: Section */
+.perspecta-presentation-view .layout-section {
+  background: #000 !important;
+  color: #fff !important;
+}
+
+.perspecta-presentation-view .layout-section .slide-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+/* Layout: V-Split */
+.perspecta-presentation-view .layout-v-split .slide-content {
+  flex-direction: row;
+  gap: 5%;
+}
+
+.perspecta-presentation-view .layout-v-split .text-content,
+.perspecta-presentation-view .layout-v-split .media-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* Layout: Full Image */
+.perspecta-presentation-view .layout-full-image {
+  padding: 0 !important;
+}
+
+.perspecta-presentation-view .layout-full-image .slide-content {
+  padding: 0;
+}
+
+.perspecta-presentation-view .layout-full-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Speaker Notes */
+.perspecta-presentation-view .speaker-notes-container {
+  padding: 12px 16px;
+  background: var(--background-primary);
+  border-top: 1px solid var(--background-modifier-border);
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.perspecta-presentation-view .speaker-notes-container h4 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.perspecta-presentation-view .notes-content p {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 8px 0;
+}
+
+.perspecta-presentation-view .no-notes {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Navigation */
+.perspecta-presentation-view .slide-navigation {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  padding: 12px;
+  background: var(--background-primary);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.perspecta-presentation-view .nav-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.15s ease;
+}
+
+.perspecta-presentation-view .nav-btn:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+}
+
+.perspecta-presentation-view .slide-counter {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ================================
+   Empty States
+   ================================ */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.empty-state .empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.empty-state h3 {
+  margin: 0 0 8px 0;
+  color: var(--text-normal);
+}
+
+.empty-state p {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+
+.empty-state small {
+  font-size: 12px;
+}
+
+.empty-state .help-section {
+  margin-top: 24px;
+  text-align: left;
+  width: 100%;
+  max-width: 400px;
+}
+
+.empty-state .help-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+}
+
+.empty-state pre {
+  background: var(--background-secondary);
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  overflow-x: auto;
+  text-align: left;
+}
+
+/* ================================
+   Settings
+   ================================ */
+
+.perspecta-usage pre {
+  background: var(--background-secondary);
+  padding: 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.perspecta-usage p {
+  margin-bottom: 8px;
+}

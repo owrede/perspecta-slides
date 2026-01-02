@@ -44,25 +44,26 @@ export class SlideRenderer {
    * Render a slide thumbnail as HTML for embedding in an iframe
    */
   renderThumbnailHTML(slide: Slide, index: number): string {
-    return this.renderSingleSlideHTML(slide, index, this.presentation.frontmatter);
+    return this.renderSingleSlideHTML(slide, index, this.presentation.frontmatter, 'thumbnail');
   }
   
   /**
    * Render a single slide to standalone HTML (for thumbnails/iframes)
    */
-  renderSingleSlideHTML(slide: Slide, index: number, frontmatter: PresentationFrontmatter): string {
+  renderSingleSlideHTML(slide: Slide, index: number, frontmatter: PresentationFrontmatter, context: 'thumbnail' | 'preview' = 'thumbnail'): string {
     const themeClasses = this.theme?.template.CssClasses || '';
-    const themeCSS = this.theme ? generateThemeCSS(this.theme) : '';
+    const themeCSS = this.theme ? generateThemeCSS(this.theme, context) : '';
+    const bodyClass = context === 'thumbnail' ? 'perspecta-thumbnail' : 'perspecta-preview';
     
     return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <style>${this.getBaseStyles()}</style>
+  <style>${this.getBaseStyles(context)}</style>
   <style>${themeCSS}</style>
 </head>
-<body class="perspecta-thumbnail ${themeClasses}">
-  ${this.renderSlide(slide, index, frontmatter)}
+<body class="${bodyClass} ${themeClasses}">
+  ${this.renderSlide(slide, index, frontmatter, false)}
 </body>
 </html>`;
   }
@@ -96,7 +97,7 @@ export class SlideRenderer {
   // SLIDE RENDERING
   // ============================================
   
-  private renderSlide(slide: Slide, index: number, frontmatter: PresentationFrontmatter): string {
+  private renderSlide(slide: Slide, index: number, frontmatter: PresentationFrontmatter, renderSpeakerNotes: boolean = true): string {
     const mode = slide.metadata.mode || 'light';
     const layout = (slide.metadata.layout || 'default') as SlideLayout;
     const containerClass = this.getContainerClass(layout);
@@ -122,7 +123,7 @@ export class SlideRenderer {
         </div>
       </div>
       ${this.renderFooter(frontmatter, index, this.presentation.slides.length)}
-      ${slide.speakerNotes.length > 0 ? `<aside class="speaker-notes">${slide.speakerNotes.map(n => this.renderMarkdown(n)).join('<br>')}</aside>` : ''}
+      ${renderSpeakerNotes && slide.speakerNotes.length > 0 ? `<aside class="speaker-notes">${slide.speakerNotes.map(n => this.renderMarkdown(n)).join('<br>')}</aside>` : ''}
     </section>`;
   }
 
@@ -555,23 +556,35 @@ export class SlideRenderer {
   // STYLES
   // ============================================
   
-  private getBaseStyles(): string {
-    // For thumbnails: use min(vh, vw * aspect) to get the constraining dimension
-    // This ensures fonts scale properly in both portrait and landscape containers
+  private getBaseStyles(context: 'thumbnail' | 'preview' = 'thumbnail'): string {
+    // Different scaling for thumbnails vs preview
+    let slideUnit: string;
+    let containerClass: string;
+    
+    if (context === 'thumbnail') {
+      // For thumbnails: use the same viewport-based calculation as preview
+      // This ensures proportional scaling relative to slide size
+      slideUnit = 'min(1vh, 1.778vw)';
+      containerClass = 'perspecta-thumbnail';
+    } else {
+      // For preview: use viewport-based units for proper slide scaling
+      slideUnit = 'min(1vh, 1.778vw)';
+      containerClass = 'perspecta-preview';
+    }
+    
     return `
       * { margin: 0; padding: 0; box-sizing: border-box; }
       :root {
-        /* Dynamic base unit: uses height in landscape, width in portrait */
-        /* For 16:9 aspect ratio, base reference is 100vh when height-constrained */
-        --slide-unit: min(1vh, 1.778vw);
+        /* Context-dependent slide unit */
+        --slide-unit: ${slideUnit};
       }
       html, body { 
         width: 100%; height: 100%; 
         font-family: var(--body-font, system-ui, -apple-system, sans-serif);
         overflow: hidden;
       }
-      .perspecta-thumbnail { 
-        background: var(--light-background, #fff);
+      .${containerClass} { 
+        background: var(--light-background);
         width: 100%;
         height: 100%;
       }
@@ -583,8 +596,8 @@ export class SlideRenderer {
         padding: 5%;
         position: relative;
       }
-      .slide.light { background: var(--light-background, #fff); color: var(--dark-body-text, #000); }
-      .slide.dark { background: var(--dark-background, #1a1a2e); color: var(--light-body-text, #fff); }
+      .slide.light { background: var(--light-background); color: var(--light-body-text); }
+      .slide.dark { background: var(--dark-background); color: var(--dark-body-text); }
       
       /* Background */
       .slide-background {
@@ -678,6 +691,7 @@ export class SlideRenderer {
   
   private renderStyles(frontmatter: PresentationFrontmatter): string {
     const cssVars = this.generateCSSVariables(frontmatter);
+    const themeCSS = this.theme ? generateThemeCSS(this.theme, 'export') : '';
     
     return `<style>
 :root {
@@ -686,6 +700,7 @@ ${cssVars}
   /* For 16:9 slides: 1vh when height-constrained, ~1.778vw when width-constrained */
   --slide-unit: min(1vh, 1.778vw);
 }
+${themeCSS}
 
 * {
   margin: 0;
@@ -697,8 +712,8 @@ html, body {
   width: 100%;
   height: 100%;
   font-family: var(--body-font, system-ui, -apple-system, sans-serif);
-  background: var(--background-color, #000);
-  color: var(--body-text-color, #fff);
+  background: var(--background-color, var(--light-background, #000));
+  color: var(--body-text-color, var(--dark-body-text, #fff));
 }
 
 .reveal {
@@ -743,13 +758,13 @@ html, body {
 
 /* Color modes */
 .slide.light {
-  background: var(--light-background, #fff);
-  color: var(--dark-body-text, #1a1a2e);
+  background: var(--light-background);
+  color: var(--light-body-text);
 }
 
 .slide.dark {
-  background: var(--dark-background, #1a1a2e);
-  color: var(--light-body-text, #fff);
+  background: var(--dark-background);
+  color: var(--dark-body-text);
 }
 
 /* Slide structure */
@@ -911,8 +926,8 @@ mark { background: var(--accent3, #f9c74f); padding: 0.1em 0.2em; }
    ======================== */
 
 .layout-section .slide-body {
-  background: var(--accent1, #1a1a2e);
-  color: var(--light-body-text, #fff);
+  background: var(--accent1);
+  color: var(--light-body-text);
   margin: -5%;
   padding: 5%;
 }

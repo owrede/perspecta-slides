@@ -440,7 +440,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
     for (const leaf of presentationLeaves) {
       const view = leaf.view as PresentationView;
-      view.setPresentation(presentation);
+      view.setPresentation(presentation, theme);
       // Wire up slide change callback for navigation controls (prev/next buttons)
       view.setOnSlideChange((index) => {
         this.navigateToSlide(index, presentation, file, true);

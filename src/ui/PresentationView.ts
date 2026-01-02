@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, Menu, TFile } from 'obsidian';
-import { Presentation, Slide, SlideElement } from '../types';
+import { Presentation, Slide, Theme, SlideElement } from '../types';
 import { SlideParser } from '../parser/SlideParser';
 import { SlideRenderer } from '../renderer/SlideRenderer';
 import { getTheme } from '../themes';
@@ -12,6 +12,7 @@ export class PresentationView extends ItemView {
   private isPresenting: boolean = false;
   private parser: SlideParser;
   private file: TFile | null = null;
+  private theme: Theme | null = null;
   
   private onSlideChange: ((index: number) => void) | null = null;
   private onReload: (() => void) | null = null;
@@ -54,9 +55,10 @@ export class PresentationView extends ItemView {
     this.render();
   }
   
-  setPresentation(presentation: Presentation) {
+  setPresentation(presentation: Presentation, theme?: Theme) {
     this.presentation = presentation;
     this.currentSlideIndex = 0;
+    this.theme = theme || null;
     this.render();
   }
   
@@ -275,95 +277,34 @@ More content here...`
       cls: `slide-wrapper aspect-${aspectRatio.replace(':', '-')} ${themeClasses}` 
     });
     
-    // Set up dynamic font scaling based on wrapper dimensions
-    // Uses the constraining dimension (height in landscape, width in portrait)
-    const aspectParts = aspectRatio.split(':').map(Number);
-    const slideAspect = aspectParts[0] / aspectParts[1]; // e.g., 16/9 = 1.778
+    // Create renderer with theme
+    const renderer = new SlideRenderer(this.presentation, theme);
     
-    const updateSlideBase = () => {
-      const width = wrapper.clientWidth;
-      const height = wrapper.clientHeight;
-      const containerAspect = width / height;
+    // Render current slide as iframe
+    const currentSlide = this.presentation.slides[this.currentSlideIndex];
+    if (currentSlide) {
+      const slideHTML = renderer.renderSingleSlideHTML(
+        currentSlide, 
+        this.currentSlideIndex, 
+        this.presentation.frontmatter,
+        'preview'
+      );
       
-      // If container is wider than slide aspect, height is constraining
-      // If container is narrower than slide aspect, width is constraining
-      let base: number;
-      if (containerAspect >= slideAspect) {
-        // Landscape: height constrains, use height as reference (1080px base)
-        base = height / 1080;
-      } else {
-        // Portrait: width constrains, use width as reference (1920px base for 16:9)
-        const baseWidth = 1080 * slideAspect;
-        base = width / baseWidth;
-      }
-      
-      wrapper.style.setProperty('--slide-base', `${base}px`);
-    };
-    
-    // Initial calculation
-    requestAnimationFrame(updateSlideBase);
-    
-    // Update on resize
-    const resizeObserver = new ResizeObserver(updateSlideBase);
-    resizeObserver.observe(wrapper);
-    
-    // Cleanup observer when view is closed
-    this.register(() => resizeObserver.disconnect());
-    
-    // Render all slides
-    this.presentation.slides.forEach((slide, index) => {
-      const layout = slide.metadata.layout || 'default';
-      const mode = slide.metadata.mode || 'light';
-      const containerClass = this.getContainerClass(layout);
-      const customClass = slide.metadata.class || '';
-      const isActive = index === this.currentSlideIndex ? 'active' : '';
-      
-      const slideEl = wrapper.createDiv({
-        cls: `slide ${containerClass} ${mode} ${customClass} ${isActive}`.trim()
+      const iframe = wrapper.createEl('iframe', {
+        cls: 'slide-iframe',
+        attr: {
+          srcdoc: slideHTML,
+          frameborder: '0',
+          scrolling: 'no'
+        }
       });
-      slideEl.dataset.index = String(index);
       
-      // Background (separate div with filter support)
-      if (slide.metadata.background) {
-        const bgEl = slideEl.createDiv({ cls: 'slide-background' });
-        bgEl.style.backgroundImage = `url('${slide.metadata.background}')`;
-        bgEl.style.backgroundSize = 'cover';
-        bgEl.style.backgroundPosition = 'center';
-        
-        if (slide.metadata.backgroundOpacity !== undefined) {
-          bgEl.style.opacity = String(slide.metadata.backgroundOpacity);
-        }
-        
-        // Apply filter
-        if (slide.metadata.backgroundFilter) {
-          switch (slide.metadata.backgroundFilter) {
-            case 'darken':
-              bgEl.addClass('filter-darken');
-              break;
-            case 'lighten':
-              bgEl.addClass('filter-lighten');
-              break;
-            case 'blur':
-              bgEl.style.filter = 'blur(8px)';
-              bgEl.style.transform = 'scale(1.1)';
-              break;
-          }
-        }
-      }
-      
-      // Header
-      this.renderSlideHeader(slideEl, index);
-      
-      // Slide body wrapper
-      const body = slideEl.createDiv({ cls: 'slide-body' });
-      
-      // Content with layout class
-      const content = body.createDiv({ cls: `slide-content layout-${layout}` });
-      this.renderSlideContent(content, slide);
-      
-      // Footer
-      this.renderSlideFooter(slideEl, index);
-    });
+      // Make iframe responsive
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      iframe.style.border = 'none';
+      iframe.style.background = 'transparent';
+    }
   }
   
   private renderSlideHeader(container: HTMLElement, index: number) {
@@ -774,10 +715,12 @@ More content here...`
   }
   
   private updateSlideDisplay() {
-    const slides = this.containerEl.querySelectorAll('.slide');
-    slides.forEach((slide, index) => {
-      slide.classList.toggle('active', index === this.currentSlideIndex);
-    });
+    // Re-render the slide iframe with the current slide
+    const slideContainer = this.containerEl.querySelector('.slide-container') as HTMLElement;
+    if (slideContainer && this.presentation) {
+      slideContainer.empty();
+      this.renderSlides(slideContainer);
+    }
     
     // Update counter
     const counter = this.containerEl.querySelector('.slide-counter span');
@@ -949,5 +892,33 @@ More content here...`
     });
     
     menu.showAtMouseEvent(e);
+  }
+  
+  private applyThemeVariables(container: HTMLElement) {
+    if (!this.theme) return;
+    
+    // Apply theme CSS variables to the container
+    const root = container;
+    
+    // Apply color variables from the active preset
+    const preset = this.theme.presets[0]; // Use first preset (usually light)
+    if (preset) {
+      root.style.setProperty('--light-background', preset.LightBackgroundColor);
+      root.style.setProperty('--dark-background', preset.DarkBackgroundColor);
+      root.style.setProperty('--light-body-text', preset.LightBodyTextColor);
+      root.style.setProperty('--dark-body-text', preset.DarkBodyTextColor);
+      root.style.setProperty('--light-title-text', preset.LightTitleTextColor);
+      root.style.setProperty('--dark-title-text', preset.DarkTitleTextColor);
+      root.style.setProperty('--accent1', preset.Accent1);
+      root.style.setProperty('--accent2', preset.Accent2);
+      root.style.setProperty('--accent3', preset.Accent3);
+      root.style.setProperty('--accent4', preset.Accent4);
+      root.style.setProperty('--accent5', preset.Accent5);
+      root.style.setProperty('--accent6', preset.Accent6);
+    }
+    
+    // Apply font variables
+    root.style.setProperty('--title-font', this.theme.template.TitleFont);
+    root.style.setProperty('--body-font', this.theme.template.BodyFont);
   }
 }

@@ -669,6 +669,187 @@ code {
 `;
 
 // ============================================
+// HELVETICA THEME (iA Presenter format)
+// ============================================
+
+const helveticaTemplate: ThemeTemplate = {
+  Name: "Helvetica",
+  Version: "1.0.0",
+  Author: "Perspecta Slides",
+  ShortDescription: "Classic typography focus",
+  LongDescription: "Classic Helvetica typography with clean design.\n- Professional typography focus\n- Balanced contrast\n- Default font: Helvetica Neue\n- Suitable for business presentations",
+  Css: "helvetica.css",
+  TitleFont: "Helvetica Neue",
+  BodyFont: "Helvetica Neue",
+  CssClasses: "helvetica-typography"
+};
+
+const helveticaPresets: ThemePreset[] = [{
+  Name: "Default",
+  TitleFont: "Helvetica Neue, Helvetica, Arial, sans-serif",
+  BodyFont: "Helvetica Neue, Helvetica, Arial, sans-serif",
+  Appearance: "light",
+  DarkBodyTextColor: "#000000",
+  LightBodyTextColor: "#ffffff",
+  DarkTitleTextColor: "#000000",
+  LightTitleTextColor: "#ffffff",
+  DarkBackgroundColor: "#ffffff",
+  LightBackgroundColor: "#1a1a1a",
+  DarkAccent1: "#0066cc",
+  LightAccent1: "#0066cc",
+  Accent1: "#0066cc",
+  Accent2: "#28a745",
+  Accent3: "#ffc107",
+  Accent4: "#dc3545",
+  Accent5: "#6f42c1",
+  Accent6: "#fd7e14"
+}];
+
+const helveticaCSS = `
+/* Helvetica Theme - Classic Typography Focus */
+
+/* Force hide speaker notes in thumbnails */
+.perspecta-thumbnail .speaker-notes { 
+  display: none !important; 
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}
+
+:root {
+  --code-background: #f1f3f4;
+  --code-text: #202124;
+  --code-comment: #5f6368;
+  --code-type: #d93025;
+  --code-include: #7b1fa2;
+  --code-string: #1a73e8;
+  --code-class-name: #1967d2;
+  --code-keyword: #7b1fa2;
+  --code-function: #1a73e8;
+  --code-variable: #5f6368;
+  --code-number: #1967d2;
+  --code-operator: #5f6368;
+  --code-punctuation: #5f6368;
+}
+
+/* Typography emphasis */
+.helvetica-typography h1,
+.helvetica-typography h2,
+.helvetica-typography h3,
+.helvetica-typography h4,
+.helvetica-typography h5,
+.helvetica-typography h6 {
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.helvetica-typography h1 {
+  font-weight: 300;
+  letter-spacing: -0.03em;
+}
+
+.helvetica-typography h2 {
+  font-weight: 400;
+  letter-spacing: -0.025em;
+}
+
+/* Clean slide backgrounds */
+.slide {
+  border-radius: 2px;
+}
+
+/* Professional accent colors */
+.kicker {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  opacity: 0.8;
+}
+
+/* Enhanced code styling */
+pre {
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+code {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+/* Clean blockquotes */
+blockquote {
+  border-left: 3px solid var(--accent1);
+  font-style: normal;
+  font-weight: 400;
+}
+
+/* Professional tables */
+table {
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+th, td {
+  border: none;
+  padding: 12px 16px;
+}
+
+th {
+  background: var(--accent1);
+  opacity: 0.1;
+  font-weight: 600;
+}
+
+tr:nth-child(even) td {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.dark tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Enhanced section layout */
+.layout-section .slide-body {
+  background: var(--accent1);
+  color: var(--light-body-text);
+  margin: -5%;
+  padding: 5%;
+  border-radius: 0;
+}
+
+/* Progress bar */
+.progress-bar {
+  height: 3px;
+  background: var(--accent1);
+}
+
+/* Header/Footer - professional styling */
+.slide-header, .slide-footer {
+  opacity: 0.6;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+/* Column spacing */
+.slot-columns { gap: 3rem; }
+
+/* Image captions */
+figcaption {
+  font-size: 0.9rem;
+  color: var(--dark-body-text);
+  opacity: 0.8;
+  font-style: italic;
+}
+
+.dark figcaption {
+  color: var(--light-body-text);
+}
+`;
+
+// ============================================
 // EXPORTS
 // ============================================
 
@@ -687,6 +868,7 @@ export const builtInThemes: Record<string, Theme> = {
   tokyo: createBuiltInTheme(tokyoTemplate, tokyoPresets, tokyoCSS),
   berlin: createBuiltInTheme(berlinTemplate, berlinPresets, berlinCSS),
   minimal: createBuiltInTheme(minimalTemplate, minimalPresets, minimalCSS),
+  helvetica: createBuiltInTheme(helveticaTemplate, helveticaPresets, helveticaCSS),
 };
 
 export function getBuiltInTheme(name: string): Theme | undefined {

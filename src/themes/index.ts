@@ -15,10 +15,10 @@ export function getThemeNames(): string[] {
 /**
  * Generate CSS variables from a theme's preset
  */
-export function generateThemeCSS(theme: Theme): string {
+export function generateThemeCSS(theme: Theme, context: 'thumbnail' | 'preview' | 'export' = 'export'): string {
   const preset = theme.presets[0];
   if (!preset) {
-    return theme.css;
+    return context === 'thumbnail' ? '' : theme.css;
   }
 
   const cssVars = `
@@ -42,5 +42,19 @@ export function generateThemeCSS(theme: Theme): string {
 }
 `;
 
+  // For thumbnails, include CSS variables plus essential layout CSS (no fixed font sizes)
+  // For preview, include CSS variables plus layout CSS but use dynamic scaling
+  // For export, include the full theme CSS
+  if (context === 'thumbnail' || context === 'preview') {
+    // Extract only the essential CSS from theme.css (excluding fixed font sizes)
+    // Keep backgrounds, colors, layout, gradients, but remove font-size declarations
+    const essentialCSS = theme.css
+      .replace(/font-size:\s*[^;]+;/g, '') // Remove font-size declarations only
+      .replace(/font-weight:\s*[^;]+;/g, '') // Remove font-weight to ensure consistency
+      .replace(/letter-spacing:\s*[^;]+;/g, ''); // Remove letter-spacing for consistency
+    
+    return cssVars + '\n' + essentialCSS;
+  }
+  
   return cssVars + '\n' + theme.css;
 }

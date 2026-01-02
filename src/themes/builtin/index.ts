@@ -21,12 +21,12 @@ const zurichPresets: ThemePreset[] = [{
   TitleFont: "Helvetica Neue, Helvetica, Arial, sans-serif",
   BodyFont: "Helvetica Neue, Helvetica, Arial, sans-serif",
   Appearance: "light",
-  DarkBodyTextColor: "#000000",
+  DarkBodyTextColor: "#333333",
   LightBodyTextColor: "#ffffff",
   DarkTitleTextColor: "#000000",
   LightTitleTextColor: "#ffffff",
-  DarkBackgroundColor: "#000000",
-  LightBackgroundColor: "#ffffff",
+  DarkBackgroundColor: "#ffffff",
+  LightBackgroundColor: "#000000",
   DarkAccent1: "#000000",
   LightAccent1: "#ffffff",
   Accent1: "#000000",
@@ -188,9 +188,9 @@ const tokyoPresets: ThemePreset[] = [{
   TitleFont: "system-ui, -apple-system, sans-serif",
   BodyFont: "system-ui, -apple-system, sans-serif",
   Appearance: "dark",
-  DarkBodyTextColor: "#000000",
+  DarkBodyTextColor: "#ffffff",
   LightBodyTextColor: "#ffffff",
-  DarkTitleTextColor: "#000000",
+  DarkTitleTextColor: "#ffffff",
   LightTitleTextColor: "#ffffff",
   DarkBackgroundColor: "#0d1117",
   LightBackgroundColor: "#1e2127",
@@ -397,6 +397,8 @@ const berlinCSS = `
 
 .slide.light h1, .slide.light h2 { color: var(--accent1); }
 .slide.light h3, .slide.light h4 { color: var(--accent2); }
+.slide.dark h1, .slide.dark h2 { color: var(--dark-title-text); }
+.slide.dark h3, .slide.dark h4 { color: var(--accent2); }
 
 /* Cover and title with gradient */
 .cover-container,
@@ -850,6 +852,313 @@ figcaption {
 `;
 
 // ============================================
+// BASEL THEME (iA Presenter format)
+// ============================================
+
+const baselTemplate: ThemeTemplate = {
+  Name: "Basel",
+  Version: "1.0.0",
+  Author: "Perspecta Slides",
+  ShortDescription: "Swiss serif typography",
+  LongDescription: "Classic Swiss design with Noto Serif typography.\n- Different sizes for headlines\n- Simple color background\n- Default white on black\n- Default font: Noto Serif",
+  Css: "basel.css",
+  TitleFont: "Noto Serif",
+  BodyFont: "Noto Serif",
+  CssClasses: "variable-size-headings"
+};
+
+const baselPresets: ThemePreset[] = [{
+  Name: "Default",
+  TitleFont: "Noto Serif, serif",
+  BodyFont: "Noto Serif, serif",
+  Appearance: "light",
+  DarkBodyTextColor: "#000000",
+  LightBodyTextColor: "#ffffff",
+  DarkTitleTextColor: "#000000",
+  LightTitleTextColor: "#ffffff",
+  DarkBackgroundColor: "#ffffff",
+  LightBackgroundColor: "#000000",
+  DarkAccent1: "#000000",
+  LightAccent1: "#ffffff",
+  Accent1: "#FF3333",
+  Accent2: "#43aa8b",
+  Accent3: "#f9c74f",
+  Accent4: "#90be6d",
+  Accent5: "#f8961e",
+  Accent6: "#577590"
+}, {
+  Name: "Dark",
+  TitleFont: "Noto Serif, serif",
+  BodyFont: "Noto Serif, serif",
+  Appearance: "dark",
+  DarkBodyTextColor: "#000000",
+  LightBodyTextColor: "#ffffff",
+  DarkTitleTextColor: "#000000",
+  LightTitleTextColor: "#ffffff",
+  DarkBackgroundColor: "#ffffff",
+  LightBackgroundColor: "#000000",
+  DarkAccent1: "#000000",
+  LightAccent1: "#ffffff",
+  Accent1: "#FF3333",
+  Accent2: "#333333",
+  Accent3: "#666666",
+  Accent4: "#999999",
+  Accent5: "#CCCCCC",
+  Accent6: "#EEEEEE"
+}];
+
+const baselCSS = `
+/* Basel Theme - Swiss Serif Typography */
+
+:root {
+  --code-background: #eeeeee;
+  --code-border: rgba(0, 0, 0, 0.05);
+  --code-text: #303030;
+  --code-comment: #9ea4aa;
+  --code-type: #9f3b4f;
+  --code-include: #8c3a94;
+  --code-string: #6959a1;
+  --code-class-name: #4968a8;
+  --code-numbers: #a58a2a;
+  --code-variables: #4689cc;
+  --code-functions: #cf5da8;
+  --code-literal: #db651c;
+  
+  --dark-code-background: #282828;
+  --dark-code-border: rgba(255, 255, 255, 0.08);
+  --dark-code-text: #f7f7f7;
+  --dark-code-comment: #80878d;
+  --dark-code-type: #ef98a8;
+  --dark-code-include: #c596c9;
+  --dark-code-string: #a59cc7;
+  --dark-code-class-name: #94a5cb;
+  --dark-code-numbers: #e8d670;
+  --dark-code-variables: #77b5e3;
+  --dark-code-functions: #df8dc0;
+  --dark-code-literal: #f6b99a;
+}
+
+/* Import Noto Serif fonts */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+/* Typography - Classic serif */
+.slide h1, .slide h2, .slide h3 {
+  font-family: 'Noto Serif', serif;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.slide p, .slide li {
+  font-family: 'Noto Serif', serif;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+/* Cover and title slides with inverted styling */
+.cover-container, .title-container {
+  background: var(--accent1) !important;
+}
+
+.cover-container .slide-content,
+.title-container .slide-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  color: white;
+}
+
+.layout-cover h1, .layout-cover h2,
+.layout-title h1, .layout-title h2 {
+  color: white !important;
+}
+
+/* Code styling */
+pre {
+  background: var(--code-background);
+  border: 1px solid var(--code-border);
+  border-radius: 4px;
+  padding: 1.5rem;
+}
+
+.dark pre {
+  background: var(--dark-code-background);
+  border-color: var(--dark-code-border);
+}
+
+code {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-size: 0.9em;
+}
+
+/* Kicker styling */
+.kicker {
+  font-family: 'Noto Serif', serif;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 700;
+  color: var(--accent2);
+}
+`;
+
+// ============================================
+// COPENHAGEN THEME (iA Presenter format)
+// ============================================
+
+const copenhagenTemplate: ThemeTemplate = {
+  Name: "Copenhagen",
+  Version: "1.0.0",
+  Author: "Perspecta Slides",
+  ShortDescription: "Nordic elegance",
+  LongDescription: "Nordic design with Albert Sans typography.\n- Different sizes for headlines\n- Simple color background\n- Default white on black\n- Default font: Albert Sans",
+  Css: "copenhagen.css",
+  TitleFont: "Albert Sans",
+  BodyFont: "Albert Sans",
+  CssClasses: "variable-size-headings"
+};
+
+const copenhagenPresets: ThemePreset[] = [{
+  Name: "Default",
+  TitleFont: "Albert Sans, sans-serif",
+  BodyFont: "Albert Sans, sans-serif",
+  Appearance: "light",
+  DarkBodyTextColor: "rgba(0, 0, 0, 0.7)",
+  LightBodyTextColor: "rgba(255, 255, 255, 0.9)",
+  DarkTitleTextColor: "rgba(0, 0, 0, 0.7)",
+  LightTitleTextColor: "rgba(255, 255, 255, 0.9)",
+  DarkBackgroundColor: "#ffffff",
+  LightBackgroundColor: "#6E9075",
+  DarkAccent1: "#E1EBE3",
+  LightAccent1: "#6E9075",
+  Accent1: "#f94144",
+  Accent2: "#43aa8b",
+  Accent3: "#f9c74f",
+  Accent4: "#90be6d",
+  Accent5: "#f8961e",
+  Accent6: "#577590"
+}];
+
+const copenhagenCSS = `
+/* Copenhagen Theme - Nordic Elegance */
+
+:root {
+  --code-background: #eeeeee;
+  --code-border: rgba(0, 0, 0, 0.05);
+  --code-text: #303030;
+  --code-comment: #9ea4aa;
+  --code-type: #9f3b4f;
+  --code-include: #8c3a94;
+  --code-string: #6959a1;
+  --code-class-name: #4968a8;
+  --code-numbers: #a58a2a;
+  --code-variables: #4689cc;
+  --code-functions: #cf5da8;
+  --code-literal: #db651c;
+  
+  --dark-code-background: #181818;
+  --dark-code-border: rgba(255, 255, 255, 0.08);
+  --dark-code-text: #f7f7f7;
+  --dark-code-comment: #80878d;
+  --dark-code-type: #ef98a8;
+  --dark-code-include: #c596c9;
+  --dark-code-string: #a59cc7;
+  --dark-code-class-name: #94a5cb;
+  --dark-code-numbers: #e8d670;
+  --dark-code-variables: #77b5e3;
+  --dark-code-functions: #df8dc0;
+  --dark-code-literal: #f6b99a;
+}
+
+/* Import Albert Sans font */
+@import url('https://fonts.googleapis.com/css2?family=Albert+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+
+/* Nordic typography with weight hierarchy */
+[class*='layout-'] > div h1 {
+  font-weight: 900;
+}
+[class*='layout-'] > div h2 {
+  font-weight: 800;
+}
+[class*='layout-'] > div h3 {
+  font-weight: 700;
+}
+[class*='layout-'] > div h4 {
+  font-weight: 600;
+}
+
+h1 + h2,
+h1 + h3,
+h2 + h3,
+h1 + h1,
+h1 + h3,
+h2 + h3,
+h4 + h5 {
+  font-weight: 500 !important;
+}
+
+/* Clean Nordic styling */
+.slide {
+  font-family: 'Albert Sans', sans-serif;
+}
+
+.slide h1, .slide h2, .slide h3, .slide h4 {
+  font-family: 'Albert Sans', sans-serif;
+  line-height: 1.2;
+}
+
+.slide p, .slide li {
+  font-family: 'Albert Sans', sans-serif;
+  line-height: 1.5;
+}
+
+/* Cover and title slides */
+.cover-container, .title-container {
+  background: var(--accent1) !important;
+}
+
+.cover-container .slide-content,
+.title-container .slide-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  color: white;
+}
+
+.layout-cover h1, .layout-cover h2,
+.layout-title h1, .layout-title h2 {
+  color: white !important;
+}
+
+/* Code styling */
+pre {
+  background: var(--code-background);
+  border: 1px solid var(--code-border);
+  border-radius: 4px;
+  padding: 1.5rem;
+}
+
+.dark pre {
+  background: var(--dark-code-background);
+  border-color: var(--dark-code-border);
+}
+
+code {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-size: 0.9em;
+}
+
+/* Kicker styling */
+.kicker {
+  font-family: 'Albert Sans', sans-serif;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 600;
+  color: var(--dark-accent1);
+}
+`;
+
+// ============================================
 // EXPORTS
 // ============================================
 
@@ -869,6 +1178,8 @@ export const builtInThemes: Record<string, Theme> = {
   berlin: createBuiltInTheme(berlinTemplate, berlinPresets, berlinCSS),
   minimal: createBuiltInTheme(minimalTemplate, minimalPresets, minimalCSS),
   helvetica: createBuiltInTheme(helveticaTemplate, helveticaPresets, helveticaCSS),
+  basel: createBuiltInTheme(baselTemplate, baselPresets, baselCSS),
+  copenhagen: createBuiltInTheme(copenhagenTemplate, copenhagenPresets, copenhagenCSS),
 };
 
 export function getBuiltInTheme(name: string): Theme | undefined {

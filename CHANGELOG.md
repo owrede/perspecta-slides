@@ -2,6 +2,19 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.1.3] - 2026-01-02
+
+- **New**: Basel theme - Swiss serif typography with Noto Serif font
+- **New**: Copenhagen theme - Nordic elegance with Albert Sans font and weight hierarchy
+- **New**: Added 2 additional iA Presenter theme translations
+- **Fix**: Fixed Berlin theme heading colors for proper light/dark mode compatibility
+- **Fix**: Fixed Tokyo theme dark mode color contrast (white text on dark background)
+- **Fix**: Fixed Zurich theme light/dark mode color definitions
+- **Fix**: Corrected color variable bugs in multiple themes
+- **Improved**: All built-in themes now have proper light/dark mode support
+- **Improved**: Enhanced theme translation process from iA Presenter format
+- **Themes**: Now includes 7 built-in themes (Zurich, Tokyo, Berlin, Minimal, Helvetica, Basel, Copenhagen)
+
 ## [0.1.2] - 2026-01-02
 
 - **Major Fix**: Unified rendering pipeline for thumbnails and presentation preview

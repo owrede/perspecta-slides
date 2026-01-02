@@ -1,0 +1,233 @@
+/* Minimal Theme - Ultra Clean */
+
+/* Generous spacing */
+.slide {
+  padding: 8%;
+}
+
+.slide-content {
+  gap: 2rem;
+}
+
+/* Typography - clean and large */
+.slide h1 {
+  font-size: clamp(2.5rem, 5vw + 1vh, 5rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.slide h2 {
+  font-size: clamp(2rem, 4vw + 0.8vh, 4rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.slide h3, .slide h4, .slide h5, .slide h6 {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.slide p {
+  font-size: clamp(1.1rem, 1.4vw + 0.5vh, 2rem);
+  line-height: 1.6;
+  font-weight: 400;
+  color: var(--accent2);
+}
+
+.dark .slide p {
+  color: var(--light-body-text);
+}
+
+/* Cover slides - extra minimal */
+.cover-container .slide-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 1.5rem;
+}
+
+.layout-cover h1, .layout-cover h2 {
+  font-size: clamp(3rem, 6vw + 1.5vh, 7rem);
+}
+
+.layout-cover p {
+  font-size: clamp(1rem, 1.2vw + 0.4vh, 1.5rem);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-weight: 500;
+}
+
+/* Title slides - extra minimal */
+.title-container .slide-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 1.5rem;
+}
+
+.layout-title h1, .layout-title h2 {
+  font-size: clamp(3rem, 6vw + 1.5vh, 7rem);
+}
+
+.layout-title p {
+  font-size: clamp(1rem, 1.2vw + 0.4vh, 1.5rem);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-weight: 500;
+}
+
+/* Section slides - inverted */
+.section-container {
+  background: var(--accent1) !important;
+}
+
+.section-container .slide-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  color: white;
+}
+
+/* Kicker - subtle */
+.kicker {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  font-weight: 500;
+  color: var(--accent2);
+  opacity: 0.7;
+}
+
+/* Code blocks - barely there */
+pre {
+  background: #fafafa;
+  border: none;
+  border-radius: 4px;
+  padding: 1.5rem;
+}
+
+.dark pre {
+  background: #1a1a1a;
+}
+
+/* Blockquote - simple line */
+blockquote {
+  border-left: 2px solid var(--accent1);
+  padding-left: 1.5rem;
+  font-style: normal;
+  color: var(--accent2);
+}
+
+.dark blockquote {
+  border-left-color: var(--light-body-text);
+  color: var(--light-body-text);
+}
+
+/* Tables - minimal lines */
+table {
+  border: none;
+}
+
+th {
+  background: transparent;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  color: var(--accent2);
+  border-bottom: 2px solid var(--accent1);
+}
+
+td {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.dark th {
+  color: var(--light-body-text);
+  border-bottom-color: var(--light-body-text);
+}
+
+.dark td {
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Lists - clean markers */
+ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+ul li {
+  padding-left: 1.5rem;
+  position: relative;
+}
+
+ul li::before {
+  content: '—';
+  position: absolute;
+  left: 0;
+  color: var(--accent2);
+}
+
+ol li::marker {
+  color: var(--accent2);
+  font-weight: 600;
+}
+
+/* Links - subtle underline */
+a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--accent3);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--accent3);
+}
+
+/* Progress bar - thin line */
+.progress-bar {
+  height: 2px;
+  background: var(--accent1);
+}
+
+/* Highlight - soft */
+mark {
+  background: rgba(0, 102, 204, 0.1);
+  color: inherit;
+}
+
+/* Hide decorative elements */
+.slide-header, .slide-footer {
+  opacity: 0.4;
+  font-size: 0.75rem;
+}
+
+/* Images - full bleed potential */
+.layout-full-image img {
+  filter: contrast(1.05);
+}
+
+/* Strong emphasis */
+strong {
+  font-weight: 600;
+}
+
+/* Inline code */
+code {
+  background: rgba(0, 0, 0, 0.04);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.dark code {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Column styling - generous gaps */
+.slot-columns {
+  gap: 4rem;
+}

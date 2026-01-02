@@ -1,16 +1,21 @@
 // Core types for Perspecta Slides
 
+export type ContentMode = 'ia-presenter' | 'advanced-slides';
+
 export interface PresentationFrontmatter {
   title?: string;
   author?: string;
   date?: string;
   theme?: string;
   
-  // Typography
+  // Content mode: how to distinguish slide content from speaker notes
+  contentMode?: ContentMode;
+  
+  // Typography (overrides theme)
   titleFont?: string;
   bodyFont?: string;
   
-  // Colors (iA Presenter style)
+  // Colors (overrides theme presets)
   accent1?: string;
   accent2?: string;
   accent3?: string;
@@ -22,13 +27,11 @@ export interface PresentationFrontmatter {
   lightBackground?: string;
   lightTitleText?: string;
   lightBodyText?: string;
-  lightFrame?: string;
   
   // Dark mode colors
   darkBackground?: string;
   darkTitleText?: string;
   darkBodyText?: string;
-  darkFrame?: string;
   
   // Header/Footer
   headerLeft?: string;
@@ -53,29 +56,63 @@ export interface SlideMetadata {
   layout?: SlideLayout;
   background?: string;
   backgroundOpacity?: number;
+  backgroundFilter?: 'darken' | 'lighten' | 'blur' | 'none';
   mode?: 'light' | 'dark';
   class?: string;
   transition?: string;
   notes?: string;
 }
 
+/**
+ * Slide Layout Types (iA Presenter compatible + column extensions)
+ * 
+ * STANDARD SLIDES:
+ * - cover: Opening/title slide with centered content
+ * - title: Title slide with large heading
+ * - section: Chapter/section divider
+ * - default: Standard text slide, auto-detects columns
+ * 
+ * COLUMN SLIDES (explicit column control):
+ * - 1-column: Single column, no auto-detection
+ * - 2-columns: Two equal width columns (50/50)
+ * - 3-columns: Three equal width columns (33/33/33)
+ * - 2-columns-1+2: Left narrow (1/3), right wide (2/3)
+ * - 2-columns-2+1: Left wide (2/3), right narrow (1/3)
+ * 
+ * IMAGE SLIDES:
+ * - full-image: Image fills entire slide
+ * - half-image: Half for image(s), half for text (v-split)
+ * - caption: Full image with title bar and caption
+ * 
+ * GRID SLIDES:
+ * - grid: Auto-grid for multiple items (2x2, 2x3, etc.)
+ */
 export type SlideLayout = 
-  | 'default'
+  // Standard slides (iA Presenter compatible)
+  | 'cover'
   | 'title'
   | 'section'
-  | 'v-split'
-  | 'h-split'
-  | 'caption'
+  | 'default'
+  // Column slides (Perspecta extension)
+  | '1-column'
+  | '2-columns'
+  | '3-columns'
+  | '2-columns-1+2'
+  | '2-columns-2+1'
+  // Image slides
   | 'full-image'
-  | 'title-and-columns'
+  | 'half-image'
+  | 'caption'
+  // Grid slides
   | 'grid';
 
 export interface SlideElement {
-  type: 'heading' | 'paragraph' | 'list' | 'blockquote' | 'image' | 'code' | 'table' | 'math';
+  type: 'heading' | 'paragraph' | 'list' | 'blockquote' | 'image' | 'code' | 'table' | 'math' | 'kicker';
   content: string;
-  level?: number; // For headings
-  visible: boolean; // Whether it appears on slide (vs speaker notes)
+  level?: number;
+  visible: boolean;
   raw: string;
+  columnIndex?: number;
 }
 
 export interface Slide {
@@ -92,32 +129,97 @@ export interface Presentation {
   source: string;
 }
 
-export interface Theme {
-  name: string;
-  version: string;
-  author?: string;
-  description?: string;
-  css: string;
-  fonts?: {
-    title?: string;
-    body?: string;
-  };
-  colors?: {
-    accent1?: string;
-    accent2?: string;
-    accent3?: string;
-    accent4?: string;
-    accent5?: string;
-    accent6?: string;
-  };
-  layouts?: Record<SlideLayout, string>;
+// ============================================
+// THEME SYSTEM (iA Presenter compatible)
+// ============================================
+
+/**
+ * Layout example for theme preview
+ */
+export interface ThemeLayoutExample {
+  Name: string;
+  Markdown: string;
 }
+
+/**
+ * Theme template definition (template.json)
+ */
+export interface ThemeTemplate {
+  Name: string;
+  Version: string;
+  Author?: string;
+  ShortDescription?: string;
+  LongDescription?: string;
+  Css: string;
+  TitleFont: string;
+  BodyFont: string;
+  CssClasses?: string;
+  LayoutExamples?: ThemeLayoutExample[];
+}
+
+/**
+ * Color preset (from presets.json)
+ */
+export interface ThemePreset {
+  Name: string;
+  TitleFont?: string;
+  BodyFont?: string;
+  Appearance: 'light' | 'dark';
+  
+  // Text colors
+  DarkBodyTextColor: string;
+  LightBodyTextColor: string;
+  DarkTitleTextColor: string;
+  LightTitleTextColor: string;
+  
+  // Background colors
+  DarkBackgroundColor: string;
+  LightBackgroundColor: string;
+  
+  // Accent colors (per-appearance and shared)
+  DarkAccent1?: string;
+  LightAccent1?: string;
+  Accent1: string;
+  Accent2: string;
+  Accent3: string;
+  Accent4: string;
+  Accent5: string;
+  Accent6: string;
+  
+  // Background gradients (array of colors)
+  LightBgGradient?: string[];
+  DarkBgGradient?: string[];
+}
+
+/**
+ * Presets file structure (presets.json)
+ */
+export interface ThemePresetsFile {
+  Presets: ThemePreset[];
+}
+
+/**
+ * Loaded theme with all resources
+ */
+export interface Theme {
+  template: ThemeTemplate;
+  presets: ThemePreset[];
+  css: string;
+  basePath: string;
+  thumbnail?: string;
+  isBuiltIn: boolean;
+}
+
+// ============================================
+// SETTINGS
+// ============================================
 
 export interface PerspecaSlidesSettings {
   defaultTheme: string;
   showThumbnailNavigator: boolean;
   showInspector: boolean;
   defaultAspectRatio: '16:9' | '4:3' | '16:10' | 'auto';
+  defaultContentMode: ContentMode;
   exportIncludeSpeakerNotes: boolean;
   customThemesFolder: string;
 }
@@ -127,6 +229,7 @@ export const DEFAULT_SETTINGS: PerspecaSlidesSettings = {
   showThumbnailNavigator: true,
   showInspector: true,
   defaultAspectRatio: '16:9',
+  defaultContentMode: 'ia-presenter',
   exportIncludeSpeakerNotes: false,
   customThemesFolder: 'perspecta-themes',
 };

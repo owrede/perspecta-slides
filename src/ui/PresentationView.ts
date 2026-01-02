@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, Menu, TFile } from 'obsidian';
-import { Presentation, Slide } from '../types';
+import { Presentation, Slide, SlideElement } from '../types';
 import { SlideParser } from '../parser/SlideParser';
 import { SlideRenderer } from '../renderer/SlideRenderer';
 import { getTheme } from '../themes';
@@ -14,6 +14,7 @@ export class PresentationView extends ItemView {
   private file: TFile | null = null;
   
   private onSlideChange: ((index: number) => void) | null = null;
+  private onReload: (() => void) | null = null;
   
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
@@ -63,7 +64,11 @@ export class PresentationView extends ItemView {
     this.onSlideChange = callback;
   }
   
-  goToSlide(index: number) {
+  setOnReload(callback: () => void) {
+    this.onReload = callback;
+  }
+  
+  goToSlide(index: number, triggerCallback: boolean = true) {
     if (!this.presentation) return;
     
     if (index < 0) index = 0;
@@ -74,7 +79,7 @@ export class PresentationView extends ItemView {
     this.currentSlideIndex = index;
     this.updateSlideDisplay();
     
-    if (this.onSlideChange) {
+    if (triggerCallback && this.onSlideChange) {
       this.onSlideChange(index);
     }
   }
@@ -94,6 +99,54 @@ export class PresentationView extends ItemView {
   
   getPresentation(): Presentation | null {
     return this.presentation;
+  }
+  
+  getSlideCount(): number {
+    return this.presentation?.slides.length || 0;
+  }
+  
+  /**
+   * Update a single slide without re-rendering the entire presentation.
+   * Returns true if the update was successful, false if a full re-render is needed.
+   */
+  updateSlide(index: number, slide: Slide): boolean {
+    if (!this.presentation) return false;
+    
+    const slideEls = this.containerEl.querySelectorAll('.slide-wrapper .slide');
+    const slideEl = slideEls[index] as HTMLElement | undefined;
+    if (!slideEl) return false;
+    
+    // Update the slide in the presentation
+    this.presentation.slides[index] = slide;
+    
+    // Clear and re-render just the content of this slide
+    const contentEl = slideEl.querySelector('.slide-content') as HTMLElement;
+    if (!contentEl) return false;
+    
+    contentEl.empty();
+    this.renderSlideContent(contentEl, slide);
+    
+    // Update slide classes (mode, layout)
+    const mode = slide.metadata.mode || 'light';
+    const layout = slide.metadata.layout || 'default';
+    
+    // Remove old mode/layout classes
+    slideEl.classList.remove('light', 'dark');
+    slideEl.className = slideEl.className.replace(/layout-\S+/g, '').trim();
+    
+    // Add new classes
+    slideEl.classList.add(mode, `layout-${layout}`);
+    
+    // Update speaker notes if this is the current slide
+    if (index === this.currentSlideIndex) {
+      const notesContainer = this.containerEl.querySelector('.speaker-notes-container');
+      if (notesContainer) {
+        notesContainer.empty();
+        this.renderSpeakerNotes(notesContainer as HTMLElement);
+      }
+    }
+    
+    return true;
   }
   
   private render() {
@@ -172,6 +225,11 @@ More content here...`
     presentBtn.createSpan({ text: 'Present' });
     presentBtn.addEventListener('click', () => this.startPresentation());
     
+    // Presenter View button
+    const presenterBtn = actions.createEl('button');
+    presenterBtn.createSpan({ text: 'Presenter View' });
+    presenterBtn.addEventListener('click', () => this.startPresenterView());
+    
     // Export button
     const exportBtn = actions.createEl('button');
     exportBtn.createSpan({ text: 'Export HTML' });
@@ -183,42 +241,124 @@ More content here...`
     moreBtn.addEventListener('click', (e) => this.showOptionsMenu(e));
   }
   
+  /**
+   * Get the container class for a layout (iA Presenter pattern)
+   */
+  private getContainerClass(layout: string): string {
+    switch (layout) {
+      case 'cover': return 'cover-container';
+      case 'title': return 'title-container';
+      case 'section': return 'section-container';
+      case 'full-image': return 'image-container';
+      case 'half-image': return 'split-container';
+      case 'caption': return 'caption-container';
+      case 'grid': return 'grid-container';
+      case '1-column':
+      case '2-columns':
+      case '3-columns':
+      case '2-columns-1+2':
+      case '2-columns-2+1':
+        return 'columns-container';
+      default: return 'default-container';
+    }
+  }
+  
   private renderSlides(container: HTMLElement) {
     if (!this.presentation) return;
     
     const theme = getTheme(this.presentation.frontmatter.theme || 'zurich');
-    const renderer = new SlideRenderer(this.presentation, theme);
+    const themeClasses = theme?.template.CssClasses || '';
     
     // Create slide wrapper with aspect ratio
     const aspectRatio = this.presentation.frontmatter.aspectRatio || '16:9';
     const wrapper = container.createDiv({ 
-      cls: `slide-wrapper aspect-${aspectRatio.replace(':', '-')}` 
+      cls: `slide-wrapper aspect-${aspectRatio.replace(':', '-')} ${themeClasses}` 
     });
+    
+    // Set up dynamic font scaling based on wrapper dimensions
+    // Uses the constraining dimension (height in landscape, width in portrait)
+    const aspectParts = aspectRatio.split(':').map(Number);
+    const slideAspect = aspectParts[0] / aspectParts[1]; // e.g., 16/9 = 1.778
+    
+    const updateSlideBase = () => {
+      const width = wrapper.clientWidth;
+      const height = wrapper.clientHeight;
+      const containerAspect = width / height;
+      
+      // If container is wider than slide aspect, height is constraining
+      // If container is narrower than slide aspect, width is constraining
+      let base: number;
+      if (containerAspect >= slideAspect) {
+        // Landscape: height constrains, use height as reference (1080px base)
+        base = height / 1080;
+      } else {
+        // Portrait: width constrains, use width as reference (1920px base for 16:9)
+        const baseWidth = 1080 * slideAspect;
+        base = width / baseWidth;
+      }
+      
+      wrapper.style.setProperty('--slide-base', `${base}px`);
+    };
+    
+    // Initial calculation
+    requestAnimationFrame(updateSlideBase);
+    
+    // Update on resize
+    const resizeObserver = new ResizeObserver(updateSlideBase);
+    resizeObserver.observe(wrapper);
+    
+    // Cleanup observer when view is closed
+    this.register(() => resizeObserver.disconnect());
     
     // Render all slides
     this.presentation.slides.forEach((slide, index) => {
+      const layout = slide.metadata.layout || 'default';
+      const mode = slide.metadata.mode || 'light';
+      const containerClass = this.getContainerClass(layout);
+      const customClass = slide.metadata.class || '';
+      const isActive = index === this.currentSlideIndex ? 'active' : '';
+      
       const slideEl = wrapper.createDiv({
-        cls: `slide ${slide.metadata.mode || 'light'} layout-${slide.metadata.layout || 'default'} ${index === this.currentSlideIndex ? 'active' : ''}`
+        cls: `slide ${containerClass} ${mode} ${customClass} ${isActive}`.trim()
       });
       slideEl.dataset.index = String(index);
       
-      // Background
+      // Background (separate div with filter support)
       if (slide.metadata.background) {
-        slideEl.style.backgroundImage = `url('${slide.metadata.background}')`;
-        slideEl.style.backgroundSize = 'cover';
-        slideEl.style.backgroundPosition = 'center';
+        const bgEl = slideEl.createDiv({ cls: 'slide-background' });
+        bgEl.style.backgroundImage = `url('${slide.metadata.background}')`;
+        bgEl.style.backgroundSize = 'cover';
+        bgEl.style.backgroundPosition = 'center';
         
         if (slide.metadata.backgroundOpacity !== undefined) {
-          const overlay = slideEl.createDiv({ cls: 'background-overlay' });
-          overlay.style.backgroundColor = `rgba(255,255,255,${1 - slide.metadata.backgroundOpacity})`;
+          bgEl.style.opacity = String(slide.metadata.backgroundOpacity);
+        }
+        
+        // Apply filter
+        if (slide.metadata.backgroundFilter) {
+          switch (slide.metadata.backgroundFilter) {
+            case 'darken':
+              bgEl.addClass('filter-darken');
+              break;
+            case 'lighten':
+              bgEl.addClass('filter-lighten');
+              break;
+            case 'blur':
+              bgEl.style.filter = 'blur(8px)';
+              bgEl.style.transform = 'scale(1.1)';
+              break;
+          }
         }
       }
       
       // Header
       this.renderSlideHeader(slideEl, index);
       
-      // Content
-      const content = slideEl.createDiv({ cls: 'slide-content' });
+      // Slide body wrapper
+      const body = slideEl.createDiv({ cls: 'slide-body' });
+      
+      // Content with layout class
+      const content = body.createDiv({ cls: `slide-content layout-${layout}` });
       this.renderSlideContent(content, slide);
       
       // Footer
@@ -250,31 +390,276 @@ More content here...`
   private renderSlideContent(container: HTMLElement, slide: Slide) {
     const layout = slide.metadata.layout || 'default';
     const elements = slide.elements.filter(e => e.visible);
+    const images = elements.filter(e => e.type === 'image');
+    const textElements = elements.filter(e => e.type !== 'image');
+    const headings = elements.filter(e => e.type === 'heading' || e.type === 'kicker');
+    const bodyElements = elements.filter(e => e.type !== 'heading' && e.type !== 'kicker' && e.type !== 'image');
     
-    if (layout === 'v-split') {
-      const textContent = container.createDiv({ cls: 'text-content' });
-      const mediaContent = container.createDiv({ cls: 'media-content' });
+    switch (layout) {
+      // ==================
+      // STANDARD SLIDES
+      // ==================
       
-      elements.forEach(el => {
-        if (el.type === 'image') {
-          this.renderElement(mediaContent, el);
-        } else {
-          this.renderElement(textContent, el);
-        }
-      });
-    } else if (layout === 'caption') {
-      const mediaContent = container.createDiv({ cls: 'media-content' });
-      const textContent = container.createDiv({ cls: 'text-content' });
+      case 'cover':
+        this.renderCoverLayout(container, elements);
+        break;
       
-      elements.forEach(el => {
-        if (el.type === 'image') {
-          this.renderElement(mediaContent, el);
-        } else {
-          this.renderElement(textContent, el);
-        }
-      });
-    } else {
+      case 'title':
+        this.renderTitleLayout(container, elements);
+        break;
+        
+      case 'section':
+        this.renderSectionLayout(container, elements);
+        break;
+        
+      case 'default':
+        this.renderDefaultLayout(container, elements);
+        break;
+      
+      // ==================
+      // TEXT SLIDES
+      // ==================
+      
+      case '1-column':
+        this.renderColumnLayout(container, elements, 1);
+        break;
+        
+      case '2-columns':
+        this.renderColumnLayout(container, elements, 2, 'equal');
+        break;
+        
+      case '3-columns':
+        this.renderColumnLayout(container, elements, 3, 'equal');
+        break;
+        
+      case '2-columns-1+2':
+        this.renderColumnLayout(container, elements, 2, 'narrow-wide');
+        break;
+        
+      case '2-columns-2+1':
+        this.renderColumnLayout(container, elements, 2, 'wide-narrow');
+        break;
+      
+      // ==================
+      // IMAGE SLIDES
+      // ==================
+      
+      case 'full-image':
+        this.renderFullImageLayout(container, images);
+        break;
+        
+      case 'caption':
+        this.renderCaptionLayout(container, headings, images, bodyElements);
+        break;
+        
+      case 'half-image':
+        this.renderHalfImageLayout(container, elements, images, textElements);
+        break;
+        
+      default:
+        this.renderDefaultLayout(container, elements);
+    }
+  }
+  
+  // ==================
+  // STANDARD LAYOUTS
+  // ==================
+  
+  /**
+   * Cover Layout: Opening slide with centered content (iA Presenter compatible)
+   */
+  private renderCoverLayout(container: HTMLElement, elements: SlideElement[]) {
+    elements.forEach(el => this.renderElement(container, el));
+  }
+  
+  /**
+   * Title Layout: Centered content with large headings
+   */
+  private renderTitleLayout(container: HTMLElement, elements: SlideElement[]) {
+    elements.forEach(el => this.renderElement(container, el));
+  }
+  
+  /**
+   * Section Layout: Accent background, centered heading
+   */
+  private renderSectionLayout(container: HTMLElement, elements: SlideElement[]) {
+    elements.forEach(el => this.renderElement(container, el));
+  }
+  
+  /**
+   * Default Layout: Auto-detects columns based on columnIndex
+   */
+  private renderDefaultLayout(container: HTMLElement, elements: SlideElement[]) {
+    const columnElements = elements.filter(e => e.columnIndex !== undefined);
+    const nonColumnElements = elements.filter(e => e.columnIndex === undefined);
+    
+    // If no column elements, render as single column
+    if (columnElements.length === 0) {
       elements.forEach(el => this.renderElement(container, el));
+      return;
+    }
+    
+    // Auto-detect column count
+    const maxColumnIndex = Math.max(...columnElements.map(e => e.columnIndex ?? 0));
+    const columnCount = Math.min(maxColumnIndex + 1, 3);
+    
+    // Render header (non-column elements)
+    const headerSlot = container.createDiv({ cls: 'slot-header' });
+    nonColumnElements.forEach(el => this.renderElement(headerSlot, el));
+    
+    // Group elements by column
+    const columns: SlideElement[][] = Array.from({ length: columnCount }, () => []);
+    columnElements.forEach(e => {
+      const idx = Math.min(e.columnIndex ?? 0, columnCount - 1);
+      columns[idx].push(e);
+    });
+    
+    // Render columns
+    const columnsSlot = container.createDiv({ cls: `slot-columns columns-${columnCount}` });
+    columns.forEach((col, i) => {
+      const colDiv = columnsSlot.createDiv({ cls: 'column' });
+      colDiv.dataset.column = String(i + 1);
+      col.forEach(el => this.renderElement(colDiv, el));
+    });
+  }
+  
+  // ==================
+  // TEXT LAYOUTS
+  // ==================
+  
+  /**
+   * Column Layout: Explicit column control
+   */
+  private renderColumnLayout(
+    container: HTMLElement, 
+    elements: SlideElement[], 
+    columnCount: number, 
+    ratio: 'equal' | 'narrow-wide' | 'wide-narrow' = 'equal'
+  ) {
+    const columnElements = elements.filter(e => e.columnIndex !== undefined);
+    const nonColumnElements = elements.filter(e => e.columnIndex === undefined);
+    
+    // Find how many data columns exist
+    const maxDataColumn = columnElements.reduce((max, e) => 
+      Math.max(max, e.columnIndex ?? 0), -1);
+    const dataColumnCount = maxDataColumn + 1;
+    
+    // Render header slot
+    const headerSlot = container.createDiv({ cls: 'slot-header' });
+    nonColumnElements.forEach(el => this.renderElement(headerSlot, el));
+    
+    // Group elements into visual columns, merging overflow into last column
+    const columns: SlideElement[][] = Array.from({ length: columnCount }, () => []);
+    
+    if (columnElements.length === 0) {
+      // No column elements - put body elements in first column
+      const bodyElements = nonColumnElements.filter(e => 
+        e.type !== 'heading' && e.type !== 'kicker');
+      columns[0] = bodyElements;
+    } else {
+      columnElements.forEach(e => {
+        let targetCol = e.columnIndex ?? 0;
+        if (dataColumnCount > columnCount && targetCol >= columnCount - 1) {
+          targetCol = columnCount - 1;
+        }
+        columns[Math.min(targetCol, columnCount - 1)].push(e);
+      });
+    }
+    
+    // Render columns slot
+    const columnsSlot = container.createDiv({ cls: `slot-columns columns-${columnCount} ratio-${ratio}` });
+    columns.forEach((col, i) => {
+      const colDiv = columnsSlot.createDiv({ cls: 'column' });
+      colDiv.dataset.column = String(i + 1);
+      col.forEach(el => this.renderElement(colDiv, el));
+    });
+  }
+  
+  // ==================
+  // IMAGE LAYOUTS
+  // ==================
+  
+  /**
+   * Full Image Layout: Images fill entire slide
+   */
+  private renderFullImageLayout(container: HTMLElement, images: SlideElement[]) {
+    if (images.length > 1) {
+      container.addClass(`count-${images.length}`);
+    }
+    
+    if (images.length === 0) {
+      container.createDiv({ cls: 'empty', text: 'No images' });
+      return;
+    }
+    
+    images.forEach(img => {
+      const slot = container.createDiv({ cls: 'image-slot' });
+      slot.createEl('img', { attr: { src: img.content, alt: '' } });
+    });
+  }
+  
+  /**
+   * Caption Layout: Full image with title bar and caption
+   */
+  private renderCaptionLayout(
+    container: HTMLElement,
+    headings: SlideElement[], 
+    images: SlideElement[], 
+    bodyElements: SlideElement[]
+  ) {
+    // Title bar
+    const titleBar = container.createDiv({ cls: 'slot-title-bar' });
+    headings.forEach(el => this.renderElement(titleBar, el));
+    
+    // Image slot
+    const imageSlot = container.createDiv({ cls: 'slot-image' });
+    images.forEach(img => {
+      const slot = imageSlot.createDiv({ cls: 'image-slot' });
+      slot.createEl('img', { attr: { src: img.content, alt: '' } });
+    });
+    
+    // Caption slot
+    if (bodyElements.length > 0) {
+      const captionSlot = container.createDiv({ cls: 'slot-caption' });
+      bodyElements.forEach(el => this.renderElement(captionSlot, el));
+    }
+  }
+  
+  /**
+   * Half Image Layout: Half for image(s), half for text
+   */
+  private renderHalfImageLayout(
+    container: HTMLElement,
+    allElements: SlideElement[],
+    images: SlideElement[], 
+    textElements: SlideElement[]
+  ) {
+    // Determine if images come first
+    const firstElement = allElements[0];
+    const imageFirst = firstElement?.type === 'image';
+    
+    if (imageFirst) {
+      container.addClass('image-left');
+      
+      const imageSlot = container.createDiv({ cls: 'slot-image' });
+      images.forEach(img => {
+        const slot = imageSlot.createDiv({ cls: 'image-slot' });
+        slot.createEl('img', { attr: { src: img.content, alt: '' } });
+      });
+      
+      const textSlot = container.createDiv({ cls: 'slot-text' });
+      textElements.forEach(el => this.renderElement(textSlot, el));
+    } else {
+      container.addClass('image-right');
+      
+      const textSlot = container.createDiv({ cls: 'slot-text' });
+      textElements.forEach(el => this.renderElement(textSlot, el));
+      
+      const imageSlot = container.createDiv({ cls: 'slot-image' });
+      images.forEach(img => {
+        const slot = imageSlot.createDiv({ cls: 'image-slot' });
+        slot.createEl('img', { attr: { src: img.content, alt: '' } });
+      });
     }
   }
   
@@ -359,6 +744,11 @@ More content here...`
     container.createEl('h4', { text: 'Speaker Notes' });
     const notes = container.createDiv({ cls: 'notes-content' });
     slide.speakerNotes.forEach(note => {
+      // Filter out "note:" or "notes:" markers (from advanced-slides mode)
+      const trimmed = note.trim().toLowerCase();
+      if (trimmed === 'note:' || trimmed === 'notes:') {
+        return; // Skip the marker line
+      }
       notes.createEl('p', { text: note });
     });
   }
@@ -441,32 +831,77 @@ More content here...`
           }
           break;
         case 'Escape':
-          if (this.isPresenting) {
-            this.stopPresentation();
-          }
+          // Presentation is in separate window, no action needed here
           break;
       }
     });
   }
   
-  private startPresentation() {
-    if (!this.presentation) return;
+  private async startPresentation() {
+    if (!this.presentation || !this.file) return;
     
     const theme = getTheme(this.presentation.frontmatter.theme || 'zurich');
     const renderer = new SlideRenderer(this.presentation, theme);
     const html = renderer.renderHTML();
     
-    // Open in new window
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      this.isPresenting = true;
-    }
+    await this.openPresentationInBrowser(html, 'presentation');
   }
   
-  private stopPresentation() {
-    this.isPresenting = false;
+  private async startPresenterView() {
+    if (!this.presentation || !this.file) return;
+    
+    const theme = getTheme(this.presentation.frontmatter.theme || 'zurich');
+    const renderer = new SlideRenderer(this.presentation, theme);
+    const html = renderer.renderPresenterHTML();
+    
+    await this.openPresentationInBrowser(html, 'presenter');
+  }
+  
+  /**
+   * Opens presentation HTML in the system browser via a temp file
+   */
+  private async openPresentationInBrowser(html: string, mode: 'presentation' | 'presenter') {
+    const tempFileName = `.perspecta-${mode}-${Date.now()}.html`;
+    const Notice = (require('obsidian') as typeof import('obsidian')).Notice;
+    
+    try {
+      // Clean up any existing temp files with similar names
+      const existingFile = this.app.vault.getAbstractFileByPath(tempFileName);
+      if (existingFile) {
+        await this.app.vault.delete(existingFile);
+      }
+      
+      // Create the temp file
+      await this.app.vault.create(tempFileName, html);
+      
+      // Get the full file path
+      const adapter = this.app.vault.adapter as any;
+      if (adapter.getFullPath) {
+        const fullPath = adapter.getFullPath(tempFileName);
+        
+        // Use Electron's shell to open the file in default browser
+        const { shell } = require('electron');
+        await shell.openPath(fullPath);
+        
+        this.isPresenting = true;
+        
+        // Clean up temp file after a delay
+        setTimeout(async () => {
+          try {
+            const tempFile = this.app.vault.getAbstractFileByPath(tempFileName);
+            if (tempFile) {
+              await this.app.vault.delete(tempFile);
+            }
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+        }, 60000); // Keep for 1 minute
+      } else {
+        new Notice('Could not determine file path');
+      }
+    } catch (e) {
+      new Notice('Could not open presentation: ' + (e as Error).message);
+    }
   }
   
   private async exportHTML() {
@@ -505,7 +940,11 @@ More content here...`
       item.setTitle('Reload');
       item.setIcon('refresh-cw');
       item.onClick(() => {
-        if (this.file) this.loadFile(this.file);
+        if (this.onReload) {
+          this.onReload();
+        } else if (this.file) {
+          this.loadFile(this.file);
+        }
       });
     });
     

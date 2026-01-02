@@ -5,9 +5,10 @@ theme: zurich
 headerLeft: Perspecta Slides
 showSlideNumbers: true
 aspectRatio: "16:9"
+transition: fade
 ---
 
-##### Fast and Focused
+^Fast and Focused
 # Instant Slides
 
 Getting Started with Perspecta Slides
@@ -105,12 +106,20 @@ Perspecta Slides automatically picks layouts based on your content.
 
 ### Available Layouts
 
-	- **default** - Standard content slide
-	- **title** - Centered title slide  
-	- **section** - Section divider
-	- **v-split** - Text + image side by side
-	- **caption** - Image with caption
-	- **full-image** - Full-bleed image
+	**Standard Slides:**
+	- `default` - Auto-detects columns
+	- `title` - Centered title slide  
+	- `section` - Section divider
+
+	**Text Slides:**
+	- `1-column`, `2-columns`, `3-columns`
+	- `2-columns-1+2` (narrow + wide)
+	- `2-columns-2+1` (wide + narrow)
+
+	**Image Slides:**
+	- `full-image` - Full-bleed image
+	- `half-image` - Text + image side by side
+	- `caption` - Image with caption
 
 You can override the layout by adding `layout: name` at the start of a slide.
 
@@ -135,10 +144,22 @@ Set your theme in the frontmatter:
 	titleFont: Helvetica
 	accent1: "#000000"
 	accent2: "#43aa8b"
+	transition: fade
 	---
 	```
 
 The Zurich theme gives you clean, minimal Swiss design.
+
+---
+
+### Available Themes
+
+	- **zurich** - Minimal Swiss design
+	- **tokyo** - Dark neon aesthetic
+	- **berlin** - Professional blue tones
+	- **minimal** - Ultra-clean with whitespace
+
+Each theme includes light and dark mode support, plus code syntax highlighting.
 
 ---
 
@@ -161,6 +182,17 @@ When you're ready, open the presentation view or export to HTML.
 	- **Escape** - Exit presentation
 
 Use the command palette to start presenting or export your slides.
+
+---
+
+### Presenter View
+
+	- See your current slide and speaker notes
+	- Preview the next slide
+	- Built-in timer for pacing
+	- Control the presentation from one view
+
+Open Presenter View from the toolbar to get a full presenter experience.
 
 ---
 

@@ -4,23 +4,42 @@ import {
   Slide, 
   SlideElement, 
   SlideMetadata, 
-  SlideLayout 
+  SlideLayout,
+  ContentMode
 } from '../types';
 
 export class SlideParser {
+  private defaultContentMode: ContentMode = 'ia-presenter';
+  
+  /**
+   * Set the default content mode (used when not specified in frontmatter)
+   */
+  setDefaultContentMode(mode: ContentMode) {
+    this.defaultContentMode = mode;
+  }
   
   /**
    * Parse a markdown document into a Presentation
-   * Following iA Presenter conventions:
+   * 
+   * Content Mode determines how slide content vs speaker notes are distinguished:
+   * 
+   * 'ia-presenter' (iA Presenter style):
    * - `---` separates slides (horizontal rule)
    * - Regular text = speaker notes (not visible on slide)
    * - Headings (#, ##, etc.) = visible on slide
    * - Tab-indented content = visible on slide
    * - `//` at start of line = comment (hidden from all)
+   * 
+   * 'advanced-slides' (Obsidian Advanced Slides style):
+   * - `---` separates slides
+   * - All content is visible on slide by default
+   * - `note:` on its own line marks the start of speaker notes
+   * - Everything after `note:` until next slide is speaker notes
    */
   parse(source: string): Presentation {
     const { frontmatter, content } = this.extractFrontmatter(source);
-    const slides = this.parseSlides(content);
+    const contentMode = frontmatter.contentMode || this.defaultContentMode;
+    const slides = this.parseSlides(content, contentMode);
     
     return {
       frontmatter,
@@ -103,6 +122,8 @@ export class SlideParser {
         'show-slide-numbers': 'showSlideNumbers',
         'showSlideNumbers': 'showSlideNumbers',
         'transition': 'transition',
+        'content-mode': 'contentMode',
+        'contentMode': 'contentMode',
       };
       
       const mappedKey = keyMap[key];
@@ -121,18 +142,18 @@ export class SlideParser {
     return frontmatter;
   }
   
-  private parseSlides(content: string): Slide[] {
+  private parseSlides(content: string, contentMode: ContentMode): Slide[] {
     // Split by horizontal rule (---)
     // Must be at least 3 dashes on their own line
     const slideDelimiter = /\n---+\s*\n/;
     const rawSlides = content.split(slideDelimiter);
     
     return rawSlides
-      .map((rawContent, index) => this.parseSlide(rawContent.trim(), index))
+      .map((rawContent, index) => this.parseSlide(rawContent.trim(), index, contentMode))
       .filter(slide => slide.elements.length > 0 || slide.speakerNotes.length > 0);
   }
   
-  private parseSlide(rawContent: string, index: number): Slide {
+  private parseSlide(rawContent: string, index: number, contentMode: ContentMode): Slide {
     const lines = rawContent.split('\n');
     const elements: SlideElement[] = [];
     const speakerNotes: string[] = [];
@@ -142,9 +163,241 @@ export class SlideParser {
     const { slideMetadata, contentLines } = this.extractSlideMetadata(lines);
     metadata = slideMetadata;
     
+    // Use different parsing strategies based on content mode
+    if (contentMode === 'advanced-slides') {
+      this.parseSlideAdvancedMode(contentLines, elements, speakerNotes);
+    } else {
+      this.parseSlideIAPresenterMode(contentLines, elements, speakerNotes);
+    }
+    
+    // Auto-detect layout if not specified
+    if (!metadata.layout) {
+      metadata.layout = this.detectLayout(elements);
+    }
+    
+    return {
+      index,
+      metadata,
+      elements,
+      speakerNotes,
+      rawContent,
+    };
+  }
+  
+  /**
+   * Parse slide content using iA Presenter mode:
+   * - Tab-indented content = visible on slide
+   * - Non-indented paragraphs = speaker notes
+   * - Headings, images, code blocks = always visible
+   */
+  private parseSlideIAPresenterMode(
+    contentLines: string[], 
+    elements: SlideElement[], 
+    speakerNotes: string[]
+  ): void {
+    // Detect column blocks for multi-column layouts
+    const columnBlocks = this.detectColumnBlocks(contentLines);
+    const hasColumns = columnBlocks.length > 1;
+    
     let i = 0;
+    let currentColumnIndex = 0;
+    let lastWasColumnContent = false;
+    
     while (i < contentLines.length) {
       const line = contentLines[i];
+      
+      // Check if line is truly empty (not starting with tab)
+      const isTabIndented = line.startsWith('\t') || line.startsWith('    ');
+      const isTrulyEmpty = line.trim() === '' && !isTabIndented;
+      
+      // Skip truly empty lines but track for column separation
+      if (isTrulyEmpty) {
+        if (lastWasColumnContent && hasColumns) {
+          // Check if next non-empty line is also column content
+          let nextI = i + 1;
+          while (nextI < contentLines.length && contentLines[nextI].trim() === '' && 
+                 !contentLines[nextI].startsWith('\t') && !contentLines[nextI].startsWith('    ')) {
+            nextI++;
+          }
+          if (nextI < contentLines.length) {
+            const nextLine = contentLines[nextI];
+            if (nextLine.startsWith('\t') || nextLine.startsWith('    ')) {
+              currentColumnIndex++;
+            }
+          }
+        }
+        lastWasColumnContent = false;
+        i++;
+        continue;
+      }
+      
+      // Tab-indented empty line - continuation of current column
+      if (isTabIndented && line.trim() === '') {
+        i++;
+        continue;
+      }
+      
+      // Comments (// at start) - skip entirely
+      if (line.trim().startsWith('//')) {
+        i++;
+        continue;
+      }
+      
+      // Kicker (^text)
+      const kickerMatch = line.match(/^\^(.+)$/);
+      if (kickerMatch) {
+        elements.push({
+          type: 'kicker',
+          content: kickerMatch[1].trim(),
+          visible: true,
+          raw: line,
+        });
+        i++;
+        lastWasColumnContent = false;
+        continue;
+      }
+      
+      // Headings - always visible
+      // If followed by tab-indented content, assign to current column
+      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+      if (headingMatch) {
+        // Check if next non-empty line is tab-indented (column content)
+        let nextI = i + 1;
+        while (nextI < contentLines.length && contentLines[nextI].trim() === '') {
+          nextI++;
+        }
+        const nextIsColumnContent = nextI < contentLines.length && 
+          (contentLines[nextI].startsWith('\t') || contentLines[nextI].startsWith('    '));
+        
+        const headingElement: SlideElement = {
+          type: 'heading',
+          content: headingMatch[2],
+          level: headingMatch[1].length,
+          visible: true,
+          raw: line,
+        };
+        
+        // If this heading precedes column content, assign it to that column
+        if (hasColumns && nextIsColumnContent) {
+          headingElement.columnIndex = Math.min(currentColumnIndex, 2);
+        }
+        
+        elements.push(headingElement);
+        i++;
+        lastWasColumnContent = false;
+        continue;
+      }
+      
+      // Tab-indented content - visible (potential column content)
+      if (isTabIndented) {
+        const unindentedLine = line.replace(/^(\t|    )/, '');
+        const element = this.parseElement(unindentedLine, contentLines, i, true);
+        
+        if (hasColumns) {
+          element.element.columnIndex = Math.min(currentColumnIndex, 2);
+        }
+        
+        elements.push(element.element);
+        i = element.nextIndex;
+        lastWasColumnContent = true;
+        continue;
+      }
+      
+      // Images - visible
+      const imageMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+      if (imageMatch) {
+        elements.push({
+          type: 'image',
+          content: imageMatch[2],
+          visible: true,
+          raw: line,
+        });
+        i++;
+        lastWasColumnContent = false;
+        continue;
+      }
+      
+      // Code blocks - visible
+      if (line.startsWith('```')) {
+        const codeBlock = this.parseCodeBlock(contentLines, i);
+        elements.push({
+          type: 'code',
+          content: codeBlock.content,
+          visible: true,
+          raw: codeBlock.raw,
+        });
+        i = codeBlock.nextIndex;
+        lastWasColumnContent = false;
+        continue;
+      }
+      
+      // Tables - visible
+      if (line.includes('|') && line.trim().startsWith('|')) {
+        const table = this.parseTable(contentLines, i);
+        elements.push({
+          type: 'table',
+          content: table.content,
+          visible: true,
+          raw: table.raw,
+        });
+        i = table.nextIndex;
+        lastWasColumnContent = false;
+        continue;
+      }
+      
+      // Math blocks - visible
+      if (line.startsWith('$$')) {
+        const mathBlock = this.parseMathBlock(contentLines, i);
+        elements.push({
+          type: 'math',
+          content: mathBlock.content,
+          visible: true,
+          raw: mathBlock.raw,
+        });
+        i = mathBlock.nextIndex;
+        lastWasColumnContent = false;
+        continue;
+      }
+      
+      // Regular paragraph - speaker notes (not visible in iA Presenter mode)
+      speakerNotes.push(line);
+      i++;
+      lastWasColumnContent = false;
+    }
+  }
+  
+  /**
+   * Parse slide content using Advanced Slides mode:
+   * - All content is visible by default
+   * - `note:` on its own line marks the start of speaker notes
+   * - Everything after `note:` is speaker notes
+   */
+  private parseSlideAdvancedMode(
+    contentLines: string[], 
+    elements: SlideElement[], 
+    speakerNotes: string[]
+  ): void {
+    let inSpeakerNotes = false;
+    let i = 0;
+    
+    while (i < contentLines.length) {
+      const line = contentLines[i];
+      
+      // Check for note: marker (case-insensitive, can have whitespace)
+      if (line.trim().toLowerCase() === 'note:' || line.trim().toLowerCase() === 'notes:') {
+        inSpeakerNotes = true;
+        i++;
+        continue;
+      }
+      
+      // If we're in speaker notes section, add to notes
+      if (inSpeakerNotes) {
+        if (line.trim() !== '') {
+          speakerNotes.push(line);
+        }
+        i++;
+        continue;
+      }
       
       // Skip empty lines
       if (line.trim() === '') {
@@ -158,15 +411,12 @@ export class SlideParser {
         continue;
       }
       
-      // Headings - always visible on slide
-      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-      if (headingMatch) {
-        const level = headingMatch[1].length;
-        const content = headingMatch[2];
+      // Kicker (^text)
+      const kickerMatch = line.match(/^\^(.+)$/);
+      if (kickerMatch) {
         elements.push({
-          type: 'heading',
-          content,
-          level,
+          type: 'kicker',
+          content: kickerMatch[1].trim(),
           visible: true,
           raw: line,
         });
@@ -174,16 +424,21 @@ export class SlideParser {
         continue;
       }
       
-      // Tab-indented content - visible on slide
-      if (line.startsWith('\t') || line.startsWith('    ')) {
-        const unindentedLine = line.replace(/^(\t|    )/, '');
-        const element = this.parseElement(unindentedLine, contentLines, i, true);
-        elements.push(element.element);
-        i = element.nextIndex;
+      // Headings
+      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+      if (headingMatch) {
+        elements.push({
+          type: 'heading',
+          content: headingMatch[2],
+          level: headingMatch[1].length,
+          visible: true,
+          raw: line,
+        });
+        i++;
         continue;
       }
       
-      // Images - visible on slide
+      // Images
       const imageMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
       if (imageMatch) {
         elements.push({
@@ -202,14 +457,14 @@ export class SlideParser {
         elements.push({
           type: 'code',
           content: codeBlock.content,
-          visible: true, // Code blocks are typically visible
+          visible: true,
           raw: codeBlock.raw,
         });
         i = codeBlock.nextIndex;
         continue;
       }
       
-      // Tables - visible on slide if tab-indented or detected
+      // Tables
       if (line.includes('|') && line.trim().startsWith('|')) {
         const table = this.parseTable(contentLines, i);
         elements.push({
@@ -235,23 +490,93 @@ export class SlideParser {
         continue;
       }
       
-      // Regular paragraph - speaker notes (not visible)
-      speakerNotes.push(line);
+      // Lists
+      const listMatch = line.match(/^[-*+]\s+(.+)$/) || line.match(/^\d+\.\s+(.+)$/);
+      if (listMatch) {
+        const listItems: string[] = [line];
+        let nextIndex = i + 1;
+        
+        while (nextIndex < contentLines.length) {
+          const nextLine = contentLines[nextIndex];
+          if (nextLine.match(/^[-*+]\s+/) || nextLine.match(/^\d+\.\s+/)) {
+            listItems.push(nextLine);
+            nextIndex++;
+          } else {
+            break;
+          }
+        }
+        
+        elements.push({
+          type: 'list',
+          content: listItems.join('\n'),
+          visible: true,
+          raw: listItems.join('\n'),
+        });
+        i = nextIndex;
+        continue;
+      }
+      
+      // Blockquote
+      if (line.startsWith('>')) {
+        elements.push({
+          type: 'blockquote',
+          content: line.replace(/^>\s*/, ''),
+          visible: true,
+          raw: line,
+        });
+        i++;
+        continue;
+      }
+      
+      // Regular paragraph - visible in Advanced Slides mode
+      elements.push({
+        type: 'paragraph',
+        content: line,
+        visible: true,
+        raw: line,
+      });
       i++;
     }
+  }
+  
+  /**
+   * Detect column blocks in slide content.
+   * Column blocks are groups of tab-indented content separated by truly empty lines
+   * (lines that don't start with a tab). Tab-indented empty lines are part of the current block.
+   */
+  private detectColumnBlocks(lines: string[]): string[][] {
+    const blocks: string[][] = [];
+    let currentBlock: string[] = [];
+    let inTabContent = false;
     
-    // Auto-detect layout if not specified
-    if (!metadata.layout) {
-      metadata.layout = this.detectLayout(elements);
+    for (const line of lines) {
+      const isTabIndented = line.startsWith('\t') || line.startsWith('    ');
+      const isEmpty = line.trim() === '';
+      const isTrulyEmpty = isEmpty && !isTabIndented;
+      
+      if (isTabIndented) {
+        // Tab-indented content (including empty tab-indented lines) - part of current block
+        currentBlock.push(line);
+        inTabContent = true;
+      } else if (isTrulyEmpty && inTabContent) {
+        // Truly empty line (no tab) while in tab content - end of column block
+        if (currentBlock.length > 0) {
+          blocks.push(currentBlock);
+          currentBlock = [];
+        }
+        inTabContent = false;
+      } else {
+        // Non-tab, non-empty content - not column content
+        inTabContent = false;
+      }
     }
     
-    return {
-      index,
-      metadata,
-      elements,
-      speakerNotes,
-      rawContent,
-    };
+    // Don't forget the last block
+    if (currentBlock.length > 0) {
+      blocks.push(currentBlock);
+    }
+    
+    return blocks;
   }
   
   private extractSlideMetadata(lines: string[]): { slideMetadata: SlideMetadata; contentLines: string[] } {
@@ -301,6 +626,13 @@ export class SlideParser {
       const classMatch = line.match(/^class:\s*(.+)$/i);
       if (classMatch) {
         metadata.class = classMatch[1].trim();
+        startIndex = i + 1;
+        continue;
+      }
+      
+      const filterMatch = line.match(/^filter:\s*(darken|lighten|blur|none)$/i);
+      if (filterMatch) {
+        metadata.backgroundFilter = filterMatch[1].toLowerCase() as 'darken' | 'lighten' | 'blur' | 'none';
         startIndex = i + 1;
         continue;
       }
@@ -434,17 +766,41 @@ export class SlideParser {
     };
   }
   
+  /**
+   * Auto-detect layout based on slide content
+   * 
+   * Detection priority:
+   * 1. Column content → default (auto-columns)
+   * 2. Images only → full-image
+   * 3. Image + text → half-image
+   * 4. H1/H2 with minimal content → title
+   * 5. Single H3 → section
+   * 6. Otherwise → default
+   */
   private detectLayout(elements: SlideElement[]): SlideLayout {
     const headings = elements.filter(e => e.type === 'heading');
     const images = elements.filter(e => e.type === 'image');
     const visibleContent = elements.filter(e => e.visible);
+    const textContent = visibleContent.filter(e => e.type !== 'image');
     
-    // Full image: only image(s), no text
-    if (images.length > 0 && headings.length === 0 && visibleContent.length === images.length) {
+    // Check for column content - use 'default' which auto-detects columns
+    const columnElements = elements.filter(e => e.columnIndex !== undefined);
+    if (columnElements.length > 0) {
+      // Default layout handles auto-column detection
+      return 'default';
+    }
+    
+    // Full image: only image(s), no text content
+    if (images.length > 0 && textContent.length === 0) {
       return 'full-image';
     }
     
-    // Title: H1 or H2 with minimal content
+    // Half-image: images and text together
+    if (images.length > 0 && textContent.length > 0) {
+      return 'half-image';
+    }
+    
+    // Title: H1 or H2 with minimal content (1-2 elements)
     if (headings.length > 0 && headings[0].level && headings[0].level <= 2) {
       if (visibleContent.length <= 2) {
         return 'title';
@@ -456,22 +812,7 @@ export class SlideParser {
       return 'section';
     }
     
-    // Caption: image with text below
-    if (images.length === 1 && visibleContent.length > 1) {
-      return 'caption';
-    }
-    
-    // V-split: image and text side by side (detected by presence of both)
-    if (images.length > 0 && headings.length > 0) {
-      return 'v-split';
-    }
-    
-    // Grid: multiple images
-    if (images.length > 1) {
-      return 'grid';
-    }
-    
-    // Default layout
+    // Default layout (handles everything else, including auto-column detection)
     return 'default';
   }
 }

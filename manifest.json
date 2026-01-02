@@ -1,10 +1,10 @@
 {
-  "id": "perspecta-slides",
-  "name": "Perspecta Slides",
-  "version": "0.1.0",
-  "minAppVersion": "1.0.0",
-  "description": "Create presentations from Markdown using iA Presenter-style syntax with thumbnail navigator, inspector, and HTML export.",
-  "author": "owrede",
-  "authorUrl": "https://github.com/owrede",
-  "isDesktopOnly": false
+	"id": "perspecta-slides",
+	"name": "Perspecta Slides",
+	"version": "0.1.1",
+	"minAppVersion": "1.0.0",
+	"description": "Create presentations from Markdown using iA Presenter-style syntax with thumbnail navigator, inspector, and HTML export.",
+	"author": "owrede",
+	"authorUrl": "https://github.com/owrede",
+	"isDesktopOnly": false
 }

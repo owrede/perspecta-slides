@@ -24,3 +24,7 @@ data.json
 # Logs
 *.log
 npm-debug.log*
+
+# Sample Data
+sample-data/*
+examples/*

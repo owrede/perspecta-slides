@@ -1,0 +1,47 @@
+{
+  "name": "Minimal",
+  "version": "1.0.0",
+  "author": "Perspecta Slides",
+  "description": "Ultra-clean minimal theme with generous whitespace",
+  "fonts": {
+    "title": {
+      "name": "Inter",
+      "css": "Inter, SF Pro Display, system-ui, sans-serif"
+    },
+    "body": {
+      "name": "Inter",
+      "css": "Inter, SF Pro Text, system-ui, sans-serif"
+    }
+  },
+  "presets": {
+    "light": {
+      "background": "#ffffff",
+      "titleText": "#111111",
+      "bodyText": "#333333",
+      "frame": "#fafafa",
+      "accent1": "#111111",
+      "accent2": "#666666",
+      "accent3": "#0066cc",
+      "accent4": "#00aa55",
+      "accent5": "#ff6600",
+      "accent6": "#9933cc"
+    },
+    "dark": {
+      "background": "#111111",
+      "titleText": "#fafafa",
+      "bodyText": "#e5e5e5",
+      "frame": "#1a1a1a",
+      "accent1": "#ffffff",
+      "accent2": "#999999",
+      "accent3": "#66aaff",
+      "accent4": "#55cc88",
+      "accent5": "#ffaa55",
+      "accent6": "#cc88ff"
+    }
+  },
+  "layouts": {
+    "section": {
+      "appearance": "dark"
+    }
+  }
+}

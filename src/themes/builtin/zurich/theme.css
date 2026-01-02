@@ -1,0 +1,133 @@
+/* Zurich Theme - Minimal Swiss Design */
+
+/* Zurich uses fixed-size headings - all headings same size */
+.slide h1, .slide h2, .slide h3, 
+.slide h4, .slide h5, .slide h6 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Cover slides - centered, large text */
+.cover-container .slide-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.layout-cover h1, .layout-cover h2 {
+  font-size: 4.5rem;
+}
+
+/* Title slides get larger text */
+.title-container .slide-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.layout-title h1, .layout-title h2 {
+  font-size: 4rem;
+}
+
+/* Section slides - accent background */
+.section-container {
+  background: var(--accent1) !important;
+}
+
+.section-container .slide-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.layout-section {
+  color: var(--light-background);
+}
+
+/* Kicker styling */
+.kicker {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 500;
+  color: var(--accent2);
+}
+
+/* Clean borders for code */
+pre {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+
+.dark pre {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Blockquote styling */
+blockquote {
+  border-left-width: 3px;
+  border-left-color: var(--accent1);
+  font-style: normal;
+  font-weight: 500;
+}
+
+/* Tables */
+table {
+  border: none;
+}
+
+th, td {
+  border: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+th {
+  background: transparent;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+}
+
+.dark th, .dark td {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Progress bar */
+.progress-bar {
+  background: var(--accent2);
+}
+
+/* Accent colors for section slides - cycle through accents */
+.slide:nth-child(6n+1).section-container { background: var(--accent1) !important; }
+.slide:nth-child(6n+2).section-container { background: var(--accent2) !important; }
+.slide:nth-child(6n+3).section-container { background: var(--accent3) !important; }
+.slide:nth-child(6n+3).section-container .slide-content { color: var(--dark-background); }
+.slide:nth-child(6n+4).section-container { background: var(--accent4) !important; }
+.slide:nth-child(6n+4).section-container .slide-content { color: var(--dark-background); }
+.slide:nth-child(6n+5).section-container { background: var(--accent5) !important; }
+.slide:nth-child(6n+5).section-container .slide-content { color: var(--dark-background); }
+.slide:nth-child(6n+6).section-container { background: var(--accent6) !important; }
+
+/* Column styling */
+.slot-columns {
+  gap: 3rem;
+}
+
+/* Image slides */
+.layout-full-image .slide-content {
+  padding: 0;
+}
+
+.layout-half-image .slot-text {
+  padding: 5%;
+}
+
+.layout-caption .slot-title-bar {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.dark .layout-caption .slot-title-bar {
+  background: rgba(255, 255, 255, 0.05);
+}

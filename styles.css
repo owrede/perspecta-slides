@@ -37,18 +37,19 @@
   padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .perspecta-thumbnail-navigator .thumbnail-item {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 8px;
-  border-radius: 6px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  border: 1px solid var(--background-modifier-border);
+  border: 2px solid transparent;
   transition: all 0.15s ease;
+  position: relative;
 }
 
 .perspecta-thumbnail-navigator .thumbnail-item:hover {
@@ -56,44 +57,103 @@
 }
 
 .perspecta-thumbnail-navigator .thumbnail-item.selected {
-  background: var(--background-modifier-active-hover);
   border-color: var(--interactive-accent);
 }
 
-.perspecta-thumbnail-navigator .slide-number {
+/* Slide number badge (SVG circle with number) */
+.perspecta-thumbnail-navigator .slide-number-badge {
+  flex-shrink: 0;
+  cursor: grab;
+  user-select: none;
+  transition: transform 0.15s ease;
+}
+
+.perspecta-thumbnail-navigator .slide-number-badge svg {
+  display: block;
+}
+
+.perspecta-thumbnail-navigator .slide-number-badge .badge-circle {
+  fill: var(--background-modifier-border);
+  stroke: none;
+  transition: fill 0.15s ease;
+}
+
+.perspecta-thumbnail-navigator .slide-number-badge .badge-text {
+  fill: var(--text-muted);
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-muted);
-  min-width: 20px;
+  font-family: var(--font-interface);
+}
+
+.perspecta-thumbnail-navigator .thumbnail-item:hover .badge-circle {
+  fill: var(--background-modifier-hover);
+}
+
+.perspecta-thumbnail-navigator .thumbnail-item.selected .badge-circle {
+  fill: var(--interactive-accent);
+}
+
+.perspecta-thumbnail-navigator .thumbnail-item.selected .badge-text {
+  fill: var(--text-on-accent);
+}
+
+.perspecta-thumbnail-navigator .slide-number-badge:active {
+  cursor: grabbing;
+  transform: scale(0.95);
+}
+
+/* Dragging states */
+.perspecta-thumbnail-navigator .thumbnail-item.dragging {
+  opacity: 0.5;
+  background: var(--background-modifier-hover);
+}
+
+.perspecta-thumbnail-navigator .thumbnail-item.drop-before::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--interactive-accent);
+  border-radius: 2px;
+}
+
+.perspecta-thumbnail-navigator .thumbnail-item.drop-after::after {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--interactive-accent);
+  border-radius: 2px;
 }
 
 .perspecta-thumbnail-navigator .thumbnail-preview {
   flex: 1;
-  min-height: 48px;
   background: var(--background-secondary);
-  border-radius: 4px;
-  padding: 6px;
-  font-size: 10px;
+  border-radius: 6px;
   overflow: hidden;
+  position: relative;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
-.perspecta-thumbnail-navigator .th-heading {
-  font-weight: 600;
-  margin-bottom: 2px;
+.perspecta-thumbnail-navigator .thumbnail-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  pointer-events: none;
+  display: block;
 }
 
-.perspecta-thumbnail-navigator .th-h1,
-.perspecta-thumbnail-navigator .th-h2 {
-  font-size: 11px;
-}
-
-.perspecta-thumbnail-navigator .th-text {
+.perspecta-thumbnail-navigator .thumbnail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
   color: var(--text-muted);
-  font-size: 9px;
-}
-
-.perspecta-thumbnail-navigator .th-image {
-  font-size: 14px;
+  font-size: 10px;
 }
 
 .perspecta-thumbnail-navigator .slide-info {
@@ -203,6 +263,118 @@
   border-color: var(--interactive-accent);
 }
 
+/* Current slide info */
+.perspecta-inspector .current-slide-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 16px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.perspecta-inspector .slide-badge {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.perspecta-inspector .slide-title-preview {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Layout picker grid */
+.perspecta-inspector .layout-picker {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.perspecta-inspector .layout-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.perspecta-inspector .layout-option:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent-hover);
+}
+
+.perspecta-inspector .layout-option.active {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.perspecta-inspector .layout-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.perspecta-inspector .layout-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.perspecta-inspector .layout-label {
+  font-size: 10px;
+  text-align: center;
+}
+
+/* Mode toggle */
+.perspecta-inspector .mode-toggle {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.perspecta-inspector .mode-option {
+  flex: 1;
+  padding: 10px;
+  text-align: center;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+
+.perspecta-inspector .mode-option:hover {
+  background: var(--background-modifier-hover);
+}
+
+.perspecta-inspector .mode-option.active {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+/* Help text styling */
+.perspecta-inspector .help-text {
+  white-space: pre-wrap;
+}
+
+.perspecta-inspector .help-text.centered {
+  text-align: center;
+  padding: 20px;
+}
+
 /* ================================
    Presentation View
    ================================ */
@@ -287,13 +459,27 @@
 }
 
 .perspecta-presentation-view .slide.light {
-  background: #fff;
-  color: #000;
+  background: #ffffff !important;
+  color: #000000 !important;
 }
 
 .perspecta-presentation-view .slide.dark {
-  background: #000;
-  color: #fff;
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+
+/* Ensure all text elements inherit slide colors, not Obsidian theme */
+.perspecta-presentation-view .slide h1,
+.perspecta-presentation-view .slide h2,
+.perspecta-presentation-view .slide h3,
+.perspecta-presentation-view .slide h4,
+.perspecta-presentation-view .slide h5,
+.perspecta-presentation-view .slide h6,
+.perspecta-presentation-view .slide p,
+.perspecta-presentation-view .slide li,
+.perspecta-presentation-view .slide blockquote,
+.perspecta-presentation-view .slide span {
+  color: inherit !important;
 }
 
 .perspecta-presentation-view .slide-header,
@@ -301,7 +487,8 @@
   display: flex;
   justify-content: space-between;
   font-size: 10px;
-  color: var(--text-muted);
+  color: inherit;
+  opacity: 0.6;
   padding: 8px 0;
 }
 
@@ -310,26 +497,69 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
+  gap: calc(var(--slide-base, 1px) * 16);
 }
 
+/* Typography - scaled based on slide wrapper height */
 .perspecta-presentation-view .slide h1 {
-  font-size: 2em;
+  font-size: calc(var(--slide-base, 1px) * 72);
+  font-weight: 700;
+  line-height: 1.15;
   margin: 0 0 0.3em 0;
 }
 
 .perspecta-presentation-view .slide h2 {
-  font-size: 1.6em;
+  font-size: calc(var(--slide-base, 1px) * 56);
+  font-weight: 700;
+  line-height: 1.15;
   margin: 0 0 0.3em 0;
 }
 
 .perspecta-presentation-view .slide h3 {
-  font-size: 1.3em;
+  font-size: calc(var(--slide-base, 1px) * 44);
+  font-weight: 700;
+  line-height: 1.15;
+  margin: 0 0 0.3em 0;
+}
+
+.perspecta-presentation-view .slide h4 {
+  font-size: calc(var(--slide-base, 1px) * 36);
+  font-weight: 700;
+  line-height: 1.15;
   margin: 0 0 0.3em 0;
 }
 
 .perspecta-presentation-view .slide p {
-  font-size: 1em;
+  font-size: calc(var(--slide-base, 1px) * 28);
+  line-height: 1.5;
   margin: 0 0 0.5em 0;
+}
+
+.perspecta-presentation-view .slide ul,
+.perspecta-presentation-view .slide ol {
+  font-size: calc(var(--slide-base, 1px) * 28);
+  line-height: 1.6;
+  padding-left: 1.5em;
+}
+
+.perspecta-presentation-view .slide li {
+  margin-bottom: 0.4em;
+}
+
+.perspecta-presentation-view .slide blockquote {
+  font-size: calc(var(--slide-base, 1px) * 32);
+  font-style: italic;
+  border-left: calc(var(--slide-base, 1px) * 4) solid var(--interactive-accent);
+  padding-left: calc(var(--slide-base, 1px) * 24);
+  margin: calc(var(--slide-base, 1px) * 16) 0;
+}
+
+.perspecta-presentation-view .slide .kicker {
+  font-size: calc(var(--slide-base, 1px) * 18);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.7;
+  margin-bottom: calc(var(--slide-base, 1px) * 8);
 }
 
 .perspecta-presentation-view .slide img {
@@ -338,16 +568,100 @@
   object-fit: contain;
 }
 
-/* Layout: Title */
+.perspecta-presentation-view .slide pre {
+  font-size: calc(var(--slide-base, 1px) * 22);
+  padding: calc(var(--slide-base, 1px) * 16);
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: calc(var(--slide-base, 1px) * 4);
+  overflow-x: auto;
+}
+
+.perspecta-presentation-view .slide code {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+/* ================================
+   SLOT-BASED LAYOUT SYSTEM
+   ================================ */
+
+/* Slot: Header */
+.perspecta-presentation-view .slot-header {
+  margin-bottom: calc(var(--slide-base, 1px) * 24);
+}
+
+/* Slot: Columns */
+.perspecta-presentation-view .slot-columns {
+  display: flex;
+  gap: calc(var(--slide-base, 1px) * 48);
+  flex: 1;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.perspecta-presentation-view .slot-columns .column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Column count variations */
+.perspecta-presentation-view .slot-columns.columns-1 {
+  flex-direction: column;
+}
+
+.perspecta-presentation-view .slot-columns.columns-1 .column {
+  width: 100%;
+}
+
+/* Column ratio variations */
+.perspecta-presentation-view .slot-columns.ratio-narrow-wide .column[data-column="1"] {
+  flex: 1;
+}
+
+.perspecta-presentation-view .slot-columns.ratio-narrow-wide .column[data-column="2"] {
+  flex: 2;
+}
+
+.perspecta-presentation-view .slot-columns.ratio-wide-narrow .column[data-column="1"] {
+  flex: 2;
+}
+
+.perspecta-presentation-view .slot-columns.ratio-wide-narrow .column[data-column="2"] {
+  flex: 1;
+}
+
+/* ================================
+   LAYOUT: DEFAULT
+   ================================ */
+
+.perspecta-presentation-view .default-content {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+/* ================================
+   LAYOUT: TITLE
+   ================================ */
+
 .perspecta-presentation-view .layout-title .slide-content {
   justify-content: center;
   align-items: center;
   text-align: center;
 }
 
-/* Layout: Section */
+.perspecta-presentation-view .title-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+/* ================================
+   LAYOUT: SECTION
+   ================================ */
+
 .perspecta-presentation-view .layout-section {
-  background: #000 !important;
+  background: var(--interactive-accent, #1a1a2e) !important;
   color: #fff !important;
 }
 
@@ -357,21 +671,25 @@
   text-align: center;
 }
 
-/* Layout: V-Split */
-.perspecta-presentation-view .layout-v-split .slide-content {
-  flex-direction: row;
-  gap: 5%;
-}
-
-.perspecta-presentation-view .layout-v-split .text-content,
-.perspecta-presentation-view .layout-v-split .media-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+.perspecta-presentation-view .section-content {
   justify-content: center;
+  align-items: center;
+  text-align: center;
 }
 
-/* Layout: Full Image */
+/* ================================
+   LAYOUT: TEXT COLUMNS
+   ================================ */
+
+.perspecta-presentation-view .column-content {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+/* ================================
+   LAYOUT: FULL IMAGE
+   ================================ */
+
 .perspecta-presentation-view .layout-full-image {
   padding: 0 !important;
 }
@@ -380,10 +698,100 @@
   padding: 0;
 }
 
-.perspecta-presentation-view .layout-full-image img {
+.perspecta-presentation-view .full-image-content {
+  flex-direction: row;
+  padding: 0;
+  gap: 0;
+}
+
+.perspecta-presentation-view .full-image-content .image-slot {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+}
+
+.perspecta-presentation-view .full-image-content .image-slot img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* ================================
+   LAYOUT: CAPTION
+   ================================ */
+
+.perspecta-presentation-view .layout-caption {
+  padding: 0 !important;
+}
+
+.perspecta-presentation-view .caption-content {
+  padding: 0;
+  gap: 0;
+}
+
+.perspecta-presentation-view .caption-content .slot-title-bar {
+  padding: calc(var(--slide-base, 1px) * 24) 5%;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.perspecta-presentation-view .caption-content .slot-image {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.perspecta-presentation-view .caption-content .slot-image .image-slot {
+  flex: 1;
+}
+
+.perspecta-presentation-view .caption-content .slot-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.perspecta-presentation-view .caption-content .slot-caption {
+  padding: calc(var(--slide-base, 1px) * 16) 5%;
+  text-align: center;
+}
+
+/* ================================
+   LAYOUT: HALF IMAGE
+   ================================ */
+
+.perspecta-presentation-view .layout-half-image {
+  padding: 0 !important;
+}
+
+.perspecta-presentation-view .half-image-content {
+  flex-direction: row;
+  padding: 0;
+  gap: 0;
+}
+
+.perspecta-presentation-view .half-image-content .slot-image {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.perspecta-presentation-view .half-image-content .slot-image .image-slot {
+  flex: 1;
+  min-height: 0;
+}
+
+.perspecta-presentation-view .half-image-content .slot-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.perspecta-presentation-view .half-image-content .slot-text {
+  flex: 1;
+  padding: 5%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 /* Speaker Notes */
@@ -504,10 +912,145 @@
 }
 
 /* ================================
-   Settings
+   Fullscreen Presentation Mode
    ================================ */
 
-.perspecta-usage pre {
+.perspecta-fullscreen-presentation {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Presentation container - takes full space */
+.perspecta-fullscreen-presentation .presentation-container {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  background: #000;
+}
+
+.perspecta-fullscreen-presentation iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+}
+
+/* ================================
+   Settings Tab
+   ================================ */
+
+.perspecta-slides-settings-title {
+  margin: 0 0 16px 0;
+  font-size: 1.5em;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.perspecta-slides-settings-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 0;
+}
+
+.perspecta-slides-settings-tab {
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.perspecta-slides-settings-tab:hover {
+  color: var(--text-normal);
+}
+
+.perspecta-slides-settings-tab.is-active {
+  color: var(--text-normal);
+  border-bottom-color: var(--interactive-accent);
+}
+
+.perspecta-slides-settings-content h2 {
+  margin-top: 24px;
+  margin-bottom: 12px;
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.perspecta-slides-settings-content h2:first-child {
+  margin-top: 0;
+}
+
+/* Changelog styles */
+.perspecta-slides-changelog-version {
+  margin-bottom: 24px;
+}
+
+.perspecta-slides-changelog-version h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: var(--text-normal);
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.perspecta-slides-changelog-version ul {
+  margin: 0;
+  padding-left: 24px;
+}
+
+.perspecta-slides-changelog-version li {
+  margin: 6px 0;
+  color: var(--text-muted);
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+/* Info box */
+.perspecta-slides-info-box {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.perspecta-slides-info-box h4 {
+  margin: 0 0 12px 0;
+  font-size: 0.9em;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.perspecta-slides-info-box ul {
+  margin: 4px 0 0 0;
+  padding-left: 20px;
+}
+
+.perspecta-slides-info-box li {
+  margin: 4px 0;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+/* Usage section */
+.perspecta-slides-usage pre {
   background: var(--background-secondary);
   padding: 16px;
   border-radius: 6px;
@@ -516,6 +1059,6 @@
   margin-top: 12px;
 }
 
-.perspecta-usage p {
+.perspecta-slides-usage p {
   margin-bottom: 8px;
 }

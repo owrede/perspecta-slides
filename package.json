@@ -1,11 +1,12 @@
 {
   "name": "perspecta-slides",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "An Obsidian plugin for creating presentations from Markdown, inspired by iA Presenter",
   "main": "main.js",
   "scripts": {
-    "dev": "node esbuild.config.mjs",
-    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "dev": "node esbuild.config.mjs && cp main.js manifest.json styles.css \"/Users/wrede/Documents/Obsidian Vaults/Perspecta-Dev/.obsidian/plugins/perspecta-slides/\"",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production && cp main.js manifest.json styles.css \"/Users/wrede/Documents/Obsidian Vaults/Perspecta-Dev/.obsidian/plugins/perspecta-slides/\"",
+    "copy": "cp main.js manifest.json styles.css \"/Users/wrede/Documents/Obsidian Vaults/Perspecta-Dev/.obsidian/plugins/perspecta-slides/\"",
     "version": "node version-bump.mjs && git add manifest.json versions.json"
   },
   "keywords": [

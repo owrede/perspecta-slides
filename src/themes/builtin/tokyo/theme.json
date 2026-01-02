@@ -1,0 +1,53 @@
+{
+  "name": "Tokyo",
+  "version": "1.0.0",
+  "author": "Perspecta Slides",
+  "description": "Dark theme with vibrant neon accents inspired by Tokyo nights",
+  "fonts": {
+    "title": {
+      "name": "SF Pro Display",
+      "css": "SF Pro Display, Inter, system-ui, sans-serif"
+    },
+    "body": {
+      "name": "SF Pro Text",
+      "css": "SF Pro Text, Inter, system-ui, sans-serif"
+    }
+  },
+  "presets": {
+    "light": {
+      "background": "#1e2127",
+      "titleText": "#e6e6e6",
+      "bodyText": "#abb2bf",
+      "frame": "#282c34",
+      "accent1": "#ff6b9d",
+      "accent2": "#c678dd",
+      "accent3": "#61afef",
+      "accent4": "#98c379",
+      "accent5": "#e5c07b",
+      "accent6": "#56b6c2"
+    },
+    "dark": {
+      "background": "#0d1117",
+      "titleText": "#e6e6e6",
+      "bodyText": "#abb2bf",
+      "frame": "#161b22",
+      "accent1": "#ff6b9d",
+      "accent2": "#c678dd",
+      "accent3": "#61afef",
+      "accent4": "#98c379",
+      "accent5": "#e5c07b",
+      "accent6": "#56b6c2"
+    }
+  },
+  "layouts": {
+    "cover": {
+      "appearance": "dark"
+    },
+    "title": {
+      "appearance": "dark"
+    },
+    "section": {
+      "appearance": "dark"
+    }
+  }
+}

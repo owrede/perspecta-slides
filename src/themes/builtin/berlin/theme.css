@@ -1,0 +1,203 @@
+/* Berlin Theme - Professional Blue */
+
+/* Headings */
+.slide h1, .slide h2, .slide h3 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.slide.light h1, .slide.light h2 {
+  color: var(--accent1);
+}
+
+.slide.light h3, .slide.light h4, .slide.light h5, .slide.light h6 {
+  color: var(--accent2);
+}
+
+/* Cover slides with gradient */
+.cover-container {
+  background: linear-gradient(180deg, var(--accent1) 0%, var(--accent2) 100%) !important;
+}
+
+.cover-container .slide-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  color: white;
+}
+
+.layout-cover h1, .layout-cover h2 {
+  font-size: clamp(2.5rem, 5vw + 1.5vh, 6rem);
+  font-weight: 800;
+  color: white !important;
+  background: none;
+  -webkit-text-fill-color: white;
+}
+
+.layout-cover p {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Title slides with gradient */
+.title-container {
+  background: linear-gradient(180deg, var(--accent1) 0%, var(--accent2) 100%) !important;
+}
+
+.title-container .slide-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  color: white;
+}
+
+.layout-title h1, .layout-title h2 {
+  font-size: clamp(2.5rem, 5vw + 1.5vh, 6rem);
+  font-weight: 800;
+  color: white !important;
+  background: none;
+  -webkit-text-fill-color: white;
+}
+
+.layout-title p {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Section slides */
+.section-container {
+  background: var(--accent2) !important;
+}
+
+.section-container .slide-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  color: white;
+}
+
+.layout-section h1, .layout-section h2, .layout-section h3 {
+  color: white;
+}
+
+/* Kicker styling */
+.kicker {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 600;
+  color: var(--accent3);
+}
+
+/* Professional code blocks */
+pre {
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  border-left: 4px solid var(--accent3);
+}
+
+.dark pre {
+  background: #0d1b2a;
+  border-color: rgba(255, 255, 255, 0.1);
+  border-left-color: var(--accent4);
+}
+
+/* Blockquote */
+blockquote {
+  border-left-width: 4px;
+  border-left-color: var(--accent3);
+  background: rgba(49, 130, 206, 0.05);
+  padding: 1rem 1.5rem;
+  font-style: italic;
+}
+
+.dark blockquote {
+  background: rgba(99, 179, 237, 0.1);
+  border-left-color: var(--accent4);
+}
+
+/* Tables with professional styling */
+table {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+th {
+  background: var(--accent1);
+  color: white;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+th, td {
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dark th {
+  background: rgba(99, 179, 237, 0.2);
+  color: var(--accent4);
+}
+
+.dark th, .dark td {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Lists */
+ul li::marker {
+  color: var(--accent3);
+}
+
+ol li::marker {
+  color: var(--accent2);
+  font-weight: 600;
+}
+
+/* Links */
+a {
+  color: var(--accent3);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  color: var(--accent2);
+}
+
+/* Progress bar */
+.progress-bar {
+  background: var(--accent3);
+}
+
+/* Highlight */
+mark {
+  background: rgba(49, 130, 206, 0.2);
+  color: inherit;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+
+/* Header/Footer styling */
+.slide-header, .slide-footer {
+  color: var(--accent2);
+}
+
+.dark .slide-header, .dark .slide-footer {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Strong emphasis */
+strong {
+  color: var(--accent1);
+}
+
+.dark strong {
+  color: var(--accent4);
+}
+
+/* Column styling */
+.slot-columns {
+  gap: 3rem;
+}

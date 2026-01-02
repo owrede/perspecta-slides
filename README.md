@@ -5,12 +5,17 @@ An Obsidian plugin for creating presentations from Markdown, inspired by [iA Pre
 ## Features
 
 - **iA Presenter-style syntax**: Write presentations using familiar Markdown with the same conventions as iA Presenter
-- **Thumbnail navigator**: See all your slides at a glance in the left sidebar
+- **Thumbnail navigator**: See all your slides at a glance in the left sidebar with drag-and-drop reordering
 - **Inspector panel**: Edit slide properties, layouts, and design settings in the right sidebar
-- **Themes**: Customizable themes with support for colors, fonts, and layouts
+- **Multiple themes**: Built-in themes (Zurich, Tokyo, Berlin, Minimal) with customizable colors and fonts
 - **HTML export**: Export your presentations as standalone HTML files
 - **Speaker notes**: Regular paragraphs become speaker notes visible only to you
-- **Presentation mode**: Present directly from Obsidian
+- **Presentation mode**: Present directly from Obsidian in fullscreen
+- **Presenter view**: See current slide, next slide preview, speaker notes, and timer in one view
+- **Transitions**: Fade and slide transitions between slides
+- **Code highlighting**: Automatic syntax highlighting for code blocks
+- **Kickers**: Small text above headings using `^` syntax
+- **Live sync**: Changes in the editor automatically update the preview
 
 ## Markdown Syntax
 
@@ -37,8 +42,10 @@ More content
 - **Regular paragraphs** = Speaker notes (only you see them)
 - **Headings** (`#`, `##`, etc.) = Visible on slide
 - **Tab-indented content** = Visible on slide
+- **Kickers** (`^text`) = Small text above headings
 
 ```markdown
+^Small kicker text
 # Visible Title
 
 This paragraph is a speaker note - only you see it during presentation.
@@ -84,6 +91,7 @@ footerRight: "{{slideNumber}}"
 aspectRatio: "16:9"
 showSlideNumbers: true
 showProgress: true
+transition: fade
 ---
 ```
 
@@ -110,9 +118,41 @@ With a background image
 - `title` - Centered title slide
 - `section` - Section divider (dark background)
 - `v-split` - Vertical split (text + image side by side)
+- `h-split` - Horizontal split (text on top, image below)
 - `caption` - Image with caption below
 - `full-image` - Full-bleed image
 - `grid` - Grid layout for multiple images
+
+## Themes
+
+Perspecta Slides includes four built-in themes:
+
+- **zurich** - Minimal Swiss design with clean typography
+- **tokyo** - Dark theme with vibrant neon accents
+- **berlin** - Professional theme with deep blue tones
+- **minimal** - Ultra-clean minimal design with generous whitespace
+
+Set your theme in the frontmatter:
+
+```yaml
+---
+theme: tokyo
+---
+```
+
+## Transitions
+
+Three transition styles are available:
+
+- `fade` - Smooth opacity transition (default)
+- `slide` - Slides move horizontally
+- `none` - Instant transition
+
+```yaml
+---
+transition: slide
+---
+```
 
 ## Commands
 
@@ -120,8 +160,20 @@ With a background image
 - **Toggle slide navigator**: Show/hide the thumbnail navigator
 - **Toggle slide inspector**: Show/hide the inspector panel
 - **Export presentation to HTML**: Export as standalone HTML
-- **Start presentation**: Open presentation in a new window
+- **Start presentation**: Open presentation in a new window (fullscreen)
 - **Insert slide separator**: Insert `---` at cursor
+
+## Presenter View
+
+The Presenter View gives you a professional presentation experience:
+
+- **Current slide**: Large view of what your audience sees
+- **Next slide preview**: See what's coming up
+- **Speaker notes**: Your notes displayed prominently
+- **Timer**: Track elapsed time during your presentation
+- **Navigation**: Controls for moving through slides
+
+Access it via the "Presenter View" button in the toolbar.
 
 ## Installation
 

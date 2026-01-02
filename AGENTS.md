@@ -4,20 +4,16 @@
 
 After making changes, always:
 
-1. Build the plugin:
+1. Build and copy to test vault:
    ```bash
-   npm run build
-   ```
-
-2. Copy to test vault:
-   ```bash
-   cp main.js manifest.json styles.css "/Users/wrede/Documents/Obsidian Vaults/Perspecta-Dev/.obsidian/plugins/perspecta-slides/"
+   npm run build && npm run copy
    ```
 
 ## Commands
 
-- `npm run dev` - Development build with watch
-- `npm run build` - Production build (runs tsc + esbuild)
+- `npm run dev` - Development build + copy to test vault
+- `npm run build` - Production build (runs tsc + esbuild, no copy - used by CI)
+- `npm run copy` - Copy built files to local test vault
 
 ## Project Structure
 

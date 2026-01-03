@@ -17,7 +17,7 @@ import { renderChangelogToContainer } from '../changelog';
 import { getThemeNames } from '../themes';
 import { ContentMode } from '../types';
 
-type SettingsTabId = 'changelog' | 'presentation' | 'content' | 'export';
+type SettingsTabId = 'changelog' | 'presentation' | 'content' | 'export' | 'debug';
 
 export class PerspectaSlidesSettingTab extends PluginSettingTab {
 	plugin: PerspectaSlidesPlugin;
@@ -49,6 +49,7 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 			{ id: 'presentation', label: 'Presentation' },
 			{ id: 'content', label: 'Content' },
 			{ id: 'export', label: 'Export' },
+			{ id: 'debug', label: 'Debug' },
 		];
 
 		tabs.forEach(tab => {
@@ -77,6 +78,9 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 				break;
 			case 'export':
 				this.displayExportSettings(content);
+				break;
+			case 'debug':
+				this.displayDebugSettings(content);
 				break;
 		}
 	}
@@ -157,6 +161,19 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 				});
 			});
 
+		containerEl.createEl('h2', { text: 'Debug Options' });
+
+		new Setting(containerEl)
+			.setName('Debug slide rendering')
+			.setDesc('Enable console logging for slide parsing and column auto-detection.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.debugSlideRendering)
+				.onChange(async (value) => {
+					this.plugin.settings.debugSlideRendering = value;
+					this.plugin.parser.setDebugMode(value);
+					await this.plugin.saveSettings();
+				}));
+
 		// Content mode explanation
 		const modeInfoBox = containerEl.createDiv({ cls: 'perspecta-slides-info-box' });
 		modeInfoBox.createEl('h4', { text: 'Content Mode Explanation' });
@@ -167,15 +184,13 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 		iaList.createEl('li', { text: 'Tab-indented content appears on slide' });
 		iaList.createEl('li', { text: 'Regular paragraphs become speaker notes' });
 		iaList.createEl('li', { text: 'Headings always appear on slide' });
-		iaList.createEl('li', { text: '// at start of line = comment (hidden)' });
-
-		const asInfo = modeInfoBox.createDiv();
-		asInfo.style.marginTop = '12px';
-		asInfo.createEl('strong', { text: 'Advanced Slides mode:' });
-		const asList = asInfo.createEl('ul');
-		asList.createEl('li', { text: 'All content is visible on slide by default' });
-		asList.createEl('li', { text: '"note:" on its own line marks speaker notes start' });
-		asList.createEl('li', { text: 'Everything after "note:" until next slide = notes' });
+		
+		const advancedInfo = modeInfoBox.createDiv();
+		advancedInfo.createEl('strong', { text: 'Advanced Slides mode:' });
+		const advancedList = advancedInfo.createEl('ul');
+		advancedList.createEl('li', { text: 'All content appears on slide by default' });
+		advancedList.createEl('li', { text: 'Lines starting with "note:" become speaker notes' });
+		advancedList.createEl('li', { text: 'Supports more advanced markdown features' });
 
 		containerEl.createEl('h2', { text: 'Custom Themes' });
 
@@ -239,6 +254,40 @@ Regular paragraphs are speaker notes.
 ![](image.png)
 
 This creates an image slide.`
+		});
+	}
+
+	private displayDebugSettings(containerEl: HTMLElement): void {
+		containerEl.createEl('h2', { text: 'Debug Options' });
+
+		new Setting(containerEl)
+			.setName('Debug slide rendering')
+			.setDesc('Enable console logging for slide parsing and column auto-detection.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.debugSlideRendering)
+				.onChange(async (value) => {
+					this.plugin.settings.debugSlideRendering = value;
+					this.plugin.parser.setDebugMode(value);
+					await this.plugin.saveSettings();
+				}));
+
+		// Debug info section
+		const debugInfoBox = containerEl.createDiv({ cls: 'perspecta-slides-info-box' });
+		debugInfoBox.createEl('h4', { text: 'Debug Information' });
+		
+		const info = debugInfoBox.createDiv();
+		info.createEl('p', { 
+			text: 'When debug mode is enabled, detailed information about slide parsing and auto-column detection will be logged to the browser console (F12). This includes:'
+		});
+		
+		const debugList = info.createEl('ul');
+		debugList.createEl('li', { text: 'Element parsing and type detection' });
+		debugList.createEl('li', { text: 'Column auto-detection logic' });
+		debugList.createEl('li', { text: 'Content-to-element mapping' });
+		debugList.createEl('li', { text: 'Column assignment results' });
+		
+		info.createEl('p', { 
+			text: 'Use this when troubleshooting layout issues or unexpected slide behavior.'
 		});
 	}
 }

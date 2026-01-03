@@ -5,18 +5,26 @@ import {
   TFile,
   MarkdownView,
   Notice,
-  addIcon
+  addIcon,
+  FileSystemAdapter
 } from 'obsidian';
 
 import { PerspecaSlidesSettings, DEFAULT_SETTINGS, Presentation } from './src/types';
 import { SlideParser } from './src/parser/SlideParser';
-import { SlideRenderer } from './src/renderer/SlideRenderer';
+import { SlideRenderer, ImagePathResolver } from './src/renderer/SlideRenderer';
 import { getTheme } from './src/themes';
 import { ThumbnailNavigatorView, THUMBNAIL_VIEW_TYPE } from './src/ui/ThumbnailNavigator';
 import { InspectorPanelView, INSPECTOR_VIEW_TYPE } from './src/ui/InspectorPanel';
 import { PresentationView, PRESENTATION_VIEW_TYPE } from './src/ui/PresentationView';
 import { PerspectaSlidesSettingTab } from './src/ui/SettingsTab';
 import { PresentationWindow } from './src/ui/PresentationWindow';
+import { 
+  PresentationCache, 
+  SlideDiff, 
+  buildPresentationCache, 
+  diffPresentations, 
+  requiresFullRender 
+} from './src/utils/SlideHasher';
 
 const SLIDES_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
 
@@ -25,6 +33,77 @@ export default class PerspectaSlidesPlugin extends Plugin {
   parser: SlideParser = new SlideParser();
   private presentationWindow: PresentationWindow | null = null;
   private currentPresentationFile: TFile | null = null;
+  private presentationCache: PresentationCache | null = null;
+  private cachedFilePath: string | null = null;
+  
+  /**
+   * Image path resolver for Obsidian wiki-links
+   * Resolves ![[image.png]] paths to actual resource URLs
+   */
+  imagePathResolver: ImagePathResolver = (path: string, isWikiLink: boolean): string => {
+    if (!isWikiLink) {
+      // Standard markdown paths - return as-is (may be URL or relative path)
+      return path;
+    }
+    
+    // For wiki-links, resolve through Obsidian's system
+    try {
+      // Get the current file for context
+      const activeFile = this.app.workspace.getActiveFile();
+      const sourcePath = activeFile?.path || '';
+      
+      // Resolve the link to a file
+      const linkedFile = this.app.metadataCache.getFirstLinkpathDest(path, sourcePath);
+      
+      if (linkedFile) {
+        // Get the resource path for the file
+        return this.app.vault.getResourcePath(linkedFile);
+      }
+    } catch (e) {
+      console.warn('Failed to resolve image path:', path, e);
+    }
+    
+    // Fallback - return original path
+    return path;
+  };
+
+  /**
+   * Image path resolver for presentation window (external Electron window)
+   * Returns file:// URLs instead of app:// URLs since the presentation window
+   * doesn't have access to Obsidian's custom protocol handler
+   */
+  presentationImagePathResolver: ImagePathResolver = (path: string, isWikiLink: boolean): string => {
+    if (!isWikiLink) {
+      // Standard markdown paths - return as-is (may be URL or relative path)
+      return path;
+    }
+    
+    // For wiki-links, resolve to file:// URL
+    try {
+      // Get the current file for context
+      const activeFile = this.app.workspace.getActiveFile();
+      const sourcePath = activeFile?.path || '';
+      
+      // Resolve the link to a file
+      const linkedFile = this.app.metadataCache.getFirstLinkpathDest(path, sourcePath);
+      
+      if (linkedFile) {
+        // Get the vault's base path
+        const adapter = this.app.vault.adapter;
+        if (adapter instanceof FileSystemAdapter) {
+          const basePath = adapter.getBasePath();
+          const fullPath = `${basePath}/${linkedFile.path}`;
+          // Return as file:// URL with proper encoding
+          return `file://${encodeURI(fullPath).replace(/#/g, '%23')}`;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to resolve image path for presentation:', path, e);
+    }
+    
+    // Fallback - return original path
+    return path;
+  };
 
   async onload() {
     await this.loadSettings();
@@ -140,8 +219,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
       this.app.workspace.on('editor-change', (editor) => {
         const file = this.app.workspace.getActiveFile();
         if (file) {
-          this.debounceUpdateSidebars(file);
-          this.debounceUpdatePresentationWindow(file);
+          // Get content directly from editor (not saved file)
+          const content = editor.getValue();
+          this.debounceUpdateSidebarsWithContent(file, content);
+          this.debounceUpdatePresentationWindowWithContent(file, content);
         }
       })
     );
@@ -325,67 +406,135 @@ export default class PerspectaSlidesPlugin extends Plugin {
     if (this.updateTimeout) {
       clearTimeout(this.updateTimeout);
     }
-    // Use shorter delay (100ms) for more responsive updates
+    this.updateTimeout = setTimeout(async () => {
+      const content = await this.app.vault.read(file);
+      this.updateSidebarsIncrementalWithContent(file, content);
+    }, 50);
+  }
+  
+  private pendingContent: string | null = null;
+  
+  private debounceUpdateSidebarsWithContent(file: TFile, content: string) {
+    this.pendingContent = content;
+    if (this.updateTimeout) {
+      clearTimeout(this.updateTimeout);
+    }
+    // Use very short delay (30ms) for responsive updates from editor
     this.updateTimeout = setTimeout(() => {
-      this.updateSidebarsIncremental(file);
-    }, 100);
+      if (this.pendingContent) {
+        this.updateSidebarsIncrementalWithContent(file, this.pendingContent);
+        this.pendingContent = null;
+      }
+    }, 30);
   }
   
   /**
-   * Incrementally update sidebars. If slide count changed, do full re-render.
-   * Otherwise, only update the current slide.
+   * Incrementally update sidebars using content-based diffing.
+   * Only re-renders slides that actually changed.
    */
-  private async updateSidebarsIncremental(file: TFile) {
-    const content = await this.app.vault.read(file);
+  private async updateSidebarsIncrementalWithContent(file: TFile, content: string) {
     const presentation = this.parser.parse(content);
-    const newSlideCount = presentation.slides.length;
     
     // Determine current slide index
     const currentSlideIndex = Math.max(0, Math.min(
       this.lastCursorSlideIndex >= 0 ? this.lastCursorSlideIndex : 0,
-      newSlideCount - 1
+      presentation.slides.length - 1
     ));
     
-    // Check if slide count changed - if so, do full re-render
-    if (newSlideCount !== this.lastSlideCount) {
-      this.lastSlideCount = newSlideCount;
-      this.updateSidebars(file);
-      return;
-    }
+    // Check if we have a valid cache for this file
+    const hasCacheForThisFile = this.presentationCache && this.cachedFilePath === file.path;
     
-    // Slide count unchanged - do incremental update of current slide only
-    const currentSlide = presentation.slides[currentSlideIndex];
-    if (!currentSlide) {
-      this.updateSidebars(file);
-      return;
+    // Compute diff if we have a cache
+    let diff: SlideDiff | null = null;
+    if (hasCacheForThisFile && this.presentationCache) {
+      diff = diffPresentations(this.presentationCache, presentation);
+      
+      // If no changes detected, skip all updates
+      if (diff.type === 'none') {
+        // Still update inspector to reflect cursor position
+        const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
+        for (const leaf of inspectorLeaves) {
+          const view = leaf.view as InspectorPanelView;
+          if (presentation.slides[currentSlideIndex]) {
+            view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
+          }
+        }
+        return;
+      }
+      
+      // If theme changed or major structural changes, do full re-render
+      if (requiresFullRender(diff)) {
+        this.presentationCache = buildPresentationCache(presentation);
+        this.cachedFilePath = file.path;
+        this.lastSlideCount = presentation.slides.length;
+        this.updateSidebars(file);
+        return;
+      }
     }
     
     const theme = getTheme(presentation.frontmatter.theme || this.settings.defaultTheme);
     
-    // Update thumbnail navigator (current slide only)
+    // Handle based on diff type
+    if (diff && diff.type === 'content-only') {
+      // Content-only changes: update only modified slides
+      const success = await this.applyContentOnlyUpdate(diff, presentation, theme, currentSlideIndex);
+      if (!success) {
+        // Fallback to full re-render
+        this.updateSidebarsWithPresentation(file, presentation, theme, currentSlideIndex);
+      }
+    } else if (diff && diff.type === 'structural') {
+      // Structural changes: handle adds/removes
+      await this.applyStructuralUpdate(diff, presentation, theme, file, currentSlideIndex);
+    } else {
+      // No cache or first load: do full render with the parsed presentation
+      this.lastSlideCount = presentation.slides.length;
+      this.updateSidebarsWithPresentation(file, presentation, theme, currentSlideIndex);
+    }
+    
+    // Update cache for next comparison
+    this.presentationCache = buildPresentationCache(presentation);
+    this.cachedFilePath = file.path;
+    this.lastSlideCount = presentation.slides.length;
+  }
+  
+  /**
+   * Apply content-only updates (no structural changes)
+   */
+  private async applyContentOnlyUpdate(
+    diff: SlideDiff, 
+    presentation: Presentation, 
+    theme: ReturnType<typeof getTheme>,
+    currentSlideIndex: number
+  ): Promise<boolean> {
+    const modifiedSlides = diff.modifiedIndices.map(i => presentation.slides[i]);
+    
+    // Update thumbnail navigator (only modified slides)
     const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
     for (const leaf of thumbnailLeaves) {
       const view = leaf.view as ThumbnailNavigatorView;
+      view.setImagePathResolver(this.imagePathResolver);
       if (theme) {
         view.setTheme(theme);
       }
-      const success = view.updateSlide(currentSlideIndex, currentSlide);
+      // Update only modified slides
+      const success = view.updateSlides(diff.modifiedIndices, modifiedSlides);
       if (!success) {
-        // Fallback to full re-render
-        this.updateSidebars(file);
-        return;
+        return false;
       }
     }
     
-    // Update presentation view (current slide only)
+    // Update presentation view - always update the presentation object and current slide
     const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
     for (const leaf of presentationLeaves) {
       const view = leaf.view as PresentationView;
-      const success = view.updateSlide(currentSlideIndex, currentSlide);
-      if (!success) {
-        // Fallback to full re-render
-        this.updateSidebars(file);
-        return;
+      view.setImagePathResolver(this.imagePathResolver);
+      view.setPresentationImagePathResolver(this.presentationImagePathResolver);
+      // Update all modified slides in the view's internal state
+      for (let i = 0; i < diff.modifiedIndices.length; i++) {
+        const idx = diff.modifiedIndices[i];
+        const slide = modifiedSlides[i];
+        // Update the slide - this updates internal state and re-renders if current
+        view.updateSlide(idx, slide);
       }
     }
     
@@ -393,7 +542,79 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
     for (const leaf of inspectorLeaves) {
       const view = leaf.view as InspectorPanelView;
-      view.setCurrentSlide(currentSlide, currentSlideIndex);
+      if (presentation.slides[currentSlideIndex]) {
+        view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
+      }
+    }
+    
+    return true;
+  }
+  
+  /**
+   * Apply structural updates (slides added or removed)
+   */
+  private async applyStructuralUpdate(
+    diff: SlideDiff,
+    presentation: Presentation,
+    theme: ReturnType<typeof getTheme>,
+    file: TFile,
+    currentSlideIndex: number
+  ) {
+    const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
+    
+    // For now, if there are too many changes or complex reordering, do full re-render
+    // This is a reasonable tradeoff for simplicity
+    if (diff.addedIndices.length > 3 || diff.removedIndices.length > 3) {
+      this.updateSidebars(file);
+      return;
+    }
+    
+    for (const leaf of thumbnailLeaves) {
+      const view = leaf.view as ThumbnailNavigatorView;
+      view.setImagePathResolver(this.imagePathResolver);
+      if (theme) {
+        view.setTheme(theme);
+      }
+      
+      // Update internal presentation reference
+      view.setPresentation(presentation, file, theme);
+      
+      // For structural changes, we need to be careful about order
+      // Simplest approach: remove then add, then renumber
+      
+      // Remove slides (process in reverse order to maintain indices)
+      const sortedRemoved = [...diff.removedIndices].sort((a, b) => b - a);
+      for (const idx of sortedRemoved) {
+        view.removeSlideAt(idx);
+      }
+      
+      // Add slides
+      for (const idx of diff.addedIndices) {
+        view.insertSlideAt(idx, presentation.slides[idx]);
+      }
+      
+      // Renumber all slides
+      view.renumberSlides();
+    }
+    
+    // Update presentation view
+    const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
+    for (const leaf of presentationLeaves) {
+      const view = leaf.view as PresentationView;
+      view.setImagePathResolver(this.imagePathResolver);
+      view.setPresentationImagePathResolver(this.presentationImagePathResolver);
+      view.setPresentation(presentation, theme);
+      view.goToSlide(currentSlideIndex, false);
+    }
+    
+    // Update inspector
+    const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
+    for (const leaf of inspectorLeaves) {
+      const view = leaf.view as InspectorPanelView;
+      view.setPresentation(presentation, file);
+      if (presentation.slides[currentSlideIndex]) {
+        view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
+      }
     }
   }
 
@@ -401,19 +622,26 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const content = await this.app.vault.read(file);
     const presentation = this.parser.parse(content);
     const theme = getTheme(presentation.frontmatter.theme || this.settings.defaultTheme);
-
-    // Update slide count tracking
-    this.lastSlideCount = presentation.slides.length;
-
-    // Preserve current slide index (use lastCursorSlideIndex or 0)
     const currentSlideIndex = Math.max(0, Math.min(
       this.lastCursorSlideIndex >= 0 ? this.lastCursorSlideIndex : 0,
       presentation.slides.length - 1
     ));
+    this.updateSidebarsWithPresentation(file, presentation, theme, currentSlideIndex);
+  }
+  
+  private updateSidebarsWithPresentation(
+    file: TFile, 
+    presentation: Presentation, 
+    theme: ReturnType<typeof getTheme>,
+    currentSlideIndex: number
+  ) {
+    // Update slide count tracking
+    this.lastSlideCount = presentation.slides.length;
 
     const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
     for (const leaf of thumbnailLeaves) {
       const view = leaf.view as ThumbnailNavigatorView;
+      view.setImagePathResolver(this.imagePathResolver);
       view.setPresentation(presentation, file, theme);
       view.setOnSlideSelect((index) => {
         this.navigateToSlide(index, presentation, file);
@@ -446,6 +674,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
     for (const leaf of presentationLeaves) {
       const view = leaf.view as PresentationView;
+      view.setImagePathResolver(this.imagePathResolver);
+      view.setPresentationImagePathResolver(this.presentationImagePathResolver);
       view.setPresentation(presentation, theme);
       // Wire up slide change callback for navigation controls (prev/next buttons)
       view.setOnSlideChange((index) => {
@@ -720,7 +950,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       }
       
       // Create new presentation window
+      // Use presentationImagePathResolver which returns file:// URLs for the external window
       this.presentationWindow = new PresentationWindow();
+      this.presentationWindow.setImagePathResolver(this.presentationImagePathResolver);
       await this.presentationWindow.open(presentation, theme || null, file, this.app, slideIndex);
       
       this.currentPresentationFile = file;
@@ -731,30 +963,45 @@ export default class PerspectaSlidesPlugin extends Plugin {
   }
 
   private presentationUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
+  private pendingPresentationContent: string | null = null;
 
   private debounceUpdatePresentationWindow(file: TFile) {
     if (this.presentationUpdateTimeout) {
       clearTimeout(this.presentationUpdateTimeout);
     }
+    this.presentationUpdateTimeout = setTimeout(async () => {
+      const content = await this.app.vault.read(file);
+      this.updatePresentationWindowWithContent(file, content);
+    }, 100);
+  }
+  
+  private debounceUpdatePresentationWindowWithContent(file: TFile, content: string) {
+    this.pendingPresentationContent = content;
+    if (this.presentationUpdateTimeout) {
+      clearTimeout(this.presentationUpdateTimeout);
+    }
     this.presentationUpdateTimeout = setTimeout(() => {
-      this.updatePresentationWindow(file);
-    }, 500);
+      if (this.pendingPresentationContent) {
+        this.updatePresentationWindowWithContent(file, this.pendingPresentationContent);
+        this.pendingPresentationContent = null;
+      }
+    }, 50);
   }
 
-  private async updatePresentationWindow(file: TFile) {
-    // Only update if we have an active presentation for this file
-    const tempPath = (this as any)._tempPresentationPath;
-    if (!tempPath || !this.currentPresentationFile) {
+  private async updatePresentationWindowWithContent(file: TFile, content: string) {
+    // Only update if we have an active presentation window for this file
+    if (!this.presentationWindow || !this.presentationWindow.isOpen()) {
+      return;
+    }
+    
+    if (!this.currentPresentationFile || this.currentPresentationFile.path !== file.path) {
       return;
     }
 
-    if (this.currentPresentationFile.path !== file.path) {
-      return;
-    }
-
-    // Update the temp HTML file - browser will need manual refresh
-    // For now, we just update sidebars. True live sync would require WebSocket or similar.
-    // The sidebars and presentation view within Obsidian will update automatically.
+    // Update the presentation window with new content
+    const presentation = this.parser.parse(content);
+    const theme = getTheme(presentation.frontmatter.theme || this.settings.defaultTheme);
+    this.presentationWindow.updateContent(presentation, theme || null);
   }
 
   async reorderSlides(file: TFile, fromIndex: number, toIndex: number) {
@@ -930,7 +1177,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     await this.app.vault.modify(file, newContent);
     
     // Immediately refresh views for responsive updates
-    this.updateSidebarsIncremental(file);
+    this.updateSidebarsIncrementalWithContent(file, newContent);
   }
 
   async updatePresentationFrontmatter(file: TFile, updates: Record<string, any>) {

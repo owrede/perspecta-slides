@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf, TFile } from 'obsidian';
 import { Presentation, Slide, Theme } from '../types';
-import { SlideRenderer } from '../renderer/SlideRenderer';
+import { SlideRenderer, ImagePathResolver } from '../renderer/SlideRenderer';
 
 export const THUMBNAIL_VIEW_TYPE = 'perspecta-thumbnail-navigator';
 
@@ -13,9 +13,27 @@ export class ThumbnailNavigatorView extends ItemView {
   private onStartPresentation: ((index: number) => void) | null = null;
   private draggedIndex: number = -1;
   private currentFile: TFile | null = null;
+  private imagePathResolver: ImagePathResolver | null = null;
   
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
+  }
+  
+  /**
+   * Set the image path resolver for resolving wiki-link images
+   */
+  setImagePathResolver(resolver: ImagePathResolver): void {
+    this.imagePathResolver = resolver;
+  }
+  
+  /**
+   * Create a SlideRenderer with the image path resolver
+   */
+  private createRenderer(): SlideRenderer {
+    const renderer = this.theme 
+      ? new SlideRenderer(this.presentation!, this.theme, this.imagePathResolver || undefined)
+      : new SlideRenderer(this.presentation!, undefined, this.imagePathResolver || undefined);
+    return renderer;
   }
   
   getViewType(): string {
@@ -103,9 +121,7 @@ export class ThumbnailNavigatorView extends ItemView {
     if (!iframe) return false;
     
     // Create renderer and update the iframe content
-    const renderer = this.theme 
-      ? new SlideRenderer(this.presentation, this.theme)
-      : new SlideRenderer(this.presentation);
+    const renderer = this.createRenderer();
     
     iframe.srcdoc = renderer.renderThumbnailHTML(slide, index);
     
@@ -115,6 +131,122 @@ export class ThumbnailNavigatorView extends ItemView {
     item.classList.add(layoutClass);
     
     return true;
+  }
+  
+  /**
+   * Update multiple slides by their indices (for incremental updates)
+   */
+  updateSlides(indices: number[], slides: Slide[]): boolean {
+    if (!this.presentation) return false;
+    
+    const renderer = this.createRenderer();
+    
+    const items = this.containerEl.querySelectorAll('.thumbnail-item');
+    
+    for (let i = 0; i < indices.length; i++) {
+      const index = indices[i];
+      const slide = slides[i];
+      const item = items[index] as HTMLElement | undefined;
+      
+      if (!item) return false;
+      
+      // Update the slide in the presentation
+      this.presentation.slides[index] = slide;
+      
+      // Find and update the iframe
+      const iframe = item.querySelector('.thumbnail-iframe') as HTMLIFrameElement;
+      if (!iframe) return false;
+      
+      iframe.srcdoc = renderer.renderThumbnailHTML(slide, index);
+      
+      // Update the layout class
+      const layoutClass = `layout-${slide.metadata.layout || 'default'}`;
+      item.className = item.className.replace(/layout-\S+/g, '').trim();
+      item.classList.add(layoutClass);
+    }
+    
+    return true;
+  }
+  
+  /**
+   * Remove a slide at the given index
+   */
+  removeSlideAt(index: number): boolean {
+    if (!this.presentation) return false;
+    
+    const items = this.containerEl.querySelectorAll('.thumbnail-item');
+    const item = items[index] as HTMLElement | undefined;
+    if (!item) return false;
+    
+    // Remove from DOM
+    item.remove();
+    
+    // Update slide count in header
+    this.updateSlideCountHeader();
+    
+    return true;
+  }
+  
+  /**
+   * Insert a new slide at the given index
+   */
+  insertSlideAt(index: number, slide: Slide): boolean {
+    if (!this.presentation) return false;
+    
+    const list = this.containerEl.querySelector('.thumbnail-list');
+    if (!list) return false;
+    
+    const renderer = this.createRenderer();
+    
+    const newItem = this.createThumbnailItem(slide, index, renderer);
+    
+    const items = list.querySelectorAll('.thumbnail-item');
+    if (index >= items.length) {
+      // Append at end
+      list.appendChild(newItem);
+    } else {
+      // Insert before existing item
+      list.insertBefore(newItem, items[index]);
+    }
+    
+    // Update slide count in header
+    this.updateSlideCountHeader();
+    
+    return true;
+  }
+  
+  /**
+   * Renumber all slide badges without re-rendering iframes
+   */
+  renumberSlides(): void {
+    const items = this.containerEl.querySelectorAll('.thumbnail-item');
+    items.forEach((item, index) => {
+      // Update data-index attribute
+      (item as HTMLElement).dataset.index = String(index);
+      
+      // Update the badge text
+      const badgeText = item.querySelector('.badge-text');
+      if (badgeText) {
+        badgeText.textContent = String(index + 1);
+      }
+    });
+  }
+  
+  /**
+   * Update the slide count in the header
+   */
+  private updateSlideCountHeader(): void {
+    const countEl = this.containerEl.querySelector('.slide-count');
+    if (countEl && this.presentation) {
+      countEl.textContent = String(this.presentation.slides.length);
+    }
+  }
+  
+  /**
+   * Get the thumbnail list container
+   */
+  getListContainer(): HTMLElement | null {
+    return this.containerEl.querySelector('.thumbnail-list');
   }
   
   private render() {
@@ -138,9 +270,7 @@ export class ThumbnailNavigatorView extends ItemView {
     const list = container.createDiv({ cls: 'thumbnail-list' });
     
     // Create renderer for thumbnails
-    const renderer = this.theme 
-      ? new SlideRenderer(this.presentation, this.theme)
-      : new SlideRenderer(this.presentation);
+    const renderer = this.createRenderer();
     
     this.presentation.slides.forEach((slide, index) => {
       const item = this.createThumbnailItem(slide, index, renderer);

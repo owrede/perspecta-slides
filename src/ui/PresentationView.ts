@@ -1,7 +1,7 @@
 import { ItemView, WorkspaceLeaf, Menu, TFile, Notice } from 'obsidian';
 import { Presentation, Slide, Theme, SlideElement } from '../types';
 import { SlideParser } from '../parser/SlideParser';
-import { SlideRenderer } from '../renderer/SlideRenderer';
+import { SlideRenderer, ImagePathResolver } from '../renderer/SlideRenderer';
 import { getTheme } from '../themes';
 import { PresentationWindow } from './PresentationWindow';
 
@@ -14,6 +14,8 @@ export class PresentationView extends ItemView {
   private parser: SlideParser;
   private file: TFile | null = null;
   private theme: Theme | null = null;
+  private imagePathResolver: ImagePathResolver | null = null;
+  private presentationImagePathResolver: ImagePathResolver | null = null;
   
   private onSlideChange: ((index: number) => void) | null = null;
   private onReload: (() => void) | null = null;
@@ -25,6 +27,31 @@ export class PresentationView extends ItemView {
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
     this.parser = new SlideParser();
+  }
+  
+  /**
+   * Set the image path resolver for wiki-link images (app:// URLs for Obsidian views)
+   */
+  setImagePathResolver(resolver: ImagePathResolver): void {
+    this.imagePathResolver = resolver;
+  }
+  
+  /**
+   * Set the image path resolver for presentation window (file:// URLs for external window)
+   */
+  setPresentationImagePathResolver(resolver: ImagePathResolver): void {
+    this.presentationImagePathResolver = resolver;
+  }
+  
+  /**
+   * Create a SlideRenderer with the image path resolver
+   */
+  private createRenderer(theme?: Theme): SlideRenderer {
+    return new SlideRenderer(
+      this.presentation!, 
+      theme || this.theme || undefined, 
+      this.imagePathResolver || undefined
+    );
   }
   
   getViewType(): string {
@@ -177,41 +204,78 @@ export class PresentationView extends ItemView {
   updateSlide(index: number, slide: Slide): boolean {
     if (!this.presentation) return false;
     
-    const slideEls = this.containerEl.querySelectorAll('.slide-wrapper .slide');
-    const slideEl = slideEls[index] as HTMLElement | undefined;
-    if (!slideEl) return false;
-    
-    // Update the slide in the presentation
+    // Update the slide in the presentation data
     this.presentation.slides[index] = slide;
     
-    // Clear and re-render just the content of this slide
-    const contentEl = slideEl.querySelector('.slide-content') as HTMLElement;
-    if (!contentEl) return false;
-    
-    contentEl.empty();
-    this.renderSlideContent(contentEl, slide);
-    
-    // Update slide classes (mode, layout)
-    const mode = slide.metadata.mode || 'light';
-    const layout = slide.metadata.layout || 'default';
-    
-    // Remove old mode/layout classes
-    slideEl.classList.remove('light', 'dark');
-    slideEl.className = slideEl.className.replace(/layout-\S+/g, '').trim();
-    
-    // Add new classes
-    slideEl.classList.add(mode, `layout-${layout}`);
-    
-    // Update speaker notes if this is the current slide
+    // Only re-render if this is the currently displayed slide
     if (index === this.currentSlideIndex) {
+      // Find the iframe and update its content
+      const iframe = this.containerEl.querySelector('.slide-wrapper .slide-iframe') as HTMLIFrameElement;
+      if (!iframe) return false;
+      
+      const theme = getTheme(this.presentation.frontmatter.theme || 'zurich');
+      const renderer = this.createRenderer(theme);
+      
+      const slideHTML = renderer.renderSingleSlideHTML(
+        slide,
+        index,
+        this.presentation.frontmatter,
+        'preview'
+      );
+      
+      iframe.srcdoc = slideHTML;
+      
+      // Update speaker notes
       const notesContainer = this.containerEl.querySelector('.speaker-notes-container');
       if (notesContainer) {
-        notesContainer.empty();
+        (notesContainer as HTMLElement).empty();
         this.renderSpeakerNotes(notesContainer as HTMLElement);
       }
     }
     
     return true;
+  }
+  
+  /**
+   * Update multiple slides by their indices (for incremental updates)
+   * Only updates slides that are currently rendered (current slide in this view)
+   */
+  updateSlides(indices: number[], slides: Slide[]): boolean {
+    if (!this.presentation) return false;
+    
+    // Update the slides in the presentation object
+    for (let i = 0; i < indices.length; i++) {
+      const index = indices[i];
+      const slide = slides[i];
+      this.presentation.slides[index] = slide;
+    }
+    
+    // Only re-render if current slide is in the modified list
+    if (indices.includes(this.currentSlideIndex)) {
+      const currentSlide = slides[indices.indexOf(this.currentSlideIndex)];
+      if (currentSlide) {
+        return this.updateSlide(this.currentSlideIndex, currentSlide);
+      }
+    }
+    
+    return true;
+  }
+  
+  /**
+   * Check if a slide index is currently being displayed
+   */
+  isSlideVisible(index: number): boolean {
+    return index === this.currentSlideIndex;
+  }
+  
+  /**
+   * Update just the current slide display without touching other slides
+   */
+  updateCurrentSlideOnly(): boolean {
+    if (!this.presentation) return false;
+    const currentSlide = this.presentation.slides[this.currentSlideIndex];
+    if (!currentSlide) return false;
+    return this.updateSlide(this.currentSlideIndex, currentSlide);
   }
   
   private render() {
@@ -347,7 +411,7 @@ More content here...`
     });
     
     // Create renderer with theme
-    const renderer = new SlideRenderer(this.presentation, theme);
+    const renderer = this.createRenderer(theme);
     
     // Render current slide as iframe
     const currentSlide = this.presentation.slides[this.currentSlideIndex];
@@ -878,6 +942,13 @@ More content here...`
     try {
       const theme = getTheme(presentation.frontmatter.theme || 'zurich');
       const presentationWindow = new PresentationWindow();
+      // Use presentationImagePathResolver for file:// URLs in the external window
+      if (this.presentationImagePathResolver) {
+        presentationWindow.setImagePathResolver(this.presentationImagePathResolver);
+      } else if (this.imagePathResolver) {
+        // Fallback to regular resolver
+        presentationWindow.setImagePathResolver(this.imagePathResolver);
+      }
       await presentationWindow.open(presentation, theme || null, file, this.app);
     } catch (error) {
       console.error('Failed to open presentation window:', error);
@@ -971,7 +1042,7 @@ More content here...`
     if (!this.presentation || !this.file) return;
     
     const theme = getTheme(this.presentation.frontmatter.theme || 'zurich');
-    const renderer = new SlideRenderer(this.presentation, theme);
+    const renderer = this.createRenderer(theme);
     const html = renderer.renderHTML();
     
     // Save to file

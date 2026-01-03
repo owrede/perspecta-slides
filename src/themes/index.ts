@@ -15,7 +15,7 @@ export function getThemeNames(): string[] {
 /**
  * Generate CSS variables from a theme's preset
  */
-export function generateThemeCSS(theme: Theme, context: 'thumbnail' | 'preview' | 'export' = 'export'): string {
+export function generateThemeCSS(theme: Theme, context: 'thumbnail' | 'preview' | 'presentation' | 'export' = 'export'): string {
   const preset = theme.presets[0];
   if (!preset) {
     return context === 'thumbnail' ? '' : theme.css;
@@ -43,9 +43,9 @@ export function generateThemeCSS(theme: Theme, context: 'thumbnail' | 'preview' 
 `;
 
   // For thumbnails, include CSS variables plus essential layout CSS (no fixed font sizes)
-  // For preview, include CSS variables plus layout CSS but use dynamic scaling
+  // For preview/presentation, include CSS variables plus layout CSS but use dynamic scaling
   // For export, include the full theme CSS
-  if (context === 'thumbnail' || context === 'preview') {
+  if (context === 'thumbnail' || context === 'preview' || context === 'presentation') {
     // Extract only the essential CSS from theme.css (excluding fixed font sizes)
     // Keep backgrounds, colors, layout, gradients, but remove font-size declarations
     const essentialCSS = theme.css

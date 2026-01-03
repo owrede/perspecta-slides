@@ -1,4 +1,4 @@
-import { Presentation, Slide, SlideElement, PresentationFrontmatter, Theme, SlideLayout } from '../types';
+import { Presentation, Slide, SlideElement, PresentationFrontmatter, Theme, SlideLayout, ImageData } from '../types';
 import { generateThemeCSS } from '../themes';
 
 /**
@@ -9,13 +9,41 @@ import { generateThemeCSS } from '../themes';
  * - Layout class (e.g., .layout-cover, .layout-section) on content
  * - Light/dark appearance classes
  */
+/**
+ * Function to resolve wiki-link paths to actual resource URLs
+ */
+export type ImagePathResolver = (path: string, isWikiLink: boolean) => string;
+
 export class SlideRenderer {
   private presentation: Presentation;
   private theme: Theme | null = null;
+  private resolveImagePath: ImagePathResolver | null = null;
   
-  constructor(presentation: Presentation, theme?: Theme) {
+  constructor(presentation: Presentation, theme?: Theme, resolveImagePath?: ImagePathResolver) {
     this.presentation = presentation;
     this.theme = theme || null;
+    this.resolveImagePath = resolveImagePath || null;
+  }
+  
+  /**
+   * Set the image path resolver (for resolving Obsidian wiki-links)
+   */
+  setImagePathResolver(resolver: ImagePathResolver): void {
+    this.resolveImagePath = resolver;
+  }
+  
+  /**
+   * Resolve an image path, using the resolver if available
+   */
+  private resolveImageSrc(element: SlideElement): string {
+    const imageData = element.imageData;
+    let src = element.content;
+    
+    if (this.resolveImagePath) {
+      src = this.resolveImagePath(src, imageData?.isWikiLink || false);
+    }
+    
+    return src;
   }
 
   /**
@@ -48,9 +76,16 @@ export class SlideRenderer {
   }
   
   /**
+   * Render a slide for the presentation window
+   */
+  renderPresentationSlideHTML(slide: Slide, index: number): string {
+    return this.renderSingleSlideHTML(slide, index, this.presentation.frontmatter, 'presentation');
+  }
+  
+  /**
    * Render a single slide to standalone HTML (for thumbnails/iframes)
    */
-  renderSingleSlideHTML(slide: Slide, index: number, frontmatter: PresentationFrontmatter, context: 'thumbnail' | 'preview' = 'thumbnail'): string {
+  renderSingleSlideHTML(slide: Slide, index: number, frontmatter: PresentationFrontmatter, context: 'thumbnail' | 'preview' | 'presentation' = 'thumbnail'): string {
     const themeClasses = this.theme?.template.CssClasses || '';
     const themeCSS = this.theme ? generateThemeCSS(this.theme, context) : '';
     const bodyClass = context === 'thumbnail' ? 'perspecta-thumbnail' : 'perspecta-preview';
@@ -104,6 +139,7 @@ export class SlideRenderer {
     const customClass = slide.metadata.class || '';
     const isActive = index === 0 ? 'active' : '';
     
+    // Handle background from metadata
     let backgroundStyle = '';
     if (slide.metadata.background) {
       const opacity = slide.metadata.backgroundOpacity ?? 1;
@@ -113,18 +149,84 @@ export class SlideRenderer {
       }
     }
     
+    // For full-image layout, render images as background layer (edge-to-edge)
+    let imageBackground = '';
+    if (layout === 'full-image') {
+      imageBackground = this.renderFullImageBackground(slide);
+    }
+    
     return `
     <section class="slide ${containerClass} ${mode} ${customClass} ${isActive}" data-index="${index}">
       ${backgroundStyle ? `<div class="slide-background" style="${backgroundStyle}"></div>` : ''}
+      ${imageBackground}
       ${this.renderHeader(frontmatter, index)}
       <div class="slide-body">
         <div class="slide-content layout-${layout}">
-          ${this.renderSlideContent(slide, layout)}
+          ${layout === 'full-image' ? '' : this.renderSlideContent(slide, layout)}
         </div>
       </div>
       ${this.renderFooter(frontmatter, index, this.presentation.slides.length)}
       ${renderSpeakerNotes && slide.speakerNotes.length > 0 ? `<aside class="speaker-notes">${slide.speakerNotes.map(n => this.renderMarkdown(n)).join('<br>')}</aside>` : ''}
     </section>`;
+  }
+  
+  /**
+   * Render full-image layout as a background layer (edge-to-edge, no padding)
+   */
+  private renderFullImageBackground(slide: Slide): string {
+    const images = slide.elements.filter(e => e.visible && e.type === 'image');
+    if (images.length === 0) return '';
+    
+    // For single image, fill the entire slide
+    if (images.length === 1) {
+      const img = images[0];
+      const imageData = img.imageData;
+      const src = this.escapeHtml(this.resolveImageSrc(img));
+      const x = imageData?.x || 'center';
+      const y = imageData?.y || 'center';
+      
+      // Build styles
+      const styles: string[] = [
+        'position: absolute',
+        'top: 0', 'left: 0', 'right: 0', 'bottom: 0',
+        'width: 100%', 'height: 100%',
+        'object-fit: cover',
+        `object-position: ${x} ${y}`,
+      ];
+      
+      if (imageData?.opacity !== undefined && imageData.opacity < 100) {
+        styles.push(`opacity: ${imageData.opacity / 100}`);
+      }
+      
+      if (imageData?.filter && imageData.filter !== 'none') {
+        const filterMap: Record<string, string> = {
+          'darken': 'brightness(0.6)',
+          'lighten': 'brightness(1.4)',
+          'blur': 'blur(4px)',
+          'grayscale': 'grayscale(100%)',
+          'sepia': 'sepia(100%)',
+        };
+        const filterValue = filterMap[imageData.filter];
+        if (filterValue) styles.push(`filter: ${filterValue}`);
+      }
+      
+      return `<div class="slide-image-background"><img src="${src}" style="${styles.join('; ')}" /></div>`;
+    }
+    
+    // Multiple images - use CSS classes for responsive layout
+    // Two images: side-by-side in landscape, stacked in portrait
+    const imageCount = images.length;
+    const layoutClass = imageCount === 2 ? 'dual-image' : `multi-image count-${imageCount}`;
+    
+    return `<div class="slide-image-background ${layoutClass}">
+      ${images.map((img, idx) => {
+        const imageData = img.imageData;
+        const src = this.escapeHtml(this.resolveImageSrc(img));
+        const x = imageData?.x || 'center';
+        const y = imageData?.y || 'center';
+        return `<div class="image-panel image-${idx + 1}"><img src="${src}" style="object-position: ${x} ${y};" /></div>`;
+      }).join('\n')}
+    </div>`;
   }
 
   // ============================================
@@ -329,23 +431,50 @@ export class SlideRenderer {
   // ==================
   
   /**
-   * Full Image Layout: Images fill the entire slide
-   * Multiple images split the space equally
+   * Full Image Layout: Images fill the entire slide with object-fit: cover
+   * First image fills the whole slide; multiple images split the space equally
    */
   private renderFullImageLayout(images: SlideElement[]): string {
     if (images.length === 0) {
       return `<div class="slide-content full-image-content empty">No images</div>`;
     }
     
-    const direction = images.length <= 2 ? 'horizontal' : 'grid';
+    // For single image, fill the entire slide
+    if (images.length === 1) {
+      const img = images[0];
+      const imageData = img.imageData;
+      const src = this.escapeHtml(this.resolveImageSrc(img));
+      const alt = imageData?.alt ? this.escapeHtml(imageData.alt) : '';
+      
+      // Build style for positioning
+      const x = imageData?.x || 'center';
+      const y = imageData?.y || 'center';
+      const objectPosition = `${x} ${y}`;
+      
+      return `
+        <div class="slide-content full-image-content single-image">
+          <div class="image-slot">
+            <img src="${src}" alt="${alt}" style="object-fit: cover; object-position: ${objectPosition};" />
+          </div>
+        </div>`;
+    }
+    
+    // Multiple images split the space
+    const direction = images.length === 2 ? 'horizontal' : 'grid';
     
     return `
       <div class="slide-content full-image-content split-${direction} count-${images.length}">
-        ${images.map(img => `
+        ${images.map(img => {
+          const imageData = img.imageData;
+          const src = this.escapeHtml(this.resolveImageSrc(img));
+          const alt = imageData?.alt ? this.escapeHtml(imageData.alt) : '';
+          const x = imageData?.x || 'center';
+          const y = imageData?.y || 'center';
+          return `
           <div class="image-slot">
-            <img src="${this.escapeHtml(img.content)}" alt="" />
-          </div>
-        `).join('\n')}
+            <img src="${src}" alt="${alt}" style="object-fit: cover; object-position: ${x} ${y};" />
+          </div>`;
+        }).join('\n')}
       </div>`;
   }
   
@@ -365,7 +494,7 @@ export class SlideRenderer {
         <div class="slot-image">
           ${images.map(img => `
             <div class="image-slot">
-              <img src="${this.escapeHtml(img.content)}" alt="" />
+              <img src="${this.escapeHtml(this.resolveImageSrc(img))}" alt="" style="object-fit: cover;" />
             </div>
           `).join('\n')}
         </div>
@@ -392,7 +521,7 @@ export class SlideRenderer {
     
     const imageContent = images.map(img => `
       <div class="image-slot">
-        <img src="${this.escapeHtml(img.content)}" alt="" />
+        <img src="${this.escapeHtml(this.resolveImageSrc(img))}" alt="" style="object-fit: cover;" />
       </div>
     `).join('\n');
     
@@ -441,7 +570,7 @@ export class SlideRenderer {
         return `<blockquote>${this.renderMarkdown(element.content)}</blockquote>`;
         
       case 'image':
-        return `<figure><img src="${this.escapeHtml(element.content)}" alt="" /></figure>`;
+        return this.renderImage(element);
         
       case 'code':
         const lines = element.content.split('\n');
@@ -474,6 +603,52 @@ export class SlideRenderer {
     }).join('\n');
     
     return `<${tag}>${items}</${tag}>`;
+  }
+  
+  /**
+   * Render an image element with proper styling for presentations
+   */
+  private renderImage(element: SlideElement): string {
+    const imageData = element.imageData;
+    const src = this.escapeHtml(this.resolveImageSrc(element));
+    const alt = imageData?.alt ? this.escapeHtml(imageData.alt) : '';
+    
+    // Build inline styles for positioning
+    const styles: string[] = [];
+    
+    // Object-fit based on size mode
+    const objectFit = imageData?.size || 'cover';
+    styles.push(`object-fit: ${objectFit}`);
+    
+    // Object-position from x/y
+    const x = imageData?.x || 'center';
+    const y = imageData?.y || 'center';
+    styles.push(`object-position: ${x} ${y}`);
+    
+    // Opacity
+    if (imageData?.opacity !== undefined && imageData.opacity < 100) {
+      styles.push(`opacity: ${imageData.opacity / 100}`);
+    }
+    
+    // Build filter string
+    if (imageData?.filter && imageData.filter !== 'none') {
+      const filterMap: Record<string, string> = {
+        'darken': 'brightness(0.6)',
+        'lighten': 'brightness(1.4)',
+        'blur': 'blur(4px)',
+        'grayscale': 'grayscale(100%)',
+        'sepia': 'sepia(100%)',
+      };
+      const filterValue = filterMap[imageData.filter];
+      if (filterValue) {
+        styles.push(`filter: ${filterValue}`);
+      }
+    }
+    
+    const styleAttr = styles.length > 0 ? ` style="${styles.join('; ')}"` : '';
+    
+    // Wrap in figure for semantic markup
+    return `<figure class="image-figure"><img src="${src}" alt="${alt}"${styleAttr} /></figure>`;
   }
   
   private renderTable(content: string): string {
@@ -535,9 +710,9 @@ export class SlideRenderer {
     
     return `
       <header class="slide-header">
-        <div class="header-left">${frontmatter.headerLeft || ''}</div>
-        <div class="header-middle">${frontmatter.headerMiddle || ''}</div>
-        <div class="header-right">${frontmatter.headerRight || ''}</div>
+        <div class="header-left">${frontmatter.headerLeft ? `<span>${frontmatter.headerLeft}</span>` : ''}</div>
+        <div class="header-middle">${frontmatter.headerMiddle ? `<span>${frontmatter.headerMiddle}</span>` : ''}</div>
+        <div class="header-right">${frontmatter.headerRight ? `<span>${frontmatter.headerRight}</span>` : ''}</div>
       </header>`;
   }
   
@@ -546,9 +721,9 @@ export class SlideRenderer {
     
     return `
       <footer class="slide-footer">
-        <div class="footer-left">${frontmatter.footerLeft || ''}</div>
-        <div class="footer-middle">${frontmatter.footerMiddle || ''}</div>
-        <div class="footer-right">${showNumbers ? index + 1 : ''}</div>
+        <div class="footer-left">${frontmatter.footerLeft ? `<span>${frontmatter.footerLeft}</span>` : ''}</div>
+        <div class="footer-middle">${frontmatter.footerMiddle ? `<span>${frontmatter.footerMiddle}</span>` : ''}</div>
+        <div class="footer-right">${showNumbers ? `<span>${index + 1}</span>` : ''}</div>
       </footer>`;
   }
 
@@ -556,7 +731,7 @@ export class SlideRenderer {
   // STYLES
   // ============================================
   
-  private getBaseStyles(context: 'thumbnail' | 'preview' = 'thumbnail'): string {
+  private getBaseStyles(context: 'thumbnail' | 'preview' | 'presentation' = 'thumbnail'): string {
     // Different scaling for thumbnails vs preview
     let slideUnit: string;
     let containerClass: string;
@@ -600,11 +775,66 @@ export class SlideRenderer {
       .slide.dark { background: var(--dark-background); color: var(--dark-body-text); }
       
       /* Background */
-      .slide-background {
+      .slide-background, .slide-image-background {
         position: absolute;
         top: 0; left: 0; right: 0; bottom: 0;
         z-index: 0;
+        overflow: hidden;
       }
+      .slide-image-background img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      
+      /* Dual image layout: responsive based on orientation */
+      .slide-image-background.dual-image {
+        display: flex;
+        flex-direction: row; /* Default: side-by-side for landscape */
+      }
+      .slide-image-background.dual-image .image-panel {
+        flex: 1;
+        overflow: hidden;
+        min-width: 0;
+        min-height: 0;
+      }
+      /* Portrait orientation: stack vertically */
+      @media (orientation: portrait), (max-aspect-ratio: 1/1) {
+        .slide-image-background.dual-image {
+          flex-direction: column;
+        }
+      }
+      
+      /* Three images: side-by-side in thirds (landscape), stacked in portrait */
+      .slide-image-background.multi-image.count-3 {
+        display: flex;
+        flex-direction: row;
+      }
+      .slide-image-background.multi-image.count-3 .image-panel {
+        flex: 1;
+        overflow: hidden;
+        min-width: 0;
+        min-height: 0;
+      }
+      @media (orientation: portrait), (max-aspect-ratio: 1/1) {
+        .slide-image-background.multi-image.count-3 {
+          flex-direction: column;
+        }
+      }
+      
+      /* Four+ images: 2x2 grid or larger */
+      .slide-image-background.multi-image:not(.count-3) {
+        display: flex;
+        flex-wrap: wrap;
+      }
+      .slide-image-background.multi-image:not(.count-3) .image-panel {
+        flex: 1 1 50%;
+        overflow: hidden;
+        min-width: 0;
+        min-height: 0;
+      }
+      
       .slide-body { flex: 1; display: flex; flex-direction: column; position: relative; z-index: 1; min-height: 0; }
       .slide-content { flex: 1; display: flex; flex-direction: column; gap: calc(var(--slide-unit) * 1.5); }
       
@@ -636,6 +866,8 @@ export class SlideRenderer {
       .slot-columns { display: flex; gap: calc(var(--slide-unit) * 2); flex: 1; align-items: flex-start; width: 100%; }
       .slot-columns .column { flex: 1; display: flex; flex-direction: column; }
       .slot-columns.columns-1 { flex-direction: column; }
+      .slot-columns.columns-3 { gap: calc(var(--slide-unit) * 5) !important; }
+      .slot-columns.columns-3 .column { min-width: 0; }
       .slot-columns.ratio-narrow-wide .column[data-column="1"] { flex: 1; }
       .slot-columns.ratio-narrow-wide .column[data-column="2"] { flex: 2; }
       .slot-columns.ratio-wide-narrow .column[data-column="1"] { flex: 2; }
@@ -678,14 +910,43 @@ export class SlideRenderer {
       
       /* Header/Footer */
       .slide-header, .slide-footer { 
-        display: flex; justify-content: space-between; 
-        padding: calc(var(--slide-unit) * 0.5) 0; 
+        display: flex; 
+        justify-content: space-between; 
         font-size: calc(var(--slide-unit) * 1.5); 
-        opacity: 0.5;
+        position: relative;
+        z-index: 2;
+        margin-left: -2.5%;
+        margin-right: -2.5%;
+        padding-left: 2.5%;
+        padding-right: 2.5%;
       }
-      .slide-header > div, .slide-footer > div { flex: 1; }
-      .slide-header .middle, .slide-footer .middle { text-align: center; }
-      .slide-header .trailing, .slide-footer .trailing { text-align: right; }
+      .slide-header { 
+        align-items: flex-start; 
+        margin-top: -2.5%;
+        padding-top: 1%;
+      }
+      .slide-footer { 
+        align-items: flex-end; 
+        margin-bottom: -2.5%;
+        padding-bottom: 1%;
+      }
+      .slide-header > div, .slide-footer > div { flex: 1; display: flex; }
+      .header-left, .footer-left { justify-content: flex-start; }
+      .header-middle, .footer-middle { justify-content: center; }
+      .header-right, .footer-right { justify-content: flex-end; }
+      
+      /* Header/Footer in full-image layout: semi-transparent background */
+      .image-container .header-left > span,
+      .image-container .header-middle > span,
+      .image-container .header-right > span,
+      .image-container .footer-left > span,
+      .image-container .footer-middle > span,
+      .image-container .footer-right > span {
+        background: rgba(0, 0, 0, 0.5);
+        padding: calc(var(--slide-unit) * 0.5) calc(var(--slide-unit) * 1);
+        border-radius: 0.5em;
+        color: #fff;
+      }
     `;
   }
   
@@ -786,10 +1047,40 @@ html, body {
 .slide-header, .slide-footer {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: calc(var(--slide-unit) * 0.8) 0;
   font-size: calc(var(--slide-unit) * 1.8);
-  opacity: 0.6;
+  position: relative;
+  z-index: 2;
+  margin-left: -2.5%;
+  margin-right: -2.5%;
+  padding-left: 2.5%;
+  padding-right: 2.5%;
+}
+.slide-header { 
+  align-items: flex-start; 
+  margin-top: -2.5%;
+  padding-top: 1%;
+}
+.slide-footer { 
+  align-items: flex-end; 
+  margin-bottom: -2.5%;
+  padding-bottom: 1%;
+}
+.slide-header > div, .slide-footer > div { flex: 1; display: flex; }
+.header-left, .footer-left { justify-content: flex-start; }
+.header-middle, .footer-middle { justify-content: center; }
+.header-right, .footer-right { justify-content: flex-end; }
+
+/* Header/Footer in full-image layout: semi-transparent background */
+.image-container .header-left > span,
+.image-container .header-middle > span,
+.image-container .header-right > span,
+.image-container .footer-left > span,
+.image-container .footer-middle > span,
+.image-container .footer-right > span {
+  background: rgba(0, 0, 0, 0.5);
+  padding: calc(var(--slide-unit) * 0.5) calc(var(--slide-unit) * 1);
+  border-radius: 0.5em;
+  color: #fff;
 }
 
 /* Typography - scaled dynamically based on viewport */
@@ -888,6 +1179,15 @@ mark { background: var(--accent3, #f9c74f); padding: 0.1em 0.2em; }
 .slot-columns.columns-1 { flex-direction: column; }
 .slot-columns.columns-1 .column { width: 100%; }
 
+/* Auto-detected columns: better widths for 3 columns */
+.slot-columns.columns-3 { 
+  gap: calc(var(--slide-unit) * 5) !important; /* More gap for 3 columns */
+}
+.slot-columns.columns-3 .column { 
+  flex: 1; 
+  min-width: 0; /* Allow columns to shrink */
+}
+
 /* Column ratios (for 2-column layouts) */
 .slot-columns.ratio-narrow-wide .column[data-column="1"] { flex: 1; }
 .slot-columns.ratio-narrow-wide .column[data-column="2"] { flex: 2; }
@@ -968,23 +1268,70 @@ mark { background: var(--accent3, #f9c74f); padding: 0.1em 0.2em; }
 
 .layout-full-image .slide-body {
   margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .layout-full-image .slide-content {
   padding: 0;
   margin: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Single image - absolute positioning to fill entire slide */
+.layout-full-image .full-image-content.single-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.layout-full-image .full-image-content.single-image .image-slot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.layout-full-image .full-image-content.single-image .image-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Multiple images - flexbox layout */
+.layout-full-image .full-image-content.split-horizontal {
+  display: flex;
   flex-direction: row;
+  width: 100%;
+  height: 100%;
+}
+
+.layout-full-image .full-image-content.split-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-auto-rows: 1fr;
+  width: 100%;
+  height: 100%;
+  gap: 0;
 }
 
 .layout-full-image .image-slot {
   flex: 1;
-  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .layout-full-image .image-slot img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
 /* ========================

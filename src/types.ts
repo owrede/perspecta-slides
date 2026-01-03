@@ -106,6 +106,32 @@ export type SlideLayout =
   // Grid slides
   | 'grid';
 
+/**
+ * Image metadata for positioning and styling
+ */
+export interface ImageData {
+  /** Original path/URL from markdown */
+  src: string;
+  /** Alt text */
+  alt?: string;
+  /** Sizing mode: cover (fill, crop) or contain (fit, letterbox) */
+  size?: 'cover' | 'contain';
+  /** Horizontal position: left, center, right, or percentage/pixels */
+  x?: string;
+  /** Vertical position: top, center, bottom, or percentage/pixels */
+  y?: string;
+  /** Zoom level as percentage (100 = no zoom) */
+  zoom?: number;
+  /** CSS filter effect */
+  filter?: 'none' | 'darken' | 'lighten' | 'blur' | 'grayscale' | 'sepia';
+  /** Opacity as percentage (0-100) */
+  opacity?: number;
+  /** On-image caption */
+  caption?: string;
+  /** Whether this is an Obsidian wiki-link (![[...]]) */
+  isWikiLink?: boolean;
+}
+
 export interface SlideElement {
   type: 'heading' | 'paragraph' | 'list' | 'blockquote' | 'image' | 'code' | 'table' | 'math' | 'kicker';
   content: string;
@@ -113,6 +139,8 @@ export interface SlideElement {
   visible: boolean;
   raw: string;
   columnIndex?: number;
+  /** Image-specific metadata (only for type: 'image') */
+  imageData?: ImageData;
 }
 
 export interface Slide {
@@ -222,6 +250,7 @@ export interface PerspecaSlidesSettings {
   defaultContentMode: ContentMode;
   exportIncludeSpeakerNotes: boolean;
   customThemesFolder: string;
+  debugSlideRendering: boolean;
 }
 
 export const DEFAULT_SETTINGS: PerspecaSlidesSettings = {
@@ -232,4 +261,5 @@ export const DEFAULT_SETTINGS: PerspecaSlidesSettings = {
   defaultContentMode: 'ia-presenter',
   exportIncludeSpeakerNotes: false,
   customThemesFolder: 'perspecta-themes',
+  debugSlideRendering: false,
 };

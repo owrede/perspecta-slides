@@ -11,6 +11,23 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.1.5',
+		date: '2026-01-03',
+		changes: [
+			'Improved: Presentation window now uses incremental updates - only redraws when displayed slide changes',
+			'Improved: Editing a slide no longer causes presentation window to jump back to first slide',
+			'Improved: Much smoother live updates while presenting - no flicker for unrelated edits',
+			'Changed: Presentation window uses drag overlay for cleaner interaction',
+			'New: Click+drag anywhere moves the window (default mode)',
+			'New: Double-click enters text selection mode, Escape exits it',
+			'New: Obsidian wiki-link image syntax (![[image.png]]) now supported',
+			'New: Full-image layout fills entire slide with object-fit: cover (no letterboxing)',
+			'New: Image metadata system (size, x, y positioning) for future enhancements',
+			'Fix: Wiki-link images now resolve correctly using Obsidian vault paths',
+			'Technical: Presentation window uses content hashing to detect changes',
+		],
+	},
+	{
 		version: '0.1.4',
 		date: '2026-01-03',
 		changes: [

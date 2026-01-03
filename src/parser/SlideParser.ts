@@ -5,17 +5,37 @@ import {
   SlideElement, 
   SlideMetadata, 
   SlideLayout,
-  ContentMode
+  ContentMode,
+  ImageData
 } from '../types';
 
 export class SlideParser {
   private defaultContentMode: ContentMode = 'ia-presenter';
-  
+  private debugMode: boolean = false;
+
+  constructor() {}
+
   /**
    * Set the default content mode (used when not specified in frontmatter)
    */
   setDefaultContentMode(mode: ContentMode) {
     this.defaultContentMode = mode;
+  }
+  
+  /**
+   * Enable or disable debug mode for console logging
+   */
+  setDebugMode(enabled: boolean) {
+    this.debugMode = enabled;
+  }
+  
+  /**
+   * Log debug messages if debug mode is enabled
+   */
+  private debugLog(...args: any[]) {
+    if (this.debugMode) {
+      console.log(...args);
+    }
   }
   
   /**
@@ -155,7 +175,7 @@ export class SlideParser {
   
   private parseSlide(rawContent: string, index: number, contentMode: ContentMode): Slide {
     const lines = rawContent.split('\n');
-    const elements: SlideElement[] = [];
+    let elements: SlideElement[] = [];
     const speakerNotes: string[] = [];
     let metadata: SlideMetadata = {};
     
@@ -163,16 +183,37 @@ export class SlideParser {
     const { slideMetadata, contentLines } = this.extractSlideMetadata(lines);
     metadata = slideMetadata;
     
+    // Check if we have an explicit column layout BEFORE extracting metadata
+    const hasExplicitColumnLayout = this.hasExplicitColumnLayout(lines);
+    
+    // Check for no-autocolumn modifier
+    const layoutValue = metadata.layout as string;
+    const isNoAutocolumn = layoutValue === 'default;no-autocolumn' || layoutValue === 'no-autocolumn';
+    
     // Use different parsing strategies based on content mode
     if (contentMode === 'advanced-slides') {
-      this.parseSlideAdvancedMode(contentLines, elements, speakerNotes);
+      this.parseSlideAdvancedMode(contentLines, elements, speakerNotes, hasExplicitColumnLayout);
     } else {
       this.parseSlideIAPresenterMode(contentLines, elements, speakerNotes);
     }
     
     // Auto-detect layout if not specified
+    const wasLayoutAutoDetected = !metadata.layout;
     if (!metadata.layout) {
       metadata.layout = this.detectLayout(elements);
+    }
+    
+    // Apply auto-column detection for default layout
+    // Also apply it when layout was auto-detected as default
+    if (metadata.layout === 'default' && !isNoAutocolumn) {
+      this.debugLog('Before auto-detection:', elements.map(e => ({ type: e.type, content: e.content.substring(0, 30), columnIndex: e.columnIndex })));
+      elements = this.autoDetectColumns(elements, contentLines);
+      this.debugLog('After auto-detection:', elements.map(e => ({ type: e.type, content: e.content.substring(0, 30), columnIndex: e.columnIndex })));
+    }
+    
+    // If no-autocolumn was specified, ensure layout is just 'default'
+    if (isNoAutocolumn) {
+      metadata.layout = 'default';
     }
     
     return {
@@ -195,7 +236,7 @@ export class SlideParser {
     elements: SlideElement[], 
     speakerNotes: string[]
   ): void {
-    // Detect column blocks for multi-column layouts
+    // Detect column blocks for multi-column layouts (tab-indented only)
     const columnBlocks = this.detectColumnBlocks(contentLines);
     const hasColumns = columnBlocks.length > 1;
     
@@ -303,15 +344,10 @@ export class SlideParser {
         continue;
       }
       
-      // Images - visible
-      const imageMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
-      if (imageMatch) {
-        elements.push({
-          type: 'image',
-          content: imageMatch[2],
-          visible: true,
-          raw: line,
-        });
+      // Images - visible (both standard markdown and Obsidian wiki-link syntax)
+      const imageResult = this.parseImage(line);
+      if (imageResult) {
+        elements.push(imageResult);
         i++;
         lastWasColumnContent = false;
         continue;
@@ -375,10 +411,12 @@ export class SlideParser {
   private parseSlideAdvancedMode(
     contentLines: string[], 
     elements: SlideElement[], 
-    speakerNotes: string[]
+    speakerNotes: string[],
+    hasExplicitColumnLayout: boolean
   ): void {
     let inSpeakerNotes = false;
     let i = 0;
+    let currentColumnIndex = 0;
     
     while (i < contentLines.length) {
       const line = contentLines[i];
@@ -427,26 +465,32 @@ export class SlideParser {
       // Headings
       const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
       if (headingMatch) {
-        elements.push({
+        const headingElement: SlideElement = {
           type: 'heading',
           content: headingMatch[2],
           level: headingMatch[1].length,
           visible: true,
           raw: line,
-        });
+        };
+        
+        // For explicit column layouts, treat H3 headings as column separators
+        if (hasExplicitColumnLayout && headingMatch[1].length === 3) {
+          // Increment column index for new column headings (except the first one)
+          if (currentColumnIndex > 0 || elements.some(e => e.columnIndex !== undefined)) {
+            currentColumnIndex++;
+          }
+          headingElement.columnIndex = currentColumnIndex;
+        }
+        
+        elements.push(headingElement);
         i++;
         continue;
       }
       
-      // Images
-      const imageMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
-      if (imageMatch) {
-        elements.push({
-          type: 'image',
-          content: imageMatch[2],
-          visible: true,
-          raw: line,
-        });
+      // Images (both standard markdown and Obsidian wiki-link syntax)
+      const imageResult = this.parseImage(line);
+      if (imageResult) {
+        elements.push(imageResult);
         i++;
         continue;
       }
@@ -496,8 +540,17 @@ export class SlideParser {
         const listItems: string[] = [line];
         let nextIndex = i + 1;
         
+    this.debugLog(`Starting list at line ${i}: "${line}"`);
+        
         while (nextIndex < contentLines.length) {
           const nextLine = contentLines[nextIndex];
+          
+          // Stop at empty line - this separates list blocks for auto-column detection
+          if (nextLine.trim() === '') {
+            this.debugLog(`List ended at empty line ${nextIndex}`);
+            break;
+          }
+          
           if (nextLine.match(/^[-*+]\s+/) || nextLine.match(/^\d+\.\s+/)) {
             listItems.push(nextLine);
             nextIndex++;
@@ -506,35 +559,58 @@ export class SlideParser {
           }
         }
         
-        elements.push({
+        this.debugLog(`Created list with ${listItems.length} items`);
+        
+        const listElement: SlideElement = {
           type: 'list',
           content: listItems.join('\n'),
           visible: true,
           raw: listItems.join('\n'),
-        });
+        };
+        
+        // Assign to column if using explicit column layout
+        if (hasExplicitColumnLayout) {
+          listElement.columnIndex = Math.min(currentColumnIndex, 2);
+        }
+        
+        elements.push(listElement);
         i = nextIndex;
         continue;
       }
       
       // Blockquote
       if (line.startsWith('>')) {
-        elements.push({
+        const blockquoteElement: SlideElement = {
           type: 'blockquote',
           content: line.replace(/^>\s*/, ''),
           visible: true,
           raw: line,
-        });
+        };
+        
+        // Assign to column if using explicit column layout
+        if (hasExplicitColumnLayout) {
+          blockquoteElement.columnIndex = Math.min(currentColumnIndex, 2);
+        }
+        
+        elements.push(blockquoteElement);
         i++;
         continue;
       }
       
       // Regular paragraph - visible in Advanced Slides mode
-      elements.push({
+      const paragraphElement: SlideElement = {
         type: 'paragraph',
         content: line,
         visible: true,
         raw: line,
-      });
+      };
+      
+      // Assign to column if using explicit column layout
+      if (hasExplicitColumnLayout) {
+        paragraphElement.columnIndex = Math.min(currentColumnIndex, 2);
+      }
+      
+      elements.push(paragraphElement);
       i++;
     }
   }
@@ -579,6 +655,24 @@ export class SlideParser {
     return blocks;
   }
   
+  /**
+   * Check if the slide has an explicit column layout declared
+   */
+  private hasExplicitColumnLayout(lines: string[]): boolean {
+    // Look for layout metadata at the start
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed === '') break;
+      
+      const layoutMatch = trimmed.match(/^layout:\s*(.+)$/i);
+      if (layoutMatch) {
+        const layout = layoutMatch[1].trim().toLowerCase();
+        return layout.includes('column') || layout.includes('columns');
+      }
+    }
+    return false;
+  }
+  
   private extractSlideMetadata(lines: string[]): { slideMetadata: SlideMetadata; contentLines: string[] } {
     const metadata: SlideMetadata = {};
     let startIndex = 0;
@@ -597,7 +691,8 @@ export class SlideParser {
       // Check for metadata patterns
       const layoutMatch = line.match(/^layout:\s*(.+)$/i);
       if (layoutMatch) {
-        metadata.layout = layoutMatch[1].trim() as SlideLayout;
+        let layoutValue = layoutMatch[1].trim();
+        metadata.layout = layoutValue as SlideLayout;
         startIndex = i + 1;
         continue;
       }
@@ -665,6 +760,11 @@ export class SlideParser {
         const nextLine = allLines[nextIndex];
         const isIndented = nextLine.startsWith('\t') || nextLine.startsWith('    ');
         const unindented = nextLine.replace(/^(\t|    )/, '');
+        
+        // Stop at empty line - this separates list blocks for auto-column detection
+        if (nextLine.trim() === '') {
+          break;
+        }
         
         if (isIndented && (unindented.match(/^[-*+]\s+/) || unindented.match(/^\d+\.\s+/))) {
           listItems.push(unindented);
@@ -814,5 +914,274 @@ export class SlideParser {
     
     // Default layout (handles everything else, including auto-column detection)
     return 'default';
+  }
+  
+  /**
+   * Auto-detect columns in default layout based on content patterns
+   * Returns elements with columnIndex assigned
+   */
+  private autoDetectColumns(elements: SlideElement[], contentLines?: string[]): SlideElement[] {
+    if (elements.length === 0) return elements;
+    
+    // Check if auto-columns is disabled in raw content
+    // Look for no-autocolumn in the original raw content lines
+    if (contentLines) {
+      const hasNoAutocolumn = contentLines.some(line => 
+        line.trim().includes('no-autocolumn') || 
+        line.trim().includes('default;no-autocolumn')
+      );
+      if (hasNoAutocolumn) {
+        return elements;
+      }
+    }
+    
+    // Group elements by type to detect patterns
+    const h3Elements = elements.filter(e => e.type === 'heading' && e.level === 3);
+    const h2Elements = elements.filter(e => e.type === 'heading' && e.level === 2);
+    
+    // Case 1: Multiple H3 headings - use them as column separators
+    if (h3Elements.length >= 2) {
+      let currentColumn = 0;
+      let h3Count = 0;
+      return elements.map(e => {
+        if (e.type === 'heading' && e.level === 3) {
+          // New H3 starts a new column (except the first one)
+          if (h3Count > 0) currentColumn++;
+          h3Count++;
+          e.columnIndex = currentColumn;
+        } else if (e.type === 'heading' && e.level !== 3) {
+          // Other headings don't belong to columns
+          e.columnIndex = undefined;
+        } else {
+          // Other content belongs to current column
+          e.columnIndex = currentColumn;
+        }
+        return e;
+      });
+    }
+    
+    // Case 2: Multiple H2 headings (and no H3s) - use them as column separators
+    if (h3Elements.length === 0 && h2Elements.length >= 2) {
+      let currentColumn = 0;
+      let h2Count = 0;
+      return elements.map(e => {
+        if (e.type === 'heading' && e.level === 2) {
+          // New H2 starts a new column (except the first one)
+          if (h2Count > 0) currentColumn++;
+          h2Count++;
+          e.columnIndex = currentColumn;
+        } else if (e.type === 'heading') {
+          // Other headings don't belong to columns
+          e.columnIndex = undefined;
+        } else {
+          // Other content belongs to current column
+          e.columnIndex = currentColumn;
+        }
+        return e;
+      });
+    }
+    
+    // Case 3: Content blocks separated by empty lines
+    if (contentLines) {
+      const assignments = this.detectColumnsByEmptyLines(contentLines, elements);
+      if (assignments.some(a => a !== undefined)) {
+        return elements.map((e, i) => {
+          e.columnIndex = assignments[i];
+          return e;
+        });
+      }
+    }
+    
+    return elements;
+  }
+  
+  /**
+   * Detect columns based on empty line separations in content
+   * Returns an array mapping element indices to column indices
+   */
+  private detectColumnsByEmptyLines(contentLines: string[], elements: SlideElement[]): number[] {
+    const assignments: number[] = new Array(elements.length).fill(undefined);
+    let currentColumn = 0;
+    let elementIndex = 0;
+    let inContentBlock = false;
+    let foundFirstBlock = false;
+    
+    this.debugLog('detectColumnsByEmptyLines called');
+    this.debugLog('contentLines:', contentLines);
+    this.debugLog('elements:', elements.map((e, i) => ({ 
+      index: i, 
+      type: e.type, 
+      visible: e.visible, 
+      content: e.content.substring(0, 30),
+      fullContent: e.content,
+      raw: e.raw
+    })));
+    
+    // Create a map of content lines to element indices for easier lookup
+    const contentToElementMap = new Map<string, number[]>();
+    elements.forEach((element, idx) => {
+      if (element.visible && (element.type === 'paragraph' || element.type === 'list' || element.type === 'blockquote')) {
+        // For lists, store each line separately and track all elements that match
+        if (element.type === 'list') {
+          const lines = element.content.split('\n');
+          lines.forEach(line => {
+            const trimmed = line.trim();
+            if (!contentToElementMap.has(trimmed)) {
+              contentToElementMap.set(trimmed, []);
+            }
+            contentToElementMap.get(trimmed)!.push(idx);
+          });
+        } else {
+          const trimmed = element.content.trim();
+          if (!contentToElementMap.has(trimmed)) {
+            contentToElementMap.set(trimmed, []);
+          }
+          contentToElementMap.get(trimmed)!.push(idx);
+        }
+      }
+    });
+    
+    this.debugLog('Content to element map:');
+    contentToElementMap.forEach((value, key) => {
+      this.debugLog(`  "${key}" -> elements [${value.join(', ')}]`);
+    });
+    
+    for (let lineIndex = 0; lineIndex < contentLines.length; lineIndex++) {
+      const line = contentLines[lineIndex];
+      const trimmed = line.trim();
+      
+      // Skip empty lines and comments
+      if (trimmed === '' || trimmed.startsWith('//')) {
+        if (trimmed === '' && inContentBlock) {
+          // Empty line ends the current content block
+          inContentBlock = false;
+        }
+        continue;
+      }
+      
+      // Skip headings (they're not part of column content)
+      if (trimmed.startsWith('#')) {
+        inContentBlock = false;
+        continue;
+      }
+      
+      // We have content
+      if (!inContentBlock) {
+        // Starting a new content block
+        if (foundFirstBlock) {
+          currentColumn++;
+        } else {
+          foundFirstBlock = true;
+        }
+        inContentBlock = true;
+      }
+      
+      // Find the element for this content
+      const elementIndices = contentToElementMap.get(trimmed);
+      if (elementIndices && elementIndices.length > 0) {
+        // Use the first unused element for this content
+        let elementIdx = elementIndices[0];
+        for (const idx of elementIndices) {
+          if (assignments[idx] === undefined) {
+            elementIdx = idx;
+            break;
+          }
+        }
+        assignments[elementIdx] = Math.min(currentColumn, 2);
+        this.debugLog(`Line "${trimmed}" assigned to column ${currentColumn} (element ${elementIdx})`);
+      } else if (trimmed !== '' && !trimmed.startsWith('#')) {
+        this.debugLog(`No match found for line: "${trimmed}"`);
+      }
+    }
+    
+    // Check if we actually detected multiple columns
+    const uniqueColumns = new Set(assignments.filter(a => a !== undefined));
+    this.debugLog('Final assignments:', assignments);
+    this.debugLog('Unique columns detected:', uniqueColumns);
+    
+    if (uniqueColumns.size <= 1) {
+      return new Array(elements.length).fill(undefined);
+    }
+    
+    return assignments;
+  }
+
+  /**
+   * Check if element content matches a line from the source
+   */
+  private contentMatchesLine(elementContent: string, line: string): boolean {
+    // For lists, check if the line matches the first list item
+    if (elementContent.includes('\n')) {
+      const firstLine = elementContent.split('\n')[0].trim();
+      return firstLine === line.trim();
+    }
+    return elementContent.trim() === line.trim();
+  }
+
+  /**
+   * Parse an image from a line (supports standard markdown and Obsidian wiki-link syntax)
+   * 
+   * Supported formats:
+   * - Standard markdown: ![alt](path/to/image.png)
+   * - Obsidian wiki-link: ![[image.png]]
+   * - Obsidian with alt: ![[image.png|alt text]]
+   * - Obsidian with size: ![[image.png|100x200]] or ![[image.png|100]]
+   * 
+   * Returns null if line is not an image
+   */
+  private parseImage(line: string): SlideElement | null {
+    // Standard markdown image: ![alt](path)
+    const markdownMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+    if (markdownMatch) {
+      const alt = markdownMatch[1];
+      const src = markdownMatch[2];
+      
+      const imageData: ImageData = {
+        src,
+        alt: alt || undefined,
+        size: 'cover', // Default to cover for presentation slides
+        isWikiLink: false,
+      };
+      
+      return {
+        type: 'image',
+        content: src,
+        visible: true,
+        raw: line,
+        imageData,
+      };
+    }
+    
+    // Obsidian wiki-link image: ![[path]] or ![[path|alt]] or ![[path|widthxheight]]
+    const wikiLinkMatch = line.match(/^!\[\[([^\]|]+)(?:\|([^\]]*))?\]\]$/);
+    if (wikiLinkMatch) {
+      const src = wikiLinkMatch[1];
+      const modifier = wikiLinkMatch[2]; // Could be alt text or dimensions
+      
+      let alt: string | undefined;
+      
+      // Check if modifier is dimensions (e.g., "100" or "100x200")
+      if (modifier && !/^\d+(?:x\d+)?$/.test(modifier)) {
+        // It's alt text, not dimensions
+        alt = modifier;
+      }
+      
+      const imageData: ImageData = {
+        src,
+        alt,
+        size: 'cover', // Default to cover for presentation slides
+        isWikiLink: true,
+      };
+      
+      return {
+        type: 'image',
+        content: src,
+        visible: true,
+        raw: line,
+        imageData,
+      };
+    }
+    
+    return null;
   }
 }

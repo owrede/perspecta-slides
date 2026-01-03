@@ -210,6 +210,13 @@ export class InspectorPanelView extends ItemView {
         .onChange(value => this.updateFrontmatter({ headerLeft: value })));
     
     new Setting(section4)
+      .setName('Header Middle')
+      .addText(text => text
+        .setPlaceholder('Presentation Title')
+        .setValue(fm.headerMiddle || '')
+        .onChange(value => this.updateFrontmatter({ headerMiddle: value })));
+    
+    new Setting(section4)
       .setName('Header Right')
       .addText(text => text
         .setPlaceholder('')
@@ -222,6 +229,13 @@ export class InspectorPanelView extends ItemView {
         .setPlaceholder('')
         .setValue(fm.footerLeft || '')
         .onChange(value => this.updateFrontmatter({ footerLeft: value })));
+    
+    new Setting(section4)
+      .setName('Footer Middle')
+      .addText(text => text
+        .setPlaceholder('')
+        .setValue(fm.footerMiddle || '')
+        .onChange(value => this.updateFrontmatter({ footerMiddle: value })));
     
     new Setting(section4)
       .setName('Show Slide Numbers')

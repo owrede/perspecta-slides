@@ -7,15 +7,18 @@ An Obsidian plugin for creating presentations from Markdown, inspired by [iA Pre
 - **iA Presenter-style syntax**: Write presentations using familiar Markdown with the same conventions as iA Presenter
 - **Thumbnail navigator**: See all your slides at a glance in the left sidebar with drag-and-drop reordering
 - **Inspector panel**: Edit slide properties, layouts, and design settings in the right sidebar
-- **Multiple themes**: Built-in themes (Zurich, Tokyo, Berlin, Minimal) with customizable colors and fonts
+- **Multiple themes**: Built-in themes (Zurich, Tokyo, Berlin, Minimal, Helvetica, Basel, Copenhagen) with customizable colors and fonts
 - **HTML export**: Export your presentations as standalone HTML files
 - **Speaker notes**: Regular paragraphs become speaker notes visible only to you
-- **Presentation mode**: Present directly from Obsidian in fullscreen
+- **Presentation mode**: Present directly from Obsidian in a frameless window
 - **Presenter view**: See current slide, next slide preview, speaker notes, and timer in one view
 - **Transitions**: Fade and slide transitions between slides
 - **Code highlighting**: Automatic syntax highlighting for code blocks
 - **Kickers**: Small text above headings using `^` syntax
-- **Live sync**: Changes in the editor automatically update the preview
+- **Live sync**: Changes in the editor automatically update the preview with incremental updates
+- **Obsidian image support**: Use `![[image.png]]` wiki-links or standard `![](image.jpg)` syntax
+- **Full-bleed images**: Edge-to-edge images with `object-fit: cover` for cinematic layouts
+- **Header/footer slots**: Customizable header and footer with left, middle, and right positions
 
 ## Markdown Syntax
 
@@ -64,6 +67,19 @@ Use `//` at the start of a line for comments that are hidden from everyone:
 // This is a comment - hidden from slide and speaker notes
 ```
 
+### Images
+
+Both Obsidian wiki-links and standard Markdown syntax are supported:
+
+```markdown
+![[my-image.png]]
+![[folder/photo.jpg]]
+![Alt text](path/to/image.png)
+![](https://example.com/image.jpg)
+```
+
+Images automatically fill their containers using `object-fit: cover` for a cinematic look.
+
 ## YAML Frontmatter
 
 Configure your presentation with YAML frontmatter:
@@ -85,6 +101,10 @@ accent3: "#f9c74f"
 
 # Header/Footer
 headerLeft: "Company Name"
+headerMiddle: "Presentation Title"
+headerRight: ""
+footerLeft: ""
+footerMiddle: ""
 footerRight: "{{slideNumber}}"
 
 # Settings
@@ -125,12 +145,15 @@ With a background image
 
 ## Themes
 
-Perspecta Slides includes four built-in themes:
+Perspecta Slides includes seven built-in themes:
 
 - **zurich** - Minimal Swiss design with clean typography
 - **tokyo** - Dark theme with vibrant neon accents
 - **berlin** - Professional theme with deep blue tones
 - **minimal** - Ultra-clean minimal design with generous whitespace
+- **helvetica** - Classic typography focus with professional design
+- **basel** - Swiss serif typography with Noto Serif font
+- **copenhagen** - Nordic elegance with Albert Sans font
 
 Set your theme in the frontmatter:
 

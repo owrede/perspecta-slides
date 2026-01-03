@@ -2,6 +2,18 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.1.4] - 2026-01-03
+
+- **New**: Frameless presentation window - clean, distraction-free presenting
+- **New**: macOS traffic light buttons appear on hover and auto-hide after 3 seconds
+- **New**: Window draggable by clicking any non-interactive area
+- **New**: Double-click thumbnail in navigator to start presentation at that slide
+- **New**: Click navigation in presentation (left third = back, right third = forward)
+- **Improved**: ESC key behavior - exits fullscreen first, then closes window
+- **Improved**: Keyboard navigation (arrows, space, PageUp/PageDown, Home/End)
+- **Improved**: Presentation window opens at optimal 16:9 size for screen
+- **Fix**: Keyboard events now work reliably in presentation window
+
 ## [0.1.3] - 2026-01-02
 
 - **New**: Basel theme - Swiss serif typography with Noto Serif font

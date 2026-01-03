@@ -16,13 +16,14 @@ import { ThumbnailNavigatorView, THUMBNAIL_VIEW_TYPE } from './src/ui/ThumbnailN
 import { InspectorPanelView, INSPECTOR_VIEW_TYPE } from './src/ui/InspectorPanel';
 import { PresentationView, PRESENTATION_VIEW_TYPE } from './src/ui/PresentationView';
 import { PerspectaSlidesSettingTab } from './src/ui/SettingsTab';
+import { PresentationWindow } from './src/ui/PresentationWindow';
 
 const SLIDES_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
 
 export default class PerspectaSlidesPlugin extends Plugin {
   settings: PerspecaSlidesSettings = DEFAULT_SETTINGS;
   parser: SlideParser = new SlideParser();
-  private presentationWindow: Window | null = null;
+  private presentationWindow: PresentationWindow | null = null;
   private currentPresentationFile: TFile | null = null;
 
   async onload() {
@@ -224,6 +225,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     // Apply content mode to parser
     this.parser.setDefaultContentMode(this.settings.defaultContentMode);
+    // Apply debug mode to parser
+    this.parser.setDebugMode(this.settings.debugSlideRendering);
   }
 
   async saveSettings() {
@@ -417,6 +420,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       });
       view.setOnSlideReorder((fromIndex, toIndex) => {
         this.reorderSlides(file, fromIndex, toIndex);
+      });
+      view.setOnStartPresentation((index) => {
+        this.startPresentationAtSlide(file, index);
       });
       // Preserve selection
       view.selectSlide(currentSlideIndex);
@@ -699,57 +705,27 @@ export default class PerspectaSlidesPlugin extends Plugin {
   }
 
   private async startPresentation(file: TFile) {
-    const content = await this.app.vault.read(file);
-    const presentation = this.parser.parse(content);
-    const theme = getTheme(presentation.frontmatter.theme || this.settings.defaultTheme);
-    const renderer = new SlideRenderer(presentation, theme);
-    const html = renderer.renderHTML();
-
-    // Write to a temporary HTML file and open with system browser
-    const tempFileName = `.perspecta-presentation-${Date.now()}.html`;
-    
+    await this.startPresentationAtSlide(file, 0);
+  }
+  
+  private async startPresentationAtSlide(file: TFile, slideIndex: number) {
     try {
-      // Clean up any existing temp files
-      const existingFile = this.app.vault.getAbstractFileByPath(tempFileName);
-      if (existingFile) {
-        await this.app.vault.delete(existingFile);
+      const content = await this.app.vault.read(file);
+      const presentation = this.parser.parse(content);
+      const theme = getTheme(presentation.frontmatter.theme || this.settings.defaultTheme);
+      
+      // Close existing presentation window if open
+      if (this.presentationWindow && this.presentationWindow.isOpen()) {
+        this.presentationWindow.close();
       }
       
-      // Create the temp file
-      await this.app.vault.create(tempFileName, html);
+      // Create new presentation window
+      this.presentationWindow = new PresentationWindow();
+      await this.presentationWindow.open(presentation, theme || null, file, this.app, slideIndex);
       
-      // Get the full file path
-      const adapter = this.app.vault.adapter as any;
-      if (adapter.getFullPath) {
-        const fullPath = adapter.getFullPath(tempFileName);
-        
-        // Use Electron's shell to open the file in default browser
-        const { shell } = require('electron');
-        await shell.openPath(fullPath);
-        
-        this.currentPresentationFile = file;
-        
-        // Store temp file path for live updates
-        (this as any)._tempPresentationPath = tempFileName;
-        (this as any)._tempPresentationFullPath = fullPath;
-        
-        // Clean up temp file after a delay (user has time to view it)
-        setTimeout(async () => {
-          try {
-            const tempFile = this.app.vault.getAbstractFileByPath(tempFileName);
-            if (tempFile) {
-              await this.app.vault.delete(tempFile);
-            }
-          } catch (e) {
-            // Ignore cleanup errors
-          }
-          (this as any)._tempPresentationPath = null;
-          (this as any)._tempPresentationFullPath = null;
-        }, 60000); // Keep for 1 minute
-      } else {
-        new Notice('Could not determine file path');
-      }
+      this.currentPresentationFile = file;
     } catch (e) {
+      console.error('Failed to start presentation:', e);
       new Notice('Could not start presentation: ' + (e as Error).message);
     }
   }

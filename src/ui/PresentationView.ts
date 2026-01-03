@@ -1,8 +1,9 @@
-import { ItemView, WorkspaceLeaf, Menu, TFile } from 'obsidian';
+import { ItemView, WorkspaceLeaf, Menu, TFile, Notice } from 'obsidian';
 import { Presentation, Slide, Theme, SlideElement } from '../types';
 import { SlideParser } from '../parser/SlideParser';
 import { SlideRenderer } from '../renderer/SlideRenderer';
 import { getTheme } from '../themes';
+import { PresentationWindow } from './PresentationWindow';
 
 export const PRESENTATION_VIEW_TYPE = 'perspecta-presentation';
 
@@ -16,6 +17,10 @@ export class PresentationView extends ItemView {
   
   private onSlideChange: ((index: number) => void) | null = null;
   private onReload: (() => void) | null = null;
+  
+  // Live update related properties
+  private sourceFile: TFile | null = null;
+  private fileWatcher: any = null;
   
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
@@ -48,17 +53,35 @@ export class PresentationView extends ItemView {
   }
   
   async loadFile(file: TFile) {
+    console.log('loadFile called with file:', file);
+    console.log('File name:', file?.name);
+    console.log('File path:', file?.path);
+    
     this.file = file;
+    console.log('Set this.file to:', this.file);
+    
     const content = await this.app.vault.read(file);
+    console.log('Read content, length:', content.length);
+    
     this.presentation = this.parser.parse(content);
+    console.log('Parsed presentation, slides count:', this.presentation.slides.length);
+    
     this.currentSlideIndex = 0;
     this.render();
+    
+    console.log('loadFile completed. this.file:', this.file, 'this.presentation:', !!this.presentation);
   }
   
-  setPresentation(presentation: Presentation, theme?: Theme) {
+  setPresentation(presentation: Presentation, theme?: Theme, sourceFile?: TFile) {
     this.presentation = presentation;
     this.currentSlideIndex = 0;
     this.theme = theme || null;
+    
+    // Set up live updates if we have a source file
+    if (sourceFile) {
+      this.setupLiveUpdates(sourceFile);
+    }
+    
     this.render();
   }
   
@@ -68,6 +91,46 @@ export class PresentationView extends ItemView {
   
   setOnReload(callback: () => void) {
     this.onReload = callback;
+  }
+  
+  private setupLiveUpdates(sourceFile: TFile) {
+    console.log('Setting up live updates for file:', sourceFile.path);
+    
+    // Clean up existing watcher
+    if (this.fileWatcher) {
+      this.fileWatcher();
+      this.fileWatcher = null;
+    }
+    
+    this.sourceFile = sourceFile;
+    
+    // Watch for file changes
+    this.fileWatcher = this.registerEvent(
+      this.app.vault.on('modify', async (file) => {
+        if (file.path === sourceFile.path) {
+          console.log('Source file modified, updating presentation...');
+          try {
+            if (!(file instanceof TFile)) return;
+            const content = await this.app.vault.read(file);
+            const newPresentation = this.parser.parse(content);
+            
+            // Update the presentation while keeping current slide
+            const currentSlide = this.currentSlideIndex;
+            this.presentation = newPresentation;
+            
+            // Make sure we don't go beyond the slide count
+            if (currentSlide >= newPresentation.slides.length) {
+              this.currentSlideIndex = newPresentation.slides.length - 1;
+            }
+            
+            this.render();
+            console.log('Presentation updated successfully');
+          } catch (error) {
+            console.error('Failed to update presentation on file change:', error);
+          }
+        }
+      })
+    );
   }
   
   goToSlide(index: number, triggerCallback: boolean = true) {
@@ -225,12 +288,18 @@ More content here...`
     // Present button
     const presentBtn = actions.createEl('button', { cls: 'mod-cta' });
     presentBtn.createSpan({ text: 'Present' });
-    presentBtn.addEventListener('click', () => this.startPresentation());
+    presentBtn.addEventListener('click', () => {
+      console.log('Present button clicked');
+      this.startPresentation();
+    });
     
     // Presenter View button
     const presenterBtn = actions.createEl('button');
     presenterBtn.createSpan({ text: 'Presenter View' });
-    presenterBtn.addEventListener('click', () => this.startPresenterView());
+    presenterBtn.addEventListener('click', () => {
+      console.log('Presenter View button clicked');
+      this.startPresenterView();
+    });
     
     // Export button
     const exportBtn = actions.createEl('button');
@@ -781,28 +850,46 @@ More content here...`
   }
   
   private async startPresentation() {
-    if (!this.presentation || !this.file) return;
+    console.log('startPresentation called');
     
-    const theme = getTheme(this.presentation.frontmatter.theme || 'zurich');
-    const renderer = new SlideRenderer(this.presentation, theme);
-    const html = renderer.renderHTML();
+    let presentation = this.presentation;
+    let file = this.file;
     
-    await this.openPresentationInBrowser(html, 'presentation');
+    // If no file is loaded in this view, try to use the active file
+    if (!file || !presentation) {
+      const activeFile = this.app.workspace.getActiveFile();
+      
+      if (activeFile && activeFile.extension === 'md') {
+        try {
+          const content = await this.app.vault.read(activeFile);
+          presentation = this.parser.parse(content);
+          file = activeFile;
+        } catch (error) {
+          console.error('Failed to load active file:', error);
+          new Notice('No presentation loaded');
+          return;
+        }
+      } else {
+        new Notice('Please open a markdown file first');
+        return;
+      }
+    }
+    
+    try {
+      const theme = getTheme(presentation.frontmatter.theme || 'zurich');
+      const presentationWindow = new PresentationWindow();
+      await presentationWindow.open(presentation, theme || null, file, this.app);
+    } catch (error) {
+      console.error('Failed to open presentation window:', error);
+      new Notice(`Failed to start presentation: ${(error as Error).message}`);
+    }
   }
   
   private async startPresenterView() {
-    if (!this.presentation || !this.file) return;
-    
-    const theme = getTheme(this.presentation.frontmatter.theme || 'zurich');
-    const renderer = new SlideRenderer(this.presentation, theme);
-    const html = renderer.renderPresenterHTML();
-    
-    await this.openPresentationInBrowser(html, 'presenter');
+    // For now, presenter view uses the same window as presentation
+    // Future: add speaker notes panel
+    await this.startPresentation();
   }
-  
-  /**
-   * Opens presentation HTML in the system browser via a temp file
-   */
   private async openPresentationInBrowser(html: string, mode: 'presentation' | 'presenter') {
     const tempFileName = `.perspecta-${mode}-${Date.now()}.html`;
     const Notice = (require('obsidian') as typeof import('obsidian')).Notice;
@@ -817,18 +904,50 @@ More content here...`
       // Create the temp file
       await this.app.vault.create(tempFileName, html);
       
-      // Get the full file path
-      const adapter = this.app.vault.adapter as any;
-      if (adapter.getFullPath) {
-        const fullPath = adapter.getFullPath(tempFileName);
+      // Get the file using the file system adapter
+      const file = this.app.vault.getAbstractFileByPath(tempFileName);
+      if (file) {
+        // Try different methods to get the file path
+        let fileUrl: string | null = null;
         
-        // Use Electron's shell to open the file in default browser
-        const { shell } = require('electron');
-        await shell.openPath(fullPath);
+        // Method 1: Try getResourcePath first
+        try {
+          fileUrl = this.app.vault.getResourcePath(file as any);
+        } catch (e) {
+          console.log('getResourcePath failed:', e);
+        }
+        
+        // Method 2: Try constructing the URL manually
+        if (!fileUrl) {
+          const adapter = this.app.vault.adapter;
+          if ('basePath' in adapter) {
+            // For local vaults
+            const basePath = (adapter as any).basePath;
+            fileUrl = `app://local/${basePath}/${tempFileName}`;
+          } else {
+            // For remote vaults, use obsidian://
+            fileUrl = `obsidian://show?file=${encodeURIComponent(tempFileName)}`;
+          }
+        }
+        
+        // Method 3: Fallback - create a data URL
+        if (!fileUrl) {
+          const blob = new Blob([html], { type: 'text/html' });
+          fileUrl = URL.createObjectURL(blob);
+          // Open in a new window
+          const newWindow = window.open(fileUrl, '_blank');
+          if (newWindow) {
+            // Clean up the blob URL after opening
+            setTimeout(() => URL.revokeObjectURL(fileUrl!), 60000);
+          }
+        } else {
+          // Open in default browser
+          window.open(fileUrl, '_blank');
+        }
         
         this.isPresenting = true;
         
-        // Clean up temp file after a delay
+        // Clean up temp file after a delay (only if we created a file)
         setTimeout(async () => {
           try {
             const tempFile = this.app.vault.getAbstractFileByPath(tempFileName);
@@ -840,9 +959,10 @@ More content here...`
           }
         }, 60000); // Keep for 1 minute
       } else {
-        new Notice('Could not determine file path');
+        new Notice('Could not create temporary file');
       }
     } catch (e) {
+      console.error('Presentation open error:', e);
       new Notice('Could not open presentation: ' + (e as Error).message);
     }
   }

@@ -10,6 +10,7 @@ export class ThumbnailNavigatorView extends ItemView {
   private selectedSlideIndex: number = 0;
   private onSlideSelect: ((index: number) => void) | null = null;
   private onSlideReorder: ((fromIndex: number, toIndex: number) => void) | null = null;
+  private onStartPresentation: ((index: number) => void) | null = null;
   private draggedIndex: number = -1;
   private currentFile: TFile | null = null;
   
@@ -68,6 +69,10 @@ export class ThumbnailNavigatorView extends ItemView {
   
   setOnSlideReorder(callback: (fromIndex: number, toIndex: number) => void) {
     this.onSlideReorder = callback;
+  }
+  
+  setOnStartPresentation(callback: (index: number) => void) {
+    this.onStartPresentation = callback;
   }
   
   selectSlide(index: number) {
@@ -197,6 +202,13 @@ export class ThumbnailNavigatorView extends ItemView {
       this.updateSelection();
       if (this.onSlideSelect) {
         this.onSlideSelect(index);
+      }
+    });
+    
+    // Double-click to start presentation at this slide
+    item.addEventListener('dblclick', () => {
+      if (this.onStartPresentation) {
+        this.onStartPresentation(index);
       }
     });
     

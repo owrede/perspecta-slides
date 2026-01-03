@@ -11,6 +11,49 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.1.4',
+		date: '2026-01-03',
+		changes: [
+			'New: Frameless presentation window - clean, distraction-free presenting',
+			'New: macOS traffic light buttons appear on hover and auto-hide after 3 seconds',
+			'New: Window draggable by clicking any non-interactive area',
+			'New: Double-click thumbnail in navigator to start presentation at that slide',
+			'New: Click navigation in presentation (left third = back, right third = forward)',
+			'Improved: ESC key behavior - exits fullscreen first, then closes window',
+			'Improved: Keyboard navigation (arrows, space, PageUp/PageDown, Home/End)',
+			'Improved: Presentation window opens at optimal 16:9 size for screen',
+			'Fix: Keyboard events now work reliably in presentation window',
+		],
+	},
+	{
+		version: '0.1.3',
+		date: '2026-01-02',
+		changes: [
+			'New: Basel theme - Swiss serif typography with Noto Serif font',
+			'New: Copenhagen theme - Nordic elegance with Albert Sans font',
+			'New: Added 2 additional iA Presenter theme translations',
+			'Fix: Fixed Berlin theme heading colors for light/dark mode',
+			'Fix: Fixed Tokyo theme dark mode color contrast',
+			'Fix: Fixed Zurich theme light/dark mode color definitions',
+			'Improved: All built-in themes now have proper light/dark mode support',
+			'Themes: Now includes 7 built-in themes',
+		],
+	},
+	{
+		version: '0.1.2',
+		date: '2026-01-02',
+		changes: [
+			'Major Fix: Unified rendering pipeline for thumbnails and preview',
+			'Major Fix: Fixed theme application inconsistencies',
+			'Major Fix: Implemented proper font scaling with --slide-unit CSS variable',
+			'New: Context-aware theme CSS generation',
+			'New: Dynamic font scaling that adapts to container size',
+			'Fix: Preview navigation now correctly updates current slide',
+			'Fix: Speaker notes hidden from thumbnails and preview',
+			'Improved: Thumbnail text scaling matches preview proportions',
+		],
+	},
+	{
 		version: '0.1.1',
 		date: '2026-01-02',
 		changes: [

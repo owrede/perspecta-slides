@@ -15,6 +15,12 @@ export interface PresentationFrontmatter {
   titleFont?: string;
   bodyFont?: string;
   
+  // Font size offset as percentage (-50 to +50, e.g., -20 makes text 20% smaller)
+  fontSizeOffset?: number;
+  
+  // Content top offset - pushes column content down (0 to 50, as percentage of slide height)
+  contentTopOffset?: number;
+  
   // Colors (overrides theme presets)
   accent1?: string;
   accent2?: string;
@@ -33,6 +39,11 @@ export interface PresentationFrontmatter {
   darkTitleText?: string;
   darkBodyText?: string;
   
+  // Dynamic background gradient (color stops for gradient across slides)
+  lightDynamicBackground?: string[]; // Array of color stops e.g., ['#ffffff', '#f0f0f0', '#e0e0e0']
+  darkDynamicBackground?: string[];  // Array of color stops for dark mode
+  useDynamicBackground?: 'light' | 'dark' | 'both' | 'none'; // Which mode uses dynamic bg
+  
   // Header/Footer
   headerLeft?: string;
   headerMiddle?: string;
@@ -50,6 +61,9 @@ export interface PresentationFrontmatter {
   showProgress?: boolean;
   showSlideNumbers?: boolean;
   transition?: 'none' | 'fade' | 'slide';
+  
+  // Appearance mode (default for all slides, can be overridden per-slide)
+  mode?: 'light' | 'dark' | 'system';
 }
 
 export interface SlideMetadata {
@@ -102,6 +116,7 @@ export type SlideLayout =
   // Image slides
   | 'full-image'
   | 'half-image'
+  | 'half-image-horizontal'
   | 'caption'
   // Grid slides
   | 'grid';

@@ -24,20 +24,38 @@ Images in Perspecta Slides fill their containers completely using `object-fit: c
 ![](https://example.com/image.jpg)
 ```
 
-## Image Metadata (Future)
+## Image Metadata
 
-Following lines after an image can specify metadata (similar to iA Presenter):
+Add metadata on lines following an image to control its appearance:
 
 ```markdown
 ![[hero-image.jpg]]
-size: cover          # cover (default) | contain
-x: center            # left | center (default) | right | 25% | 50px
-y: center            # top | center (default) | bottom | 25% | 50px
-zoom: 100%           # 100% (default) | 150% | 200%
-filter: none         # none | darken | lighten | blur | grayscale | sepia
-opacity: 100%        # 0-100%
-caption: Photo by X  # On-image caption
+size: contain        # cover (default) | contain
+x: left              # left | center (default) | right | 25%
+y: top               # top | center (default) | bottom | 25%
+filter: darken       # none | darken | lighten | blur | grayscale | sepia
+opacity: 80%         # 0-100%
+caption: Photo by X  # Caption text (stored for future use)
 ```
+
+### Size Options
+
+- **cover** (default): Image fills container completely, cropping if needed
+- **contain**: Image fits within container, may have letterboxing
+
+### Positioning
+
+Use `x` and `y` to control the focal point:
+- Keywords: `left`, `center`, `right` for x; `top`, `center`, `bottom` for y
+- Percentages: `25%`, `50%`, `75%`, etc.
+
+### Filters
+
+- `darken`: Reduces brightness to 60%
+- `lighten`: Increases brightness to 140%
+- `blur`: Applies 4px gaussian blur
+- `grayscale`: Converts to black and white
+- `sepia`: Applies sepia tone
 
 ## Image Layouts
 
@@ -135,16 +153,18 @@ Content here
 }
 ```
 
-## Phase 1 Implementation (Current)
+## Implementation Status
 
-1. ✅ Support standard markdown image syntax `![](path)`
-2. 🔄 Add Obsidian `![[image]]` syntax support
-3. 🔄 Ensure `full-image` layout fills entire slide with `object-fit: cover`
-4. ⏳ Basic x/y positioning metadata
+### Completed
+- ✅ Standard markdown image syntax `![](path)`
+- ✅ Obsidian `![[image]]` wiki-link syntax
+- ✅ Full-image layout fills entire slide with `object-fit: cover`
+- ✅ Size property: `cover` (default) or `contain`
+- ✅ X/Y positioning metadata
+- ✅ Filter effects (darken, lighten, blur, grayscale, sepia)
+- ✅ Opacity control
+- ✅ Caption metadata
 
-## Phase 2 (Future)
-
+### Future Enhancements
 - Zoom control
-- Filter effects (darken, lighten, blur, etc.)
-- On-image captions
 - Image cropping UI in inspector

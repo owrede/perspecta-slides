@@ -6,8 +6,8 @@ import { Theme, ThemeTemplate, ThemePreset } from '../../types';
 
 const zurichTemplate: ThemeTemplate = {
   Name: "Zurich",
-  Version: "1.0.0",
-  Author: "Perspecta Slides",
+  Version: "1.0.2",
+  Author: "iA",
   ShortDescription: "Minimal Swiss design",
   LongDescription: "Clean, minimal Swiss design.\n- Fixed size for all headline levels\n- Simple color background\n- Default white on black\n- Default font: Helvetica",
   Css: "zurich.css",
@@ -21,12 +21,12 @@ const zurichPresets: ThemePreset[] = [{
   TitleFont: "Helvetica Neue, Helvetica, Arial, sans-serif",
   BodyFont: "Helvetica Neue, Helvetica, Arial, sans-serif",
   Appearance: "light",
-  DarkBodyTextColor: "#333333",
-  LightBodyTextColor: "#ffffff",
-  DarkTitleTextColor: "#000000",
-  LightTitleTextColor: "#ffffff",
-  DarkBackgroundColor: "#ffffff",
-  LightBackgroundColor: "#000000",
+  DarkBodyTextColor: "#ffffff",
+  LightBodyTextColor: "#333333",
+  DarkTitleTextColor: "#ffffff",
+  LightTitleTextColor: "#000000",
+  DarkBackgroundColor: "#000000",
+  LightBackgroundColor: "#ffffff",
   DarkAccent1: "#000000",
   LightAccent1: "#ffffff",
   Accent1: "#000000",
@@ -100,16 +100,16 @@ const zurichCSS = `
   justify-content: center;
   align-items: center;
   text-align: center;
-  color: var(--light-background);
+  color: var(--dark-title-text);
 }
 
 /* Cycling section colors */
-.slide:nth-child(6n+1).section-container { background: var(--accent1) !important; }
-.slide:nth-child(6n+2).section-container { background: var(--accent2) !important; }
-.slide:nth-child(6n+3).section-container { background: var(--accent3) !important; color: var(--dark-background); }
-.slide:nth-child(6n+4).section-container { background: var(--accent4) !important; color: var(--dark-background); }
-.slide:nth-child(6n+5).section-container { background: var(--accent5) !important; color: var(--dark-background); }
-.slide:nth-child(6n+6).section-container { background: var(--accent6) !important; }
+.slide:nth-child(6n+1).section-container { background: var(--accent1) !important; color: var(--light-title-text); }
+.slide:nth-child(6n+2).section-container { background: var(--accent2) !important; color: var(--light-title-text); }
+.slide:nth-child(6n+3).section-container { background: var(--accent3) !important; color: var(--dark-title-text); }
+.slide:nth-child(6n+4).section-container { background: var(--accent4) !important; color: var(--dark-title-text); }
+.slide:nth-child(6n+5).section-container { background: var(--accent5) !important; color: var(--dark-title-text); }
+.slide:nth-child(6n+6).section-container { background: var(--accent6) !important; color: var(--light-title-text); }
 
 /* Kicker styling */
 .kicker {
@@ -173,8 +173,8 @@ th {
 
 const tokyoTemplate: ThemeTemplate = {
   Name: "Tokyo",
-  Version: "1.0.0",
-  Author: "Perspecta Slides",
+  Version: "1.0.2",
+  Author: "iA",
   ShortDescription: "Neon dark aesthetic",
   LongDescription: "Dark theme with vibrant neon accents.\n- Different sizes for headlines\n- Tokyo Metro line gradient backgrounds\n- Default white on dynamic color\n- System Font",
   Css: "tokyo.css",
@@ -276,7 +276,7 @@ const tokyoCSS = `
   justify-content: center;
   align-items: center;
   text-align: center;
-  color: var(--light-title-text);
+  color: var(--dark-title-text);
   position: relative;
   z-index: 1;
 }
@@ -411,16 +411,13 @@ const berlinCSS = `
   justify-content: center;
   align-items: center;
   text-align: center;
-  color: white;
 }
 
 .layout-cover h1, .layout-cover h2,
 .layout-title h1, .layout-title h2 {
   font-size: clamp(2.5rem, 5vw + 1.5vh, 6rem);
   font-weight: 800;
-  color: white !important;
   background: none;
-  -webkit-text-fill-color: white;
 }
 
 /* Section slides */
@@ -432,7 +429,6 @@ const berlinCSS = `
   justify-content: center;
   align-items: center;
   text-align: center;
-  color: white;
 }
 
 /* Kicker */
@@ -474,7 +470,7 @@ table {
 
 th {
   background: var(--accent1);
-  color: white;
+  color: var(--light-title-text);
 }
 
 /* Progress bar */
@@ -586,7 +582,6 @@ const minimalCSS = `
   justify-content: center;
   align-items: center;
   text-align: center;
-  color: white;
 }
 
 /* Kicker - subtle */
@@ -676,8 +671,8 @@ code {
 
 const helveticaTemplate: ThemeTemplate = {
   Name: "Helvetica",
-  Version: "1.0.0",
-  Author: "Perspecta Slides",
+  Version: "1.0.2",
+  Author: "iA",
   ShortDescription: "Classic typography focus",
   LongDescription: "Classic Helvetica typography with clean design.\n- Professional typography focus\n- Balanced contrast\n- Default font: Helvetica Neue\n- Suitable for business presentations",
   Css: "helvetica.css",
@@ -686,26 +681,48 @@ const helveticaTemplate: ThemeTemplate = {
   CssClasses: "helvetica-typography"
 };
 
-const helveticaPresets: ThemePreset[] = [{
-  Name: "Default",
-  TitleFont: "Helvetica Neue, Helvetica, Arial, sans-serif",
-  BodyFont: "Helvetica Neue, Helvetica, Arial, sans-serif",
-  Appearance: "light",
-  DarkBodyTextColor: "#000000",
-  LightBodyTextColor: "#ffffff",
-  DarkTitleTextColor: "#000000",
-  LightTitleTextColor: "#ffffff",
-  DarkBackgroundColor: "#ffffff",
-  LightBackgroundColor: "#1a1a1a",
-  DarkAccent1: "#0066cc",
-  LightAccent1: "#0066cc",
-  Accent1: "#0066cc",
-  Accent2: "#28a745",
-  Accent3: "#ffc107",
-  Accent4: "#dc3545",
-  Accent5: "#6f42c1",
-  Accent6: "#fd7e14"
-}];
+const helveticaPresets: ThemePreset[] = [
+  {
+    Name: "Default",
+    TitleFont: "Helvetica Neue, Helvetica, Arial, sans-serif",
+    BodyFont: "Helvetica Neue, Helvetica, Arial, sans-serif",
+    Appearance: "light",
+    DarkBodyTextColor: "#ffffff",
+    LightBodyTextColor: "#1a1a1a",
+    DarkTitleTextColor: "#ffffff",
+    LightTitleTextColor: "#000000",
+    DarkBackgroundColor: "#1a1a1a",
+    LightBackgroundColor: "#ffffff",
+    DarkAccent1: "#0066cc",
+    LightAccent1: "#0066cc",
+    Accent1: "#0066cc",
+    Accent2: "#28a745",
+    Accent3: "#ffc107",
+    Accent4: "#dc3545",
+    Accent5: "#6f42c1",
+    Accent6: "#fd7e14"
+  },
+  {
+    Name: "Dark",
+    TitleFont: "Helvetica Neue, Helvetica, Arial, sans-serif",
+    BodyFont: "Helvetica Neue, Helvetica, Arial, sans-serif",
+    Appearance: "dark",
+    DarkBodyTextColor: "#ffffff",
+    LightBodyTextColor: "#1a1a1a",
+    DarkTitleTextColor: "#ffffff",
+    LightTitleTextColor: "#000000",
+    DarkBackgroundColor: "#1a1a1a",
+    LightBackgroundColor: "#ffffff",
+    DarkAccent1: "#0066cc",
+    LightAccent1: "#0066cc",
+    Accent1: "#0066cc",
+    Accent2: "#28a745",
+    Accent3: "#ffc107",
+    Accent4: "#dc3545",
+    Accent5: "#6f42c1",
+    Accent6: "#fd7e14"
+  }
+];
 
 const helveticaCSS = `
 /* Helvetica Theme - Classic Typography Focus */
@@ -813,13 +830,20 @@ tr:nth-child(even) td {
   background: rgba(255, 255, 255, 0.02);
 }
 
-/* Enhanced section layout */
 .layout-section .slide-body {
   background: var(--accent1);
-  color: var(--light-body-text);
+  color: var(--dark-body-text);
   margin: -5%;
   padding: 5%;
   border-radius: 0;
+}
+
+.light .layout-section .slide-body {
+  color: var(--dark-body-text);
+}
+
+.dark .layout-section .slide-body {
+  color: var(--dark-body-text);
 }
 
 /* Progress bar */
@@ -841,13 +865,13 @@ tr:nth-child(even) td {
 /* Image captions */
 figcaption {
   font-size: 0.9rem;
-  color: var(--dark-body-text);
+  color: var(--light-body-text);
   opacity: 0.8;
   font-style: italic;
 }
 
 .dark figcaption {
-  color: var(--light-body-text);
+  color: var(--dark-body-text);
 }
 `;
 
@@ -857,10 +881,10 @@ figcaption {
 
 const baselTemplate: ThemeTemplate = {
   Name: "Basel",
-  Version: "1.0.0",
-  Author: "Perspecta Slides",
-  ShortDescription: "Swiss serif typography",
-  LongDescription: "Classic Swiss design with Noto Serif typography.\n- Different sizes for headlines\n- Simple color background\n- Default white on black\n- Default font: Noto Serif",
+  Version: "1.0.2",
+  Author: "iA",
+  ShortDescription: "Swiss Serif Typography",
+  LongDescription: "Professional theme with serif typography.\n- Different sizes for headlines\n- Elegant Swiss style\n- Default white on charcoal\n- Default font: Noto Serif",
   Css: "basel.css",
   TitleFont: "Noto Serif",
   BodyFont: "Noto Serif",
@@ -871,15 +895,15 @@ const baselPresets: ThemePreset[] = [{
   Name: "Default",
   TitleFont: "Noto Serif, serif",
   BodyFont: "Noto Serif, serif",
-  Appearance: "light",
-  DarkBodyTextColor: "#000000",
-  LightBodyTextColor: "#ffffff",
-  DarkTitleTextColor: "#000000",
-  LightTitleTextColor: "#ffffff",
-  DarkBackgroundColor: "#ffffff",
-  LightBackgroundColor: "#000000",
-  DarkAccent1: "#000000",
-  LightAccent1: "#ffffff",
+  Appearance: "dark",
+  DarkBodyTextColor: "#ffffff",
+  LightBodyTextColor: "#333333",
+  DarkTitleTextColor: "#ffffff",
+  LightTitleTextColor: "#111111",
+  DarkBackgroundColor: "#000000",
+  LightBackgroundColor: "#ffffff",
+  DarkAccent1: "#FF3333",
+  LightAccent1: "#FF3333",
   Accent1: "#FF3333",
   Accent2: "#43aa8b",
   Accent3: "#f9c74f",
@@ -887,16 +911,16 @@ const baselPresets: ThemePreset[] = [{
   Accent5: "#f8961e",
   Accent6: "#577590"
 }, {
-  Name: "Dark",
+  Name: "Light",
   TitleFont: "Noto Serif, serif",
   BodyFont: "Noto Serif, serif",
-  Appearance: "dark",
-  DarkBodyTextColor: "#000000",
-  LightBodyTextColor: "#ffffff",
-  DarkTitleTextColor: "#000000",
-  LightTitleTextColor: "#ffffff",
-  DarkBackgroundColor: "#ffffff",
-  LightBackgroundColor: "#000000",
+  Appearance: "light",
+  DarkBodyTextColor: "#ffffff",
+  LightBodyTextColor: "#333333",
+  DarkTitleTextColor: "#ffffff",
+  LightTitleTextColor: "#111111",
+  DarkBackgroundColor: "#000000",
+  LightBackgroundColor: "#ffffff",
   DarkAccent1: "#000000",
   LightAccent1: "#ffffff",
   Accent1: "#FF3333",
@@ -964,12 +988,12 @@ const baselCSS = `
   justify-content: center;
   align-items: center;
   text-align: center;
-  color: white;
+
 }
 
 .layout-cover h1, .layout-cover h2,
 .layout-title h1, .layout-title h2 {
-  color: white !important;
+
 }
 
 /* Code styling */
@@ -1007,13 +1031,13 @@ code {
 
 const copenhagenTemplate: ThemeTemplate = {
   Name: "Copenhagen",
-  Version: "1.0.0",
-  Author: "Perspecta Slides",
-  ShortDescription: "Nordic elegance",
-  LongDescription: "Nordic design with Albert Sans typography.\n- Different sizes for headlines\n- Simple color background\n- Default white on black\n- Default font: Albert Sans",
+  Version: "1.0.2",
+  Author: "iA",
+  ShortDescription: "Nordic Minimalist Design",
+  LongDescription: "Clean, light design with blue accents.\n- Mixed font sizes\n- Generous whitespace\n- Default blue on light gray\n- Default font: IBM Plex Sans",
   Css: "copenhagen.css",
-  TitleFont: "Albert Sans",
-  BodyFont: "Albert Sans",
+  TitleFont: "IBM Plex Sans",
+  BodyFont: "IBM Plex Sans",
   CssClasses: "variable-size-headings"
 };
 
@@ -1021,21 +1045,40 @@ const copenhagenPresets: ThemePreset[] = [{
   Name: "Default",
   TitleFont: "Albert Sans, sans-serif",
   BodyFont: "Albert Sans, sans-serif",
-  Appearance: "light",
-  DarkBodyTextColor: "rgba(0, 0, 0, 0.7)",
-  LightBodyTextColor: "rgba(255, 255, 255, 0.9)",
-  DarkTitleTextColor: "rgba(0, 0, 0, 0.7)",
-  LightTitleTextColor: "rgba(255, 255, 255, 0.9)",
-  DarkBackgroundColor: "#ffffff",
-  LightBackgroundColor: "#6E9075",
-  DarkAccent1: "#E1EBE3",
-  LightAccent1: "#6E9075",
-  Accent1: "#f94144",
+  Appearance: "dark",
+  DarkBodyTextColor: "rgba(255, 255, 255, 0.9)",
+  LightBodyTextColor: "rgba(0, 0, 0, 0.7)",
+  DarkTitleTextColor: "rgba(255, 255, 255, 0.9)",
+  LightTitleTextColor: "rgba(0, 0, 0, 0.7)",
+  DarkBackgroundColor: "#6E9075",
+  LightBackgroundColor: "#ffffff",
+  DarkAccent1: "#6E9075",
+  LightAccent1: "#E1EBE3",
+  Accent1: "#6E9075",
   Accent2: "#43aa8b",
   Accent3: "#f9c74f",
   Accent4: "#90be6d",
   Accent5: "#f8961e",
   Accent6: "#577590"
+}, {
+  Name: "Light",
+  TitleFont: "Albert Sans, sans-serif",
+  BodyFont: "Albert Sans, sans-serif",
+  Appearance: "light",
+  DarkBodyTextColor: "rgba(255, 255, 255, 0.9)",
+  LightBodyTextColor: "rgba(0, 0, 0, 0.7)",
+  DarkTitleTextColor: "rgba(255, 255, 255, 0.9)",
+  LightTitleTextColor: "rgba(0, 0, 0, 0.7)",
+  DarkBackgroundColor: "#6E9075",
+  LightBackgroundColor: "#ffffff",
+  DarkAccent1: "#6E9075",
+  LightAccent1: "#E1EBE3",
+  Accent1: "#6E9075",
+  Accent2: "#333333",
+  Accent3: "#666666",
+  Accent4: "#999999",
+  Accent5: "#CCCCCC",
+  Accent6: "#EEEEEE"
 }];
 
 const copenhagenCSS = `
@@ -1121,12 +1164,12 @@ h4 + h5 {
   justify-content: center;
   align-items: center;
   text-align: center;
-  color: white;
+
 }
 
 .layout-cover h1, .layout-cover h2,
 .layout-title h1, .layout-title h2 {
-  color: white !important;
+
 }
 
 /* Code styling */
@@ -1158,6 +1201,411 @@ code {
 }
 `;
 
+
+// ============================================
+// GARAMOND THEME
+// ============================================
+
+const garamondTemplate: ThemeTemplate = {
+  Name: "Garamond",
+  Version: "1.0.3",
+  Author: "iA",
+  ShortDescription: "Classic Book Design",
+  LongDescription: "Inspired by Renaissance typography, this style emphasizes readability, elegance, and proportion, echoing the traditions of classic printed books.",
+  Css: "garamond.css",
+  TitleFont: "iA Garamond",
+  BodyFont: "iA Garamond",
+  CssClasses: "variable-size-headings"
+};
+
+const garamondPresets: ThemePreset[] = [
+  {
+    Name: "Light",
+    TitleFont: "iA Garamond",
+    BodyFont: "iA Garamond",
+    DarkBodyTextColor: "#ffffff",
+    LightBodyTextColor: "#111111",
+    DarkTitleTextColor: "#ffffff",
+    LightTitleTextColor: "#000000",
+    DarkBackgroundColor: "#000000",
+    LightBackgroundColor: "#ffffff",
+    Appearance: "light",
+    Accent1: "#FF3333",
+    Accent2: "#43aa8b",
+    Accent3: "#f9c74f",
+    Accent4: "#90be6d",
+    Accent5: "#f8961e",
+    Accent6: "#577590"
+  },
+  {
+    Name: "Dark",
+    TitleFont: "iA Garamond",
+    BodyFont: "iA Garamond",
+    DarkBodyTextColor: "#ffffff",
+    LightBodyTextColor: "#111111",
+    DarkTitleTextColor: "#ffffff",
+    LightTitleTextColor: "#000000",
+    DarkBackgroundColor: "#000000",
+    LightBackgroundColor: "#ffffff",
+    Appearance: "dark",
+    Accent1: "#FF3333",
+    Accent2: "#333333",
+    Accent3: "#666666",
+    Accent4: "#999999",
+    Accent5: "#cccccc",
+    Accent6: "#eeeeee"
+  }
+];
+
+const garamondCSS = `
+/* Garamond Theme - Classic Book Design */
+@font-face {
+  font-family: 'iA Garamond';
+  src: url('https://ia.net/fonts/iAGaramond.woff2') format('woff2');
+  font-weight: 400 700;
+}
+
+.slide { font-family: 'iA Garamond', serif; }
+
+.slide h1, .slide h2, .slide h3 {
+  font-family: 'iA Garamond', serif;
+  font-weight: 400;
+}
+
+.layout-cover h1, .layout-title h1 {
+  font-size: 4.5rem;
+  letter-spacing: -0.02em;
+}
+
+.section-container .slide-content {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+`;
+
+// ============================================
+// LA THEME
+// ============================================
+
+const laTemplate: ThemeTemplate = {
+  Name: "LA",
+  Version: "1.0.2",
+  Author: "iA",
+  ShortDescription: "West Coast vibes",
+  LongDescription: "Bold, sunny, and distinct design inspired by Los Angeles.\n- Different sizes for headlines\n- Palm Tree and Sunset colors\n- Default font: Roboto Slab",
+  Css: "la.css",
+  TitleFont: "Roboto Slab",
+  BodyFont: "Roboto Slab",
+  CssClasses: "variable-size-headings"
+};
+
+const laPresets: ThemePreset[] = [
+  {
+    Name: "Default",
+    TitleFont: "Roboto Slab",
+    BodyFont: "Roboto Slab",
+    Appearance: "light",
+    DarkBodyTextColor: "#ffffff",
+    LightBodyTextColor: "#ffffff",
+    DarkTitleTextColor: "#ffffff",
+    LightTitleTextColor: "#ffffff",
+    DarkBackgroundColor: "#1a1a1a",
+    LightBackgroundColor: "#f94144",
+    DarkAccent1: "#ffffff",
+    LightAccent1: "#ffffff",
+    Accent1: "#f94144",
+    Accent2: "#43aa8b",
+    Accent3: "#f9c74f",
+    Accent4: "#90be6d",
+    Accent5: "#f8961e",
+    Accent6: "#577590",
+    LightBgGradient: ["#F9C74F", "#F8961E", "#F3722C", "#F94144"],
+    DarkBgGradient: ["#F94144", "#F3722C", "#F8961E", "#F9C74F"]
+  }
+];
+
+const laCSS = `
+/* LA Theme - West Coast Vibes */
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@300;400;700;900&display=swap');
+
+.slide { font-family: 'Roboto Slab', serif; }
+.slide h1, .slide h2, .slide h3 { font-weight: 900; }
+
+.cover-container, .title-container {
+  border-top: 4px solid var(--accent1);
+  border-bottom: 4px solid var(--accent1);
+  padding: 2rem 0;
+}
+`;
+
+// ============================================
+// MILANO THEME
+// ============================================
+
+const milanoTemplate: ThemeTemplate = {
+  Name: "Milano",
+  Version: "1.0.2",
+  Author: "iA",
+  ShortDescription: "High fashion aesthetic",
+  LongDescription: "Elegant and sophisticated design inspired by Italian fashion.\n- High contrast serif typography\n- Minimalist grid\n- Default white on dynamic color\n- Default font: Playfair Display",
+  Css: "milano.css",
+  TitleFont: "Playfair Display",
+  BodyFont: "Playfair Display",
+  CssClasses: "variable-size-headings"
+};
+
+const milanoPresets: ThemePreset[] = [
+  {
+    Name: "Default",
+    TitleFont: "Playfair Display",
+    BodyFont: "Playfair Display",
+    Appearance: "light",
+    DarkBodyTextColor: "#ffffff",
+    LightBodyTextColor: "#ffffff",
+    DarkTitleTextColor: "#ffffff",
+    LightTitleTextColor: "#ffffff",
+    DarkBackgroundColor: "#1a1a1a",
+    LightBackgroundColor: "#000000",
+    DarkAccent1: "#ffffff",
+    LightAccent1: "#ffffff",
+    Accent1: "#f94144",
+    Accent2: "#43aa8b",
+    Accent3: "#f9c74f",
+    Accent4: "#90be6d",
+    Accent5: "#f8961e",
+    Accent6: "#577590",
+    LightBgGradient: ["#79BCD9", "#75C8AE", "#5A3D2B", "#D2AB1E", "#F4A127", "#E5771E", "#BF3131"],
+    DarkBgGradient: ["#BF3131", "#E5771E", "#F4A127", "#D2AB1E", "#5A3D2B", "#75C8AE", "#79BCD9"]
+  }
+];
+
+const milanoCSS = `
+/* Milano Theme - High Fashion Aesthetic */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&display=swap');
+
+.slide { font-family: 'Playfair Display', serif; }
+.slide h1, .slide h2, .slide h3 { font-weight: 900; }
+
+.layout-cover div, .layout-title div {
+  border-bottom: 2px solid var(--accent1);
+  border-top: 2px solid var(--accent1);
+  padding: 1rem 0;
+}
+
+[class*='layout-'] h1 + h2, [class*='layout-'] h1 + h3 {
+  font-style: italic;
+}
+`;
+
+
+// ============================================
+// NEW YORK THEME
+// ============================================
+
+const newYorkTemplate: ThemeTemplate = {
+  Name: "New York",
+  Version: "1.0.2",
+  Author: "iA",
+  ShortDescription: "Concrete jungle where dreams are made of",
+  LongDescription: "Bold and energetic design inspired by NYC.\n- Different sizes for headlines\n- Dynamic yellow and black\n- Default font: Inter",
+  Css: "newyork.css",
+  TitleFont: "Inter",
+  BodyFont: "Inter",
+  CssClasses: "variable-size-headings"
+};
+
+const newYorkPresets: ThemePreset[] = [
+  {
+    Name: "Default",
+    TitleFont: "Inter",
+    BodyFont: "Inter",
+    Appearance: "light",
+    DarkBodyTextColor: "#ffffff",
+    LightBodyTextColor: "#111111",
+    DarkTitleTextColor: "#FFC400",
+    LightTitleTextColor: "#000000",
+    DarkBackgroundColor: "#000000",
+    LightBackgroundColor: "#ffffff",
+    DarkAccent1: "#FFC400",
+    LightAccent1: "#FFC400",
+    Accent1: "#f94144",
+    Accent2: "#43aa8b",
+    Accent3: "#f9c74f",
+    Accent4: "#90be6d",
+    Accent5: "#f8961e",
+    Accent6: "#577590"
+  }
+];
+
+const newYorkCSS = `
+/* New York Theme - Urban Energy */
+.slide { font-family: 'Inter', sans-serif; }
+.slide h1, .slide h2, .slide h3 { font-weight: 800; text-transform: uppercase; }
+
+.cover-container, .title-container, .section-container {
+  background-color: var(--accent1) !important;
+}
+`;
+
+// ============================================
+// PARIS THEME
+// ============================================
+
+const parisTemplate: ThemeTemplate = {
+  Name: "Paris",
+  Version: "1.0.2",
+  Author: "iA",
+  ShortDescription: "City of Light",
+  LongDescription: "Classic and classy design with elegant typography.\n- Different sizes for headlines\n- Subtle color background\n- Default font: Literata",
+  Css: "paris.css",
+  TitleFont: "Literata",
+  BodyFont: "Literata",
+  CssClasses: "variable-size-headings"
+};
+
+const parisPresets: ThemePreset[] = [
+  {
+    Name: "Default",
+    TitleFont: "Literata",
+    BodyFont: "Literata",
+    Appearance: "light",
+    DarkBodyTextColor: "#ffffff",
+    LightBodyTextColor: "#11100E",
+    DarkTitleTextColor: "#ffffff",
+    LightTitleTextColor: "#11100E",
+    DarkBackgroundColor: "#11100E",
+    LightBackgroundColor: "#EBE7E7",
+    DarkAccent1: "#6A6256",
+    LightAccent1: "#EBE7E7",
+    Accent1: "#6A6256",
+    Accent2: "#43aa8b",
+    Accent3: "#f9c74f",
+    Accent4: "#90be6d",
+    Accent5: "#f8961e",
+    Accent6: "#577590"
+  }
+];
+
+const parisCSS = `
+/* Paris Theme - Classic & Classy */
+@import url('https://fonts.googleapis.com/css2?family=Literata:ital,wght@0,300;0,400;0,700;1,400&display=swap');
+
+.slide { font-family: 'Literata', serif; }
+.slide h1 { text-transform: uppercase; font-weight: 700; }
+
+.section-container {
+  background-color: var(--accent1) !important;
+
+}
+`;
+
+// ============================================
+// SAN FRANCISCO THEME
+// ============================================
+
+const sanFranciscoTemplate: ThemeTemplate = {
+  Name: "San Francisco",
+  Version: "1.0.2",
+  Author: "iA",
+  ShortDescription: "Tech and Fog",
+  LongDescription: "Colorful, bold, and different design.\n- High-tech aesthetic\n- San Francisco Metro line gradients\n- Default white on black\n- Default font: Inter",
+  Css: "sanfrancisco.css",
+  TitleFont: "Inter",
+  BodyFont: "Inter",
+  CssClasses: "variable-size-headings"
+};
+
+const sanFranciscoPresets: ThemePreset[] = [
+  {
+    Name: "Default",
+    TitleFont: "Inter",
+    BodyFont: "Inter",
+    Appearance: "light",
+    DarkBodyTextColor: "#ffffff",
+    LightBodyTextColor: "#ffffff",
+    DarkTitleTextColor: "#ffffff",
+    LightTitleTextColor: "#ffffff",
+    DarkBackgroundColor: "transparent",
+    LightBackgroundColor: "transparent",
+    DarkAccent1: "#ffffff",
+    LightAccent1: "#ffffff",
+    Accent1: "#f94144",
+    Accent2: "#43aa8b",
+    Accent3: "#f9c74f",
+    Accent4: "#90be6d",
+    Accent5: "#f8961e",
+    Accent6: "#577590",
+    LightBgGradient: ["#00A8FF", "#2E3BFF", "#5900FF", "#8300FF", "#BC00FF", "#E600DE", "#FF08A1", "#FF3852", "#FF5A19", "#FF8300", "#FFC400"],
+    DarkBgGradient: ["#004B72", "#1C238D", "#320090", "#51009D", "#67008C", "#73006F", "#7D004E", "#7C0010", "#9E2D00", "#A45400", "#9D7900"]
+  }
+];
+
+const sanFranciscoCSS = `
+/* San Francisco Theme - Tech Bold */
+.slide { font-family: 'Inter', sans-serif; }
+.slide h1, .slide h2, .slide h3 { font-weight: 900; }
+
+.cover-container, .title-container {
+  background: linear-gradient(135deg, var(--accent1), var(--accent2)) !important;
+}
+`;
+
+
+// ============================================
+// VANCOUVER THEME
+// ============================================
+
+const vancouverTemplate: ThemeTemplate = {
+  Name: "Vancouver",
+  Version: "1.0.2",
+  Author: "iA",
+  ShortDescription: "Earthy and fresh",
+  LongDescription: "Natural and organic design with Montserrat typography.\n- Different sizes for headlines\n- Dynamic earthy color backgrounds\n- Default font: Montserrat",
+  Css: "vancouver.css",
+  TitleFont: "Montserrat",
+  BodyFont: "Montserrat",
+  CssClasses: "variable-size-headings"
+};
+
+const vancouverPresets: ThemePreset[] = [
+  {
+    Name: "Default",
+    TitleFont: "Montserrat",
+    BodyFont: "Montserrat",
+    Appearance: "light",
+    DarkBodyTextColor: "#ffffff",
+    LightBodyTextColor: "#222222",
+    DarkTitleTextColor: "#ffffff",
+    LightTitleTextColor: "#000000",
+    DarkBackgroundColor: "#222222",
+    LightBackgroundColor: "#f4f4f4",
+    DarkAccent1: "#A7987C",
+    LightAccent1: "#A7987C",
+    Accent1: "#f94144",
+    Accent2: "#43aa8b",
+    Accent3: "#f9c74f",
+    Accent4: "#90be6d",
+    Accent5: "#f8961e",
+    Accent6: "#577590",
+    LightBgGradient: ["#CFCAC7", "#D7C7C4", "#BAC8C1", "#C9D1BF", "#EADFCE", "#E2E2E2"],
+    DarkBgGradient: ["#4D4036", "#72483E", "#739382", "#8EA079", "#A6916A", "#848484"]
+  }
+];
+
+const vancouverCSS = `
+/* Vancouver Theme - Natural & Organic */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300;0,400;0,700;1,400&display=swap');
+
+.slide { font-family: 'Montserrat', sans-serif; }
+.slide h1, .slide h2 { font-weight: 700; }
+
+.section-container {
+  background-color: var(--accent1) !important;
+
+}
+`;
+
 // ============================================
 // EXPORTS
 // ============================================
@@ -1180,6 +1628,13 @@ export const builtInThemes: Record<string, Theme> = {
   helvetica: createBuiltInTheme(helveticaTemplate, helveticaPresets, helveticaCSS),
   basel: createBuiltInTheme(baselTemplate, baselPresets, baselCSS),
   copenhagen: createBuiltInTheme(copenhagenTemplate, copenhagenPresets, copenhagenCSS),
+  garamond: createBuiltInTheme(garamondTemplate, garamondPresets, garamondCSS),
+  la: createBuiltInTheme(laTemplate, laPresets, laCSS),
+  milano: createBuiltInTheme(milanoTemplate, milanoPresets, milanoCSS),
+  newyork: createBuiltInTheme(newYorkTemplate, newYorkPresets, newYorkCSS),
+  paris: createBuiltInTheme(parisTemplate, parisPresets, parisCSS),
+  sanfrancisco: createBuiltInTheme(sanFranciscoTemplate, sanFranciscoPresets, sanFranciscoCSS),
+  vancouver: createBuiltInTheme(vancouverTemplate, vancouverPresets, vancouverCSS),
 };
 
 export function getBuiltInTheme(name: string): Theme | undefined {

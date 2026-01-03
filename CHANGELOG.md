@@ -2,6 +2,37 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.1.8] - 2026-01-03
+
+- **New**: Support for 6 accent colors (Accent 1-6) with unified color pickers
+- **New**: Support for dynamic background gradients in both light and dark modes
+- **Themes**: Added 7 additional built-in themes (Garamond, LA, Milano, New York, Paris, San Francisco, Vancouver)
+- **Fix**: Resolved issue where font colors were not applying to Helvetica and Swiss themes
+- **Improved**: Theme-specific CSS classes correctly applied to presentation body for consistent typography
+- **Improved**: Automatic selection of active appearance mode (Light/Dark) in Inspector panel
+- **Improved**: Refactored all 12 built-in themes to use CSS variables for robust customization
+- **Fix**: Corrected light/dark mode color mapping for Basel, Copenhagen, and Helvetica themes
+
+## [0.1.7] - 2026-01-03
+
+- **New**: `half-image` layout - vertical split with image on left or right (based on content order)
+- **New**: `half-image-horizontal` layout - horizontal split with image on top or bottom
+- **New**: Image position auto-detection: image first = image on left/top, text first = image on right/bottom
+- **New**: Image metadata parsing - add properties on lines after images
+- **New**: `size: cover | contain` - control how images fill their container
+- **New**: `x:` and `y:` positioning - control image focal point (left/center/right, top/center/bottom, or %)
+- **New**: `filter:` effects - darken, lighten, blur, grayscale, sepia
+- **New**: `opacity:` control (0-100%)
+- **Improved**: Half-image layouts now use edge-to-edge images with exact 50% splits
+- **Improved**: Inspector panel now has 4 image layout buttons (Full, Caption, Half, Half horiz.)
+
+## [0.1.6] - 2026-01-03
+
+- **New**: Global font size offset setting (-50% to +50%) for scaling all text
+- **New**: Content top offset setting (0-50%) to push column content down
+- **New**: Reorganized Inspector tabs: Presentation, Design (theme/typography/colors), Slide (per-slide layout)
+- **Improved**: Slide header now has proper margin-bottom spacing from headline
+
 ## [0.1.5] - 2026-01-03
 
 - **Improved**: Presentation window now uses incremental updates - only redraws when displayed slide changes

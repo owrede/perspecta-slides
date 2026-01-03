@@ -93,6 +93,8 @@ theme: zurich
 # Typography
 titleFont: Helvetica
 bodyFont: Georgia
+fontSizeOffset: 0     # Percentage: -20 = 20% smaller, 10 = 10% larger
+contentTopOffset: 0   # Percentage: push column content down (0-20%)
 
 # Colors
 accent1: "#000000"
@@ -134,14 +136,15 @@ With a background image
 
 ### Available Layouts
 
-- `default` - Standard content slide
+- `default` - Standard content slide (auto-detects columns)
 - `title` - Centered title slide
-- `section` - Section divider (dark background)
-- `v-split` - Vertical split (text + image side by side)
-- `h-split` - Horizontal split (text on top, image below)
-- `caption` - Image with caption below
-- `full-image` - Full-bleed image
-- `grid` - Grid layout for multiple images
+- `section` - Section divider
+- `cover` - Opening/closing slide
+- `half-image` - Vertical split (image + text side by side)
+- `half-image-horizontal` - Horizontal split (image + text stacked)
+- `caption` - Image with title bar and caption
+- `full-image` - Full-bleed image(s)
+- `grid` - Grid layout for multiple items
 
 ## Themes
 

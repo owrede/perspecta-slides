@@ -11,6 +11,41 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.1.8',
+		date: '2026-01-03',
+		changes: [
+			'New: Support for 6 accent colors (Accent 1-6) with unified color pickers',
+			'New: Support for dynamic background gradients in both light and dark modes',
+			'Themes: Added 7 additional built-in themes (Garamond, LA, Milano, New York, Paris, San Francisco, Vancouver)',
+			'Fix: Resolved issue where font colors were not applying to Helvetica and Swiss themes',
+			'Improved: Theme-specific CSS classes correctly applied to presentation body',
+			'Improved: Automatic selection of active appearance mode (Light/Dark) in Inspector panel',
+			'Improved: Refactored all 12 built-in themes to use CSS variables for robust customization',
+			'Fix: Corrected light/dark mode color mapping for Basel, Copenhagen, and Helvetica themes',
+		],
+	},
+	{
+		version: '0.1.7',
+		date: '2026-01-03',
+		changes: [
+			'New: half-image layout - vertical split with image on left or right',
+			'New: half-image-horizontal layout - horizontal split with image on top or bottom',
+			'New: Image position auto-detection based on content order',
+			'New: Image metadata parsing - size (cover/contain), focal point (x, y), and filters',
+			'Improved: Inspector panel now has 4 image layout buttons',
+		],
+	},
+	{
+		version: '0.1.6',
+		date: '2026-01-03',
+		changes: [
+			'New: Global font size offset setting (-50% to +50%) for scaling all text',
+			'New: Content top offset setting (0-50%) to push column content down',
+			'New: Reorganized Inspector tabs: Presentation, Design (theme/typography/colors), Slide (per-slide layout)',
+			'Improved: Slide header now has proper margin-bottom spacing from headline',
+		],
+	},
+	{
 		version: '0.1.5',
 		date: '2026-01-03',
 		changes: [

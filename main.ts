@@ -1230,6 +1230,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
         delete existingFM[key];
       } else if (typeof value === 'boolean') {
         existingFM[yamlKey] = value ? 'true' : 'false';
+      } else if (Array.isArray(value)) {
+        // Serialize arrays as comma-separated values
+        existingFM[yamlKey] = value.join(', ');
       } else {
         existingFM[yamlKey] = String(value);
       }

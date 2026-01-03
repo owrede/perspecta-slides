@@ -39,6 +39,8 @@ export function generateThemeCSS(theme: Theme, context: 'thumbnail' | 'preview' 
   --accent4: ${preset.Accent4};
   --accent5: ${preset.Accent5};
   --accent6: ${preset.Accent6};
+  --light-bg-gradient: ${preset.LightBgGradient?.join(', ') || 'none'};
+  --dark-bg-gradient: ${preset.DarkBgGradient?.join(', ') || 'none'};
 }
 `;
 

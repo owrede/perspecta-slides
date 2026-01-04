@@ -162,6 +162,16 @@ export class SlideParser {
         'dark-dynamic-background': 'darkDynamicBackground',
         'darkDynamicBackground': 'darkDynamicBackground',
         'mode': 'mode',
+        'list-item-spacing': 'listItemSpacing',
+        'listItemSpacing': 'listItemSpacing',
+        'header-font-size': 'headerFontSize',
+        'headerFontSize': 'headerFontSize',
+        'footer-font-size': 'footerFontSize',
+        'footerFontSize': 'footerFontSize',
+        'headline-spacing-before': 'headlineSpacingBefore',
+        'headlineSpacingBefore': 'headlineSpacingBefore',
+        'headline-spacing-after': 'headlineSpacingAfter',
+        'headlineSpacingAfter': 'headlineSpacingAfter',
       };
 
       const mappedKey = keyMap[key];
@@ -171,7 +181,7 @@ export class SlideParser {
           (frontmatter as any)[mappedKey] = true;
         } else if (value === 'false') {
           (frontmatter as any)[mappedKey] = false;
-        } else if (mappedKey === 'fontSizeOffset' || mappedKey === 'contentTopOffset') {
+        } else if (mappedKey === 'fontSizeOffset' || mappedKey === 'contentTopOffset' || mappedKey === 'listItemSpacing' || mappedKey === 'headerFontSize' || mappedKey === 'footerFontSize' || mappedKey === 'headlineSpacingBefore' || mappedKey === 'headlineSpacingAfter') {
           // Parse as number for numeric properties
           const num = parseFloat(value);
           if (!isNaN(num)) {

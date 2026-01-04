@@ -1,53 +1,145 @@
 {
   "name": "Tokyo",
-  "version": "1.0.0",
-  "author": "Perspecta Slides",
-  "description": "Dark theme with vibrant neon accents inspired by Tokyo nights",
+  "version": "2.0.0",
+  "author": "Perspecta",
+  "description": "Dynamic gradient theme inspired by iA Presenter Tokyo",
   "fonts": {
     "title": {
-      "name": "SF Pro Display",
-      "css": "SF Pro Display, Inter, system-ui, sans-serif"
+      "name": "System",
+      "css": "system-ui, -apple-system, sans-serif"
     },
     "body": {
-      "name": "SF Pro Text",
-      "css": "SF Pro Text, Inter, system-ui, sans-serif"
+      "name": "System",
+      "css": "system-ui, -apple-system, sans-serif"
     }
   },
+  "cssClasses": "variable-size-headings",
   "presets": {
     "light": {
-      "background": "#1e2127",
-      "titleText": "#e6e6e6",
-      "bodyText": "#abb2bf",
-      "frame": "#282c34",
-      "accent1": "#ff6b9d",
-      "accent2": "#c678dd",
-      "accent3": "#61afef",
-      "accent4": "#98c379",
-      "accent5": "#e5c07b",
-      "accent6": "#56b6c2"
+      "text": {
+        "h1": [
+          "#000000"
+        ],
+        "h2": [
+          "#000000"
+        ],
+        "h3": [
+          "#333333"
+        ],
+        "h4": [
+          "#333333"
+        ],
+        "body": "#000000",
+        "header": "#666666",
+        "footer": "#666666"
+      },
+      "backgrounds": {
+        "general": {
+          "type": "dynamic",
+          "colors": [
+            "#D3E9F8",
+            "#CFDEED",
+            "#E4DBEA",
+            "#E9CDD7",
+            "#F1DEDD",
+            "#F8E6DE",
+            "#F5E8E5",
+            "#F2E9DA",
+            "#F1F0D8",
+            "#E6F1E5",
+            "#E2EDEB"
+          ]
+        },
+        "cover": {
+          "type": "gradient",
+          "colors": [
+            "#D3E9F8",
+            "#E4DBEA"
+          ]
+        },
+        "title": {
+          "type": "gradient",
+          "colors": [
+            "#E4DBEA",
+            "#E9CDD7"
+          ]
+        },
+        "section": {
+          "type": "solid",
+          "color": "#E2EDEB"
+        }
+      },
+      "accents": [
+        "#f94144",
+        "#43aa8b",
+        "#f9c74f",
+        "#90be6d",
+        "#f8961e",
+        "#577590"
+      ]
     },
     "dark": {
-      "background": "#0d1117",
-      "titleText": "#e6e6e6",
-      "bodyText": "#abb2bf",
-      "frame": "#161b22",
-      "accent1": "#ff6b9d",
-      "accent2": "#c678dd",
-      "accent3": "#61afef",
-      "accent4": "#98c379",
-      "accent5": "#e5c07b",
-      "accent6": "#56b6c2"
-    }
-  },
-  "layouts": {
-    "cover": {
-      "appearance": "dark"
-    },
-    "title": {
-      "appearance": "dark"
-    },
-    "section": {
-      "appearance": "dark"
+      "text": {
+        "h1": [
+          "#ffffff"
+        ],
+        "h2": [
+          "#ffffff"
+        ],
+        "h3": [
+          "#e6e6e6"
+        ],
+        "h4": [
+          "#e6e6e6"
+        ],
+        "body": "#ffffff",
+        "header": "#cccccc",
+        "footer": "#cccccc"
+      },
+      "backgrounds": {
+        "general": {
+          "type": "dynamic",
+          "colors": [
+            "#4EA9E2",
+            "#3271B6",
+            "#9977B3",
+            "#D22E6B",
+            "#CB3026",
+            "#B25B30",
+            "#E07B63",
+            "#E6A63A",
+            "#BCB540",
+            "#599F51",
+            "#4EA998"
+          ]
+        },
+        "cover": {
+          "type": "gradient",
+          "colors": [
+            "#4EA9E2",
+            "#9977B3"
+          ]
+        },
+        "title": {
+          "type": "gradient",
+          "colors": [
+            "#9977B3",
+            "#D22E6B"
+          ]
+        },
+        "section": {
+          "type": "solid",
+          "color": "#4EA998"
+        }
+      },
+      "accents": [
+        "#f94144",
+        "#43aa8b",
+        "#f9c74f",
+        "#90be6d",
+        "#f8961e",
+        "#577590"
+      ]
     }
   }
 }

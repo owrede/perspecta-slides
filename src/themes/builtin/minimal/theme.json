@@ -1,47 +1,109 @@
 {
   "name": "Minimal",
-  "version": "1.0.0",
-  "author": "Perspecta Slides",
-  "description": "Ultra-clean minimal theme with generous whitespace",
+  "version": "2.0.0",
+  "author": "Perspecta",
+  "description": "Clean, distraction-free design with generous whitespace",
   "fonts": {
     "title": {
       "name": "Inter",
-      "css": "Inter, SF Pro Display, system-ui, sans-serif"
+      "css": "Inter, system-ui, sans-serif"
     },
     "body": {
       "name": "Inter",
-      "css": "Inter, SF Pro Text, system-ui, sans-serif"
+      "css": "Inter, system-ui, sans-serif"
     }
   },
+  "cssClasses": "variable-size-headings",
   "presets": {
     "light": {
-      "background": "#ffffff",
-      "titleText": "#111111",
-      "bodyText": "#333333",
-      "frame": "#fafafa",
-      "accent1": "#111111",
-      "accent2": "#666666",
-      "accent3": "#0066cc",
-      "accent4": "#00aa55",
-      "accent5": "#ff6600",
-      "accent6": "#9933cc"
+      "text": {
+        "h1": [
+          "#111111"
+        ],
+        "h2": [
+          "#111111"
+        ],
+        "h3": [
+          "#333333"
+        ],
+        "h4": [
+          "#333333"
+        ],
+        "body": "#444444",
+        "header": "#888888",
+        "footer": "#888888"
+      },
+      "backgrounds": {
+        "general": {
+          "type": "solid",
+          "color": "#fafafa"
+        },
+        "cover": {
+          "type": "solid",
+          "color": "#fafafa"
+        },
+        "title": {
+          "type": "solid",
+          "color": "#fafafa"
+        },
+        "section": {
+          "type": "solid",
+          "color": "#111111"
+        }
+      },
+      "accents": [
+        "#111111",
+        "#666666",
+        "#999999",
+        "#cccccc",
+        "#e63946",
+        "#2a9d8f"
+      ]
     },
     "dark": {
-      "background": "#111111",
-      "titleText": "#fafafa",
-      "bodyText": "#e5e5e5",
-      "frame": "#1a1a1a",
-      "accent1": "#ffffff",
-      "accent2": "#999999",
-      "accent3": "#66aaff",
-      "accent4": "#55cc88",
-      "accent5": "#ffaa55",
-      "accent6": "#cc88ff"
-    }
-  },
-  "layouts": {
-    "section": {
-      "appearance": "dark"
+      "text": {
+        "h1": [
+          "#ffffff"
+        ],
+        "h2": [
+          "#ffffff"
+        ],
+        "h3": [
+          "#e0e0e0"
+        ],
+        "h4": [
+          "#e0e0e0"
+        ],
+        "body": "#cccccc",
+        "header": "#888888",
+        "footer": "#888888"
+      },
+      "backgrounds": {
+        "general": {
+          "type": "solid",
+          "color": "#111111"
+        },
+        "cover": {
+          "type": "solid",
+          "color": "#111111"
+        },
+        "title": {
+          "type": "solid",
+          "color": "#111111"
+        },
+        "section": {
+          "type": "solid",
+          "color": "#ffffff"
+        }
+      },
+      "accents": [
+        "#ffffff",
+        "#999999",
+        "#666666",
+        "#333333",
+        "#e63946",
+        "#2a9d8f"
+      ]
     }
   }
 }

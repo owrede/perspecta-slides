@@ -1,50 +1,109 @@
 {
   "name": "Zurich",
-  "version": "1.0.0",
-  "author": "Perspecta Slides",
-  "description": "Minimal Swiss design with clean typography",
+  "version": "2.0.0",
+  "author": "Perspecta",
+  "description": "Minimal Swiss design with fixed-size headings",
   "fonts": {
     "title": {
-      "name": "Helvetica Neue",
+      "name": "Helvetica",
       "css": "Helvetica Neue, Helvetica, Arial, sans-serif"
     },
     "body": {
-      "name": "Helvetica Neue",
+      "name": "Helvetica",
       "css": "Helvetica Neue, Helvetica, Arial, sans-serif"
     }
   },
+  "cssClasses": "fixed-size-headings",
   "presets": {
     "light": {
-      "background": "#ffffff",
-      "titleText": "#000000",
-      "bodyText": "#333333",
-      "frame": "#f5f5f5",
-      "accent1": "#000000",
-      "accent2": "#43aa8b",
-      "accent3": "#f9c74f",
-      "accent4": "#90be6d",
-      "accent5": "#f8961e",
-      "accent6": "#577590"
+      "text": {
+        "h1": [
+          "#000000"
+        ],
+        "h2": [
+          "#000000"
+        ],
+        "h3": [
+          "#000000"
+        ],
+        "h4": [
+          "#000000"
+        ],
+        "body": "#333333",
+        "header": "#666666",
+        "footer": "#666666"
+      },
+      "backgrounds": {
+        "general": {
+          "type": "solid",
+          "color": "#ffffff"
+        },
+        "cover": {
+          "type": "solid",
+          "color": "#ffffff"
+        },
+        "title": {
+          "type": "solid",
+          "color": "#ffffff"
+        },
+        "section": {
+          "type": "solid",
+          "color": "#000000"
+        }
+      },
+      "accents": [
+        "#000000",
+        "#43aa8b",
+        "#f9c74f",
+        "#90be6d",
+        "#f8961e",
+        "#577590"
+      ]
     },
     "dark": {
-      "background": "#000000",
-      "titleText": "#ffffff",
-      "bodyText": "#cccccc",
-      "frame": "#1a1a1a",
-      "accent1": "#ffffff",
-      "accent2": "#43aa8b",
-      "accent3": "#f9c74f",
-      "accent4": "#90be6d",
-      "accent5": "#f8961e",
-      "accent6": "#577590"
-    }
-  },
-  "layouts": {
-    "cover": {
-      "appearance": "dark"
-    },
-    "section": {
-      "appearance": "dark"
+      "text": {
+        "h1": [
+          "#ffffff"
+        ],
+        "h2": [
+          "#ffffff"
+        ],
+        "h3": [
+          "#ffffff"
+        ],
+        "h4": [
+          "#ffffff"
+        ],
+        "body": "#ffffff",
+        "header": "#999999",
+        "footer": "#999999"
+      },
+      "backgrounds": {
+        "general": {
+          "type": "solid",
+          "color": "#000000"
+        },
+        "cover": {
+          "type": "solid",
+          "color": "#000000"
+        },
+        "title": {
+          "type": "solid",
+          "color": "#000000"
+        },
+        "section": {
+          "type": "solid",
+          "color": "#ffffff"
+        }
+      },
+      "accents": [
+        "#ffffff",
+        "#43aa8b",
+        "#f9c74f",
+        "#90be6d",
+        "#f8961e",
+        "#577590"
+      ]
     }
   }
 }

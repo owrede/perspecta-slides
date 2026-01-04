@@ -16,6 +16,7 @@ export class PresentationView extends ItemView {
   private theme: Theme | null = null;
   private imagePathResolver: ImagePathResolver | null = null;
   private presentationImagePathResolver: ImagePathResolver | null = null;
+  private customFontCSS: string = '';
   
   private onSlideChange: ((index: number) => void) | null = null;
   private onReload: (() => void) | null = null;
@@ -44,14 +45,25 @@ export class PresentationView extends ItemView {
   }
   
   /**
+   * Set custom font CSS for cached Google Fonts
+   */
+  setCustomFontCSS(css: string): void {
+    this.customFontCSS = css;
+  }
+
+  /**
    * Create a SlideRenderer with the image path resolver
    */
   private createRenderer(theme?: Theme): SlideRenderer {
-    return new SlideRenderer(
+    const renderer = new SlideRenderer(
       this.presentation!, 
       theme || this.theme || undefined, 
       this.imagePathResolver || undefined
     );
+    if (this.customFontCSS) {
+      renderer.setCustomFontCSS(this.customFontCSS);
+    }
+    return renderer;
   }
   
   getViewType(): string {

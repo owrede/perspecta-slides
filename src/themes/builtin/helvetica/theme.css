@@ -1,0 +1,89 @@
+/* Helvetica Theme - Classic Swiss Typography */
+
+/* Fixed-size headings - Swiss style */
+.slide h1,
+.slide h2,
+.slide h3,
+.slide h4,
+.slide h5,
+.slide h6 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+/* Cover slides - centered, large text */
+.cover-container .slide-content,
+.title-container .slide-content {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.layout-cover h1,
+.layout-cover h2,
+.layout-title h1,
+.layout-title h2 {
+    font-size: 4rem;
+}
+
+/* Section slides */
+.section-container .slide-content {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+/* Kicker styling */
+.kicker {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-weight: 500;
+}
+
+/* Code blocks */
+pre {
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+}
+
+.dark pre {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Blockquote */
+blockquote {
+    border-left-width: 3px;
+    font-style: normal;
+    font-weight: 500;
+}
+
+/* Tables */
+table {
+    border: none;
+}
+
+th,
+td {
+    border: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+th {
+    background: transparent;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+}
+
+.dark th,
+.dark td {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Column spacing */
+.slot-columns {
+    gap: 3rem;
+}

@@ -1,8 +1,8 @@
 {
   "name": "Berlin",
-  "version": "1.0.0",
-  "author": "Perspecta Slides",
-  "description": "Professional theme with deep blue tones and clean lines",
+  "version": "2.0.0",
+  "author": "Perspecta",
+  "description": "Professional theme with deep blue tones",
   "fonts": {
     "title": {
       "name": "Source Sans Pro",
@@ -13,41 +13,103 @@
       "css": "Source Sans Pro, Roboto, system-ui, sans-serif"
     }
   },
+  "cssClasses": "variable-size-headings",
   "presets": {
     "light": {
-      "background": "#ffffff",
-      "titleText": "#1a202c",
-      "bodyText": "#2d3748",
-      "frame": "#f7fafc",
-      "accent1": "#1a365d",
-      "accent2": "#2c5282",
-      "accent3": "#3182ce",
-      "accent4": "#63b3ed",
-      "accent5": "#e53e3e",
-      "accent6": "#38a169"
+      "text": {
+        "h1": [
+          "#1a365d"
+        ],
+        "h2": [
+          "#1a365d"
+        ],
+        "h3": [
+          "#2c5282"
+        ],
+        "h4": [
+          "#2c5282"
+        ],
+        "body": "#2d3748",
+        "header": "#4a5568",
+        "footer": "#4a5568"
+      },
+      "backgrounds": {
+        "general": {
+          "type": "solid",
+          "color": "#ffffff"
+        },
+        "cover": {
+          "type": "gradient",
+          "colors": [
+            "#1a365d",
+            "#2c5282"
+          ]
+        },
+        "title": {
+          "type": "solid",
+          "color": "#f7fafc"
+        },
+        "section": {
+          "type": "solid",
+          "color": "#1a365d"
+        }
+      },
+      "accents": [
+        "#1a365d",
+        "#2c5282",
+        "#3182ce",
+        "#63b3ed",
+        "#e53e3e",
+        "#38a169"
+      ]
     },
     "dark": {
-      "background": "#1a365d",
-      "titleText": "#ffffff",
-      "bodyText": "#f7fafc",
-      "frame": "#0d1b2a",
-      "accent1": "#63b3ed",
-      "accent2": "#90cdf4",
-      "accent3": "#bee3f8",
-      "accent4": "#ffffff",
-      "accent5": "#fc8181",
-      "accent6": "#68d391"
-    }
-  },
-  "layouts": {
-    "cover": {
-      "appearance": "dark"
-    },
-    "title": {
-      "appearance": "dark"
-    },
-    "section": {
-      "appearance": "dark"
+      "text": {
+        "h1": [
+          "#ffffff"
+        ],
+        "h2": [
+          "#ffffff"
+        ],
+        "h3": [
+          "#e2e8f0"
+        ],
+        "h4": [
+          "#e2e8f0"
+        ],
+        "body": "#f7fafc",
+        "header": "#a0aec0",
+        "footer": "#a0aec0"
+      },
+      "backgrounds": {
+        "general": {
+          "type": "solid",
+          "color": "#1a365d"
+        },
+        "cover": {
+          "type": "gradient",
+          "colors": [
+            "#1a365d",
+            "#2c5282"
+          ]
+        },
+        "title": {
+          "type": "solid",
+          "color": "#1a365d"
+        },
+        "section": {
+          "type": "solid",
+          "color": "#63b3ed"
+        }
+      },
+      "accents": [
+        "#63b3ed",
+        "#2c5282",
+        "#3182ce",
+        "#1a365d",
+        "#e53e3e",
+        "#38a169"
+      ]
     }
   }
 }

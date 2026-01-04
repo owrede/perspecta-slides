@@ -11,13 +11,14 @@
  * @module ui/SettingsTab
  */
 
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice, setIcon } from 'obsidian';
 import type PerspectaSlidesPlugin from '../../main';
 import { renderChangelogToContainer } from '../changelog';
 import { getThemeNames } from '../themes';
 import { ContentMode } from '../types';
+import { FontManager, CachedFont } from '../utils/FontManager';
 
-type SettingsTabId = 'changelog' | 'presentation' | 'content' | 'export' | 'debug';
+type SettingsTabId = 'changelog' | 'presentation' | 'fonts' | 'content' | 'export' | 'debug';
 
 export class PerspectaSlidesSettingTab extends PluginSettingTab {
 	plugin: PerspectaSlidesPlugin;
@@ -47,6 +48,7 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 		const tabs: { id: SettingsTabId; label: string }[] = [
 			{ id: 'changelog', label: 'Changelog' },
 			{ id: 'presentation', label: 'Presentation' },
+			{ id: 'fonts', label: 'Fonts' },
 			{ id: 'content', label: 'Content' },
 			{ id: 'export', label: 'Export' },
 			{ id: 'debug', label: 'Debug' },
@@ -72,6 +74,9 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 				break;
 			case 'presentation':
 				this.displayPresentationSettings(content);
+				break;
+			case 'fonts':
+				this.displayFontsSettings(content);
 				break;
 			case 'content':
 				this.displayContentSettings(content);
@@ -144,6 +149,141 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 				}));
 	}
 
+	private displayFontsSettings(containerEl: HTMLElement): void {
+		const fontManager = this.plugin.fontManager;
+		if (!fontManager) {
+			containerEl.createEl('p', { text: 'Font manager not initialized.' });
+			return;
+		}
+
+		containerEl.createEl('h2', { text: 'Add Google Font' });
+
+		const addFontSection = containerEl.createDiv({ cls: 'perspecta-add-font-section' });
+
+		let fontUrl = '';
+		let displayName = '';
+
+		new Setting(addFontSection)
+			.setName('Google Fonts URL')
+			.setDesc('Paste a Google Fonts URL (e.g., https://fonts.google.com/specimen/Barlow)')
+			.addText(text => text
+				.setPlaceholder('https://fonts.google.com/specimen/...')
+				.onChange(value => {
+					fontUrl = value;
+				}));
+
+		new Setting(addFontSection)
+			.setName('Display name')
+			.setDesc('Optional custom name for the font (leave empty to use the font family name)')
+			.addText(text => text
+				.setPlaceholder('My Custom Font')
+				.onChange(value => {
+					displayName = value;
+				}));
+
+		new Setting(addFontSection)
+			.addButton(button => button
+				.setButtonText('Download Font')
+				.setCta()
+				.onClick(async () => {
+					if (!fontUrl.trim()) {
+						new Notice('Please enter a Google Fonts URL');
+						return;
+					}
+
+					if (!FontManager.isGoogleFontsUrl(fontUrl)) {
+						new Notice('Invalid Google Fonts URL');
+						return;
+					}
+
+					const parsedName = FontManager.parseGoogleFontsUrl(fontUrl);
+					if (!parsedName) {
+						new Notice('Could not parse font name from URL');
+						return;
+					}
+
+					if (fontManager.isCached(parsedName)) {
+						new Notice(`Font "${parsedName}" is already downloaded`);
+						return;
+					}
+
+					new Notice(`Downloading font "${parsedName}"...`);
+					
+					const result = await fontManager.cacheGoogleFont(fontUrl, displayName.trim() || undefined);
+					if (result) {
+						new Notice(`Font "${displayName.trim() || result}" downloaded successfully`);
+						this.display();
+					} else {
+						new Notice('Failed to download font');
+					}
+				}));
+
+		containerEl.createEl('h2', { text: 'Downloaded Fonts' });
+
+		const cachedFonts = fontManager.getAllCachedFonts();
+
+		if (cachedFonts.length === 0) {
+			const emptyState = containerEl.createDiv({ cls: 'perspecta-slides-info-box' });
+			emptyState.createEl('p', { text: 'No fonts downloaded yet. Add a Google Fonts URL above to get started.' });
+		} else {
+			const fontList = containerEl.createDiv({ cls: 'perspecta-font-list' });
+
+			for (const font of cachedFonts) {
+				const fontItem = fontList.createDiv({ cls: 'perspecta-font-item' });
+
+				const fontInfo = fontItem.createDiv({ cls: 'perspecta-font-info' });
+				fontInfo.createEl('div', { cls: 'perspecta-font-display-name', text: font.displayName });
+				
+				const fontMeta = fontInfo.createDiv({ cls: 'perspecta-font-meta' });
+				fontMeta.createEl('span', { text: `Family: ${font.name}` });
+				fontMeta.createEl('span', { text: ` • Weights: ${font.weights.join(', ')}` });
+
+				const fontActions = fontItem.createDiv({ cls: 'perspecta-font-actions' });
+
+				const editBtn = fontActions.createEl('button', { cls: 'perspecta-font-btn' });
+				setIcon(editBtn, 'pencil');
+				editBtn.setAttribute('aria-label', 'Edit display name');
+				editBtn.addEventListener('click', async () => {
+					const newName = prompt('Enter new display name:', font.displayName);
+					if (newName && newName.trim() !== font.displayName) {
+						await fontManager.updateDisplayName(font.name, newName.trim());
+						new Notice(`Font renamed to "${newName.trim()}"`);
+						this.display();
+					}
+				});
+
+				const deleteBtn = fontActions.createEl('button', { cls: 'perspecta-font-btn perspecta-font-btn-danger' });
+				setIcon(deleteBtn, 'trash-2');
+				deleteBtn.setAttribute('aria-label', 'Delete font');
+				deleteBtn.addEventListener('click', async () => {
+					if (confirm(`Delete font "${font.displayName}"? This will remove the cached font files.`)) {
+						await fontManager.removeFont(font.name);
+						new Notice(`Font "${font.displayName}" deleted`);
+						this.display();
+					}
+				});
+			}
+		}
+
+		if (cachedFonts.length > 0) {
+			containerEl.createEl('h2', { text: 'Cache Management' });
+
+			new Setting(containerEl)
+				.setName('Clear all fonts')
+				.setDesc('Remove all downloaded fonts from the cache.')
+				.addButton(button => button
+					.setButtonText('Clear Cache')
+					.setWarning()
+					.onClick(async () => {
+						if (confirm('Delete all cached fonts? This cannot be undone.')) {
+							await fontManager.clearCache();
+							new Notice('Font cache cleared');
+							this.display();
+						}
+					}));
+		}
+	}
+
 	private displayContentSettings(containerEl: HTMLElement): void {
 		containerEl.createEl('h2', { text: 'Content Mode' });
 
@@ -160,19 +300,6 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
-
-		containerEl.createEl('h2', { text: 'Debug Options' });
-
-		new Setting(containerEl)
-			.setName('Debug slide rendering')
-			.setDesc('Enable console logging for slide parsing and column auto-detection.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.debugSlideRendering)
-				.onChange(async (value) => {
-					this.plugin.settings.debugSlideRendering = value;
-					this.plugin.parser.setDebugMode(value);
-					await this.plugin.saveSettings();
-				}));
 
 		// Content mode explanation
 		const modeInfoBox = containerEl.createDiv({ cls: 'perspecta-slides-info-box' });
@@ -271,23 +398,34 @@ This creates an image slide.`
 					await this.plugin.saveSettings();
 				}));
 
+		new Setting(containerEl)
+			.setName('Debug font loading')
+			.setDesc('Enable console logging for Google Fonts downloading and caching.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.debugFontLoading)
+				.onChange(async (value) => {
+					this.plugin.settings.debugFontLoading = value;
+					if (this.plugin.fontManager) {
+						this.plugin.fontManager.setDebugMode(value);
+					}
+					await this.plugin.saveSettings();
+				}));
+
 		// Debug info section
 		const debugInfoBox = containerEl.createDiv({ cls: 'perspecta-slides-info-box' });
 		debugInfoBox.createEl('h4', { text: 'Debug Information' });
 		
 		const info = debugInfoBox.createDiv();
 		info.createEl('p', { 
-			text: 'When debug mode is enabled, detailed information about slide parsing and auto-column detection will be logged to the browser console (F12). This includes:'
+			text: 'When debug modes are enabled, detailed information will be logged to the browser console (F12).'
 		});
 		
 		const debugList = info.createEl('ul');
-		debugList.createEl('li', { text: 'Element parsing and type detection' });
-		debugList.createEl('li', { text: 'Column auto-detection logic' });
-		debugList.createEl('li', { text: 'Content-to-element mapping' });
-		debugList.createEl('li', { text: 'Column assignment results' });
+		debugList.createEl('li', { text: 'Slide rendering: Element parsing, column auto-detection, layout logic' });
+		debugList.createEl('li', { text: 'Font loading: Font file downloads, caching, CSS generation' });
 		
 		info.createEl('p', { 
-			text: 'Use this when troubleshooting layout issues or unexpected slide behavior.'
+			text: 'Use these when troubleshooting layout issues or font loading problems.'
 		});
 	}
 }

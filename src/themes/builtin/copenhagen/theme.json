@@ -1,0 +1,115 @@
+{
+    "name": "Copenhagen",
+    "version": "2.0.0",
+    "author": "Perspecta",
+    "description": "Nordic design with cool blue and gray tones",
+    "fonts": {
+        "title": {
+            "name": "Inter",
+            "css": "Inter, system-ui, sans-serif"
+        },
+        "body": {
+            "name": "Inter",
+            "css": "Inter, system-ui, sans-serif"
+        }
+    },
+    "cssClasses": "variable-size-headings",
+    "presets": {
+        "light": {
+            "text": {
+                "h1": [
+                    "#1a2634"
+                ],
+                "h2": [
+                    "#1a2634"
+                ],
+                "h3": [
+                    "#2d3d4d"
+                ],
+                "h4": [
+                    "#2d3d4d"
+                ],
+                "body": "#3d4d5d",
+                "header": "#6b7b8b",
+                "footer": "#6b7b8b"
+            },
+            "backgrounds": {
+                "general": {
+                    "type": "solid",
+                    "color": "#f8fafc"
+                },
+                "cover": {
+                    "type": "gradient",
+                    "colors": [
+                        "#1a2634",
+                        "#2d3d4d"
+                    ]
+                },
+                "title": {
+                    "type": "solid",
+                    "color": "#f8fafc"
+                },
+                "section": {
+                    "type": "solid",
+                    "color": "#1a2634"
+                }
+            },
+            "accents": [
+                "#1a2634",
+                "#3b82f6",
+                "#0ea5e9",
+                "#06b6d4",
+                "#f59e0b",
+                "#ef4444"
+            ]
+        },
+        "dark": {
+            "text": {
+                "h1": [
+                    "#f8fafc"
+                ],
+                "h2": [
+                    "#f8fafc"
+                ],
+                "h3": [
+                    "#e2e8f0"
+                ],
+                "h4": [
+                    "#e2e8f0"
+                ],
+                "body": "#cbd5e1",
+                "header": "#94a3b8",
+                "footer": "#94a3b8"
+            },
+            "backgrounds": {
+                "general": {
+                    "type": "solid",
+                    "color": "#0f172a"
+                },
+                "cover": {
+                    "type": "gradient",
+                    "colors": [
+                        "#0f172a",
+                        "#1e293b"
+                    ]
+                },
+                "title": {
+                    "type": "solid",
+                    "color": "#0f172a"
+                },
+                "section": {
+                    "type": "solid",
+                    "color": "#3b82f6"
+                }
+            },
+            "accents": [
+                "#f8fafc",
+                "#3b82f6",
+                "#0ea5e9",
+                "#06b6d4",
+                "#f59e0b",
+                "#ef4444"
+            ]
+        }
+    }
+}

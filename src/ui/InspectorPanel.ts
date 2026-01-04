@@ -1,10 +1,103 @@
-import { ItemView, WorkspaceLeaf, Setting, TFile, setIcon } from 'obsidian';
+import { ItemView, WorkspaceLeaf, Setting, TFile, setIcon, Modal, App } from 'obsidian';
 import { Presentation, Slide, SlideLayout, SlideMetadata, PresentationFrontmatter } from '../types';
 import { getThemeNames, getTheme } from '../themes';
+import { FontManager } from '../utils/FontManager';
+
+/**
+ * Modal dialog showing Markdown editing help for slide creation
+ */
+class EditingHelpModal extends Modal {
+  constructor(app: App) {
+    super(app);
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass('perspecta-editing-help-modal');
+
+    contentEl.createEl('h2', { text: 'Slide Editing Reference' });
+
+    // Speaker Notes section
+    this.createSection(contentEl, 'Speaker Notes', [
+      { syntax: 'Notes:', description: 'Start speaker notes section' },
+      { syntax: 'Text below Notes:', description: 'Content shown in presenter view only' },
+    ]);
+
+    // Text on Slide section
+    this.createSection(contentEl, 'Text on Slide', [
+      { syntax: '---', description: 'Slide break (new slide)' },
+      { syntax: '# Title', description: 'Main title (H1)' },
+      { syntax: '## Subtitle', description: 'Subtitle (H2)' },
+      { syntax: '### Heading', description: 'Section heading (H3)' },
+      { syntax: '#### Subheading', description: 'Subheading (H4)' },
+      { syntax: '^Kicker text', description: 'Kicker above title' },
+      { syntax: '- List item', description: 'Bullet list' },
+      { syntax: '1. Numbered item', description: 'Numbered list' },
+      { syntax: '> Quote', description: 'Blockquote' },
+      { syntax: '![alt](image.jpg)', description: 'Embed image' },
+    ]);
+
+    // Formatting section
+    this.createSection(contentEl, 'Text Formatting', [
+      { syntax: '**bold**', description: 'Bold text' },
+      { syntax: '*italic*', description: 'Italic text' },
+      { syntax: '==highlight==', description: 'Highlighted text' },
+      { syntax: '~~strikethrough~~', description: 'Strikethrough text' },
+      { syntax: '[text](url)', description: 'Hyperlink' },
+      { syntax: '// comment', description: 'Hidden comment (not shown on slide)' },
+    ]);
+
+    // Code & Math section
+    this.createSection(contentEl, 'Code & Math', [
+      { syntax: '`inline code`', description: 'Inline code' },
+      { syntax: '```lang\\ncode\\n```', description: 'Code block with syntax highlighting' },
+      { syntax: '$E = mc^2$', description: 'Inline LaTeX math' },
+      { syntax: '$$\\nequation\\n$$', description: 'Block LaTeX math' },
+    ]);
+
+    // Columns section
+    this.createSection(contentEl, 'Column Layouts', [
+      { syntax: '|', description: 'Column separator (split content into columns)' },
+      { syntax: 'Content | Content', description: 'Two equal columns' },
+      { syntax: 'A | B | C', description: 'Three columns' },
+    ]);
+
+    // Slide Directives section
+    this.createSection(contentEl, 'Slide Directives', [
+      { syntax: '<!-- layout: cover -->', description: 'Set slide layout' },
+      { syntax: '<!-- mode: dark -->', description: 'Dark mode slide' },
+      { syntax: '<!-- background: #color -->', description: 'Custom background' },
+      { syntax: '<!-- class: custom -->', description: 'Add CSS class to slide' },
+    ]);
+
+    // Close button
+    const footer = contentEl.createDiv({ cls: 'modal-button-container' });
+    const closeBtn = footer.createEl('button', { text: 'Close', cls: 'mod-cta' });
+    closeBtn.addEventListener('click', () => this.close());
+  }
+
+  private createSection(container: HTMLElement, title: string, items: { syntax: string; description: string }[]) {
+    const section = container.createDiv({ cls: 'editing-help-section' });
+    section.createEl('h3', { text: title });
+    
+    const table = section.createEl('table', { cls: 'editing-help-table' });
+    for (const item of items) {
+      const row = table.createEl('tr');
+      const syntaxCell = row.createEl('td', { cls: 'syntax-cell' });
+      syntaxCell.createEl('code', { text: item.syntax });
+      row.createEl('td', { text: item.description, cls: 'description-cell' });
+    }
+  }
+
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+}
 
 export const INSPECTOR_VIEW_TYPE = 'perspecta-inspector';
 
-type InspectorTab = 'presentation' | 'design' | 'slide' | 'images' | 'text';
+type InspectorTab = 'presentation' | 'typography' | 'theme' | 'slide';
 
 export class InspectorPanelView extends ItemView {
   private presentation: Presentation | null = null;
@@ -12,11 +105,18 @@ export class InspectorPanelView extends ItemView {
   private currentSlideIndex: number = 0;
   private currentTab: InspectorTab = 'slide';
   private currentFile: TFile | null = null;
+  private isFocusedOnFile: boolean = false;
   private onSlideMetadataChange: ((slideIndex: number, metadata: Partial<SlideMetadata>) => void) | null = null;
-  private onPresentationChange: ((frontmatter: Partial<PresentationFrontmatter>) => void) | null = null;
+  private onPresentationChange: ((frontmatter: Partial<PresentationFrontmatter>, persistent: boolean) => void) | null = null;
+  private fontManager: FontManager | null = null;
+  private themeAppearanceMode: 'light' | 'dark' = 'light';
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
+  }
+
+  setFontManager(fontManager: FontManager) {
+    this.fontManager = fontManager;
   }
 
   getViewType(): string {
@@ -48,7 +148,18 @@ export class InspectorPanelView extends ItemView {
     if (file) {
       this.currentFile = file;
     }
+    // Set appearance mode based on presentation frontmatter
+    const fm = presentation.frontmatter;
+    if (fm.mode === 'dark') {
+      this.themeAppearanceMode = 'dark';
+    } else if (fm.mode === 'light') {
+      this.themeAppearanceMode = 'light';
+    }
     this.render();
+  }
+
+  public getTargetFile(): TFile | null {
+    return this.currentFile;
   }
 
   setCurrentSlide(slide: Slide, index?: number) {
@@ -63,11 +174,18 @@ export class InspectorPanelView extends ItemView {
     this.currentFile = file;
   }
 
+  setFocused(isFocused: boolean) {
+    if (this.isFocusedOnFile !== isFocused) {
+      this.isFocusedOnFile = isFocused;
+      this.render();
+    }
+  }
+
   setOnSlideMetadataChange(callback: (slideIndex: number, metadata: Partial<SlideMetadata>) => void) {
     this.onSlideMetadataChange = callback;
   }
 
-  setOnPresentationChange(callback: (frontmatter: Partial<PresentationFrontmatter>) => void) {
+  setOnPresentationChange(callback: (frontmatter: Partial<PresentationFrontmatter>, persistent: boolean) => void) {
     this.onPresentationChange = callback;
   }
 
@@ -83,10 +201,9 @@ export class InspectorPanelView extends ItemView {
     // Tab bar
     const tabBar = container.createDiv({ cls: 'inspector-tabs' });
     this.createTab(tabBar, 'presentation', 'Presentation');
-    this.createTab(tabBar, 'design', 'Design');
+    this.createTab(tabBar, 'typography', 'Typography');
+    this.createTab(tabBar, 'theme', 'Theme');
     this.createTab(tabBar, 'slide', 'Slide');
-    this.createTab(tabBar, 'images', 'Images');
-    this.createTab(tabBar, 'text', 'Text');
 
     // Tab content
     const content = container.createDiv({ cls: 'inspector-content' });
@@ -95,17 +212,14 @@ export class InspectorPanelView extends ItemView {
       case 'presentation':
         this.renderPresentationTab(content);
         break;
-      case 'design':
-        this.renderDesignTab(content);
+      case 'typography':
+        this.renderTypographyTab(content);
+        break;
+      case 'theme':
+        this.renderThemeTab(content);
         break;
       case 'slide':
         this.renderSlideTab(content);
-        break;
-      case 'images':
-        this.renderImagesTab(content);
-        break;
-      case 'text':
-        this.renderTextTab(content);
         break;
     }
   }
@@ -125,42 +239,52 @@ export class InspectorPanelView extends ItemView {
   private renderEmptyState(container: HTMLElement) {
     const empty = container.createDiv({ cls: 'empty-state' });
     empty.createEl('div', { cls: 'empty-icon', text: '⚙️' });
-    empty.createEl('p', { text: 'Open a presentation to edit settings' });
   }
 
   // ============================================
-  // PRESENTATION TAB - Global frontmatter settings
+  // PRESENTATION TAB - Global presentation settings
   // ============================================
   private renderPresentationTab(container: HTMLElement) {
     const fm = this.presentation?.frontmatter;
     if (!fm) return;
 
-    // Title & Author
-    const section1 = container.createDiv({ cls: 'inspector-section' });
-    section1.createEl('h5', { text: 'Presentation Info' });
+    // Section: PRESENTATION INFO
+    this.createSectionHeader(container, 'PRESENTATION INFO');
 
-    new Setting(section1)
+    new Setting(container)
       .setName('Title')
-      .addText(text => text
-        .setPlaceholder('Presentation Title')
-        .setValue(fm.title || '')
-        .onChange(value => this.updateFrontmatter({ title: value })));
+      .addText(text => {
+        text
+          .setPlaceholder('Presentation Title')
+          .setValue(fm.title || '');
+        text.inputEl.addEventListener('blur', () => {
+          this.updateFrontmatter({ title: text.getValue() });
+        });
+      });
 
-    new Setting(section1)
+    new Setting(container)
       .setName('Author')
-      .addText(text => text
-        .setPlaceholder('Author Name')
-        .setValue(fm.author || '')
-        .onChange(value => this.updateFrontmatter({ author: value })));
+      .addText(text => {
+        text
+          .setPlaceholder('Author Name')
+          .setValue(fm.author || '');
+        text.inputEl.addEventListener('blur', () => {
+          this.updateFrontmatter({ author: text.getValue() });
+        });
+      });
 
-    new Setting(section1)
+    new Setting(container)
       .setName('Date')
-      .addText(text => text
-        .setPlaceholder('YYYY-MM-DD')
-        .setValue(fm.date || '')
-        .onChange(value => this.updateFrontmatter({ date: value })));
+      .addText(text => {
+        text
+          .setPlaceholder('YYYY-MM-DD')
+          .setValue(fm.date || '');
+        text.inputEl.addEventListener('blur', () => {
+          this.updateFrontmatter({ date: text.getValue() });
+        });
+      });
 
-    new Setting(section1)
+    new Setting(container)
       .setName('Aspect Ratio')
       .addDropdown(dropdown => {
         dropdown.addOption('16:9', '16:9 (Widescreen)');
@@ -170,89 +294,328 @@ export class InspectorPanelView extends ItemView {
         dropdown.onChange(value => this.updateFrontmatter({ aspectRatio: value as any }));
       });
 
-    new Setting(section1)
-      .setName('Appearance')
-      .setDesc('Default mode for all slides')
-      .addDropdown(dropdown => {
-        dropdown.addOption('light', '☀️ Light');
-        dropdown.addOption('dark', '🌙 Dark');
-        dropdown.addOption('system', '💻 System');
-        dropdown.setValue(fm.mode || 'light');
-        dropdown.onChange(value => this.updateFrontmatter({ mode: value as any }));
+    // Section: HEADER AND FOOTER
+    this.createSectionHeader(container, 'HEADER AND FOOTER');
+
+    new Setting(container)
+      .setName('Header Left')
+      .addText(text => {
+        text
+          .setPlaceholder('Company Name')
+          .setValue(fm.headerLeft || '');
+        text.inputEl.addEventListener('blur', () => {
+          this.updateFrontmatter({ headerLeft: text.getValue() });
+        });
       });
 
-    // Header & Footer
-    const section2 = container.createDiv({ cls: 'inspector-section' });
-    section2.createEl('h5', { text: 'Header & Footer' });
-
-    new Setting(section2)
-      .setName('Header Left')
-      .addText(text => text
-        .setPlaceholder('Company Name')
-        .setValue(fm.headerLeft || '')
-        .onChange(value => this.updateFrontmatter({ headerLeft: value })));
-
-    new Setting(section2)
+    new Setting(container)
       .setName('Header Middle')
-      .addText(text => text
-        .setPlaceholder('Presentation Title')
-        .setValue(fm.headerMiddle || '')
-        .onChange(value => this.updateFrontmatter({ headerMiddle: value })));
+      .addText(text => {
+        text
+          .setPlaceholder('Presentation Title')
+          .setValue(fm.headerMiddle || '');
+        text.inputEl.addEventListener('blur', () => {
+          this.updateFrontmatter({ headerMiddle: text.getValue() });
+        });
+      });
 
-    new Setting(section2)
+    new Setting(container)
       .setName('Header Right')
-      .addText(text => text
-        .setPlaceholder('')
-        .setValue(fm.headerRight || '')
-        .onChange(value => this.updateFrontmatter({ headerRight: value })));
+      .addText(text => {
+        text
+          .setPlaceholder('')
+          .setValue(fm.headerRight || '');
+        text.inputEl.addEventListener('blur', () => {
+          this.updateFrontmatter({ headerRight: text.getValue() });
+        });
+      });
 
-    new Setting(section2)
+    new Setting(container)
       .setName('Footer Left')
-      .addText(text => text
-        .setPlaceholder('')
-        .setValue(fm.footerLeft || '')
-        .onChange(value => this.updateFrontmatter({ footerLeft: value })));
+      .addText(text => {
+        text
+          .setPlaceholder('')
+          .setValue(fm.footerLeft || '');
+        text.inputEl.addEventListener('blur', () => {
+          this.updateFrontmatter({ footerLeft: text.getValue() });
+        });
+      });
 
-    new Setting(section2)
+    new Setting(container)
       .setName('Footer Middle')
-      .addText(text => text
-        .setPlaceholder('')
-        .setValue(fm.footerMiddle || '')
-        .onChange(value => this.updateFrontmatter({ footerMiddle: value })));
+      .addText(text => {
+        text
+          .setPlaceholder('')
+          .setValue(fm.footerMiddle || '');
+        text.inputEl.addEventListener('blur', () => {
+          this.updateFrontmatter({ footerMiddle: text.getValue() });
+        });
+      });
 
-    new Setting(section2)
+    new Setting(container)
       .setName('Show Slide Numbers')
       .addToggle(toggle => toggle
         .setValue(fm.showSlideNumbers !== false)
         .onChange(value => this.updateFrontmatter({ showSlideNumbers: value })));
 
-    // Transitions
-    const section3 = container.createDiv({ cls: 'inspector-section' });
-    section3.createEl('h5', { text: 'Transitions' });
+    // Section: IMAGE OVERLAY
+    this.createSectionHeader(container, 'IMAGE OVERLAY');
 
-    new Setting(section3)
-      .setName('Slide Transition')
-      .addDropdown(dropdown => {
-        dropdown.addOption('fade', 'Fade');
-        dropdown.addOption('slide', 'Slide');
-        dropdown.addOption('none', 'None');
-        dropdown.setValue(fm.transition || 'fade');
-        dropdown.onChange(value => this.updateFrontmatter({ transition: value as any }));
-      });
+    new Setting(container)
+      .setName('Overlay Image')
+      .addText(text => {
+        text
+          .setPlaceholder('path/to/overlay.png')
+          .setValue(fm.imageOverlay || '');
+        text.inputEl.addEventListener('blur', () => {
+          this.updateFrontmatter({ imageOverlay: text.getValue() || undefined });
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Clear overlay')
+        .onClick(() => this.updateFrontmatter({ imageOverlay: undefined })));
+
+    new Setting(container)
+      .setName('Overlay Opacity')
+      .addSlider(slider => slider
+        .setLimits(0, 100, 5)
+        .setValue(fm.imageOverlayOpacity ?? 50)
+        .setDynamicTooltip()
+        .onChange(value => this.updateFrontmatter({ imageOverlayOpacity: value })))
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to default (50%)')
+        .onClick(() => this.updateFrontmatter({ imageOverlayOpacity: undefined })));
+
+    // Editing Help Button
+    const helpSection = container.createDiv({ cls: 'inspector-section editing-help-section' });
+    const helpBtn = helpSection.createEl('button', {
+      cls: 'editing-help-button',
+      text: 'Editing Help'
+    });
+    setIcon(helpBtn.createSpan({ cls: 'editing-help-icon' }), 'help-circle');
+    helpBtn.addEventListener('click', () => {
+      new EditingHelpModal(this.app).open();
+    });
   }
 
   // ============================================
-  // DESIGN TAB - Theme, typography, and colors
+  // TYPOGRAPHY TAB - Fonts and text settings
   // ============================================
-  private renderDesignTab(container: HTMLElement) {
+  private renderTypographyTab(container: HTMLElement) {
     const fm = this.presentation?.frontmatter;
     if (!fm) return;
 
-    // Theme
-    const section1 = container.createDiv({ cls: 'inspector-section' });
-    section1.createEl('h5', { text: 'Theme' });
+    const theme = getTheme(fm.theme || 'zurich');
+    const themePreset = theme?.presets[0];
 
-    new Setting(section1)
+    // Section: FONTS
+    this.createSectionHeader(container, 'FONTS');
+
+    const cachedFonts = this.fontManager?.getAllCachedFonts() || [];
+    const cachedFontNames = new Set(cachedFonts.map(f => f.name));
+
+    const titleFontMissing = fm.titleFont && !cachedFontNames.has(fm.titleFont);
+    const bodyFontMissing = fm.bodyFont && !cachedFontNames.has(fm.bodyFont);
+
+    new Setting(container)
+      .setName('Title Font')
+      .addDropdown(dropdown => {
+        dropdown.addOption('', 'Theme Default');
+        if (titleFontMissing && fm.titleFont) {
+          dropdown.addOption(fm.titleFont, `${fm.titleFont} (missing)`);
+        }
+        cachedFonts.forEach(font => {
+          dropdown.addOption(font.name, font.displayName);
+        });
+        dropdown.setValue(fm.titleFont || '');
+        dropdown.onChange(value => {
+          this.updateFrontmatter({ titleFont: value || undefined });
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to theme default')
+        .onClick(() => this.updateFrontmatter({ titleFont: undefined })));
+
+    new Setting(container)
+      .setName('Body Font')
+      .addDropdown(dropdown => {
+        dropdown.addOption('', 'Theme Default');
+        if (bodyFontMissing && fm.bodyFont) {
+          dropdown.addOption(fm.bodyFont, `${fm.bodyFont} (missing)`);
+        }
+        cachedFonts.forEach(font => {
+          dropdown.addOption(font.name, font.displayName);
+        });
+        dropdown.setValue(fm.bodyFont || '');
+        dropdown.onChange(value => {
+          this.updateFrontmatter({ bodyFont: value || undefined });
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to theme default')
+        .onClick(() => this.updateFrontmatter({ bodyFont: undefined })));
+
+    if (cachedFonts.length === 0 && !titleFontMissing && !bodyFontMissing) {
+      const helpText = container.createDiv({ cls: 'setting-item-description perspecta-font-help' });
+      helpText.setText('No custom fonts available. Add fonts in Settings → Fonts tab.');
+    }
+
+    // Section: SIZES
+    this.createSectionHeader(container, 'SIZES');
+
+    new Setting(container)
+      .setName('Font Size Offset')
+      .addSlider(slider => slider
+        .setLimits(-50, 50, 5)
+        .setValue(fm.fontSizeOffset ?? 0)
+        .setDynamicTooltip()
+        .onChange(value => this.updateFrontmatter({ fontSizeOffset: value })))
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to default')
+        .onClick(() => this.updateFrontmatter({ fontSizeOffset: undefined })));
+
+    new Setting(container)
+      .setName('Header Font Size')
+      .addSlider(slider => {
+        slider
+          .setLimits(0.5, 2, 0.05)
+          .setValue(fm.headerFontSize ?? 0.7)
+          .setDynamicTooltip()
+          .onChange(value => {
+            this.updateFrontmatter({ headerFontSize: value }, false);
+          });
+        slider.sliderEl.addEventListener('pointerup', () => {
+          this.updateFrontmatter({ headerFontSize: slider.getValue() }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to default (0.7em)')
+        .onClick(() => this.updateFrontmatter({ headerFontSize: undefined }, true)));
+
+    new Setting(container)
+      .setName('Footer Font Size')
+      .addSlider(slider => {
+        slider
+          .setLimits(0.5, 2, 0.05)
+          .setValue(fm.footerFontSize ?? 0.7)
+          .setDynamicTooltip()
+          .onChange(value => {
+            this.updateFrontmatter({ footerFontSize: value }, false);
+          });
+        slider.sliderEl.addEventListener('pointerup', () => {
+          this.updateFrontmatter({ footerFontSize: slider.getValue() }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to default (0.7em)')
+        .onClick(() => this.updateFrontmatter({ footerFontSize: undefined }, true)));
+
+    // Section: SPACING
+    this.createSectionHeader(container, 'SPACING');
+
+    new Setting(container)
+      .setName('List Item Spacing')
+      .addSlider(slider => {
+        slider
+          .setLimits(0, 2, 0.1)
+          .setValue(fm.listItemSpacing ?? 0)
+          .setDynamicTooltip()
+          .onChange(value => {
+            this.updateFrontmatter({ listItemSpacing: value }, false);
+          });
+        slider.sliderEl.addEventListener('pointerup', () => {
+          this.updateFrontmatter({ listItemSpacing: slider.getValue() }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to default (0em)')
+        .onClick(() => this.updateFrontmatter({ listItemSpacing: 0 }, true)));
+
+    new Setting(container)
+      .setName('Headline Spacing Before')
+      .addSlider(slider => {
+        slider
+          .setLimits(0, 3, 0.1)
+          .setValue(fm.headlineSpacingBefore ?? 0)
+          .setDynamicTooltip()
+          .onChange(value => {
+            this.updateFrontmatter({ headlineSpacingBefore: value }, false);
+          });
+        slider.sliderEl.addEventListener('pointerup', () => {
+          this.updateFrontmatter({ headlineSpacingBefore: slider.getValue() }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to default (0em)')
+        .onClick(() => this.updateFrontmatter({ headlineSpacingBefore: undefined }, true)));
+
+    new Setting(container)
+      .setName('Headline Spacing After')
+      .addSlider(slider => {
+        slider
+          .setLimits(0, 3, 0.1)
+          .setValue(fm.headlineSpacingAfter ?? 0)
+          .setDynamicTooltip()
+          .onChange(value => {
+            this.updateFrontmatter({ headlineSpacingAfter: value }, false);
+          });
+        slider.sliderEl.addEventListener('pointerup', () => {
+          this.updateFrontmatter({ headlineSpacingAfter: slider.getValue() }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to default (0em)')
+        .onClick(() => this.updateFrontmatter({ headlineSpacingAfter: undefined }, true)));
+
+    // Section: OFFSETS
+    this.createSectionHeader(container, 'OFFSETS');
+
+    new Setting(container)
+      .setName('Content Top Offset')
+      .addSlider(slider => slider
+        .setLimits(0, 20, 0.25)
+        .setValue(fm.contentTopOffset ?? 0)
+        .setDynamicTooltip()
+        .onChange(value => this.updateFrontmatter({ contentTopOffset: value })))
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to default')
+        .onClick(() => this.updateFrontmatter({ contentTopOffset: undefined })));
+  }
+
+  /**
+   * Create a section header with uppercase title and gray separator line
+   */
+  private createSectionHeader(container: HTMLElement, title: string) {
+    const header = container.createDiv({ cls: 'inspector-section-header' });
+    header.createEl('span', { text: title, cls: 'section-title' });
+    header.createEl('div', { cls: 'section-separator' });
+  }
+
+  // ============================================
+  // THEME TAB - Theme and colors
+  // ============================================
+  private renderThemeTab(container: HTMLElement) {
+    const fm = this.presentation?.frontmatter;
+    if (!fm) return;
+
+    const theme = getTheme(fm.theme || 'zurich');
+    const themePreset = theme?.presets[0];
+
+    // Section: THEME
+    this.createSectionHeader(container, 'THEME');
+
+    new Setting(container)
       .setName('Theme')
       .addDropdown(dropdown => {
         getThemeNames().forEach(name => {
@@ -261,97 +624,54 @@ export class InspectorPanelView extends ItemView {
         dropdown.setValue(fm.theme || 'zurich');
         dropdown.onChange(async value => {
           await this.updateFrontmatter({ theme: value });
-          // Force a full re-render of the design tab to update all pickers with new theme defaults
           this.render();
         });
       });
 
-    // Typography
-    const section2 = container.createDiv({ cls: 'inspector-section' });
-    section2.createEl('h5', { text: 'Typography' });
+    new Setting(container)
+      .setName('Appearance')
+      .addDropdown(dropdown => {
+        dropdown.addOption('light', '☀️ Light');
+        dropdown.addOption('dark', '🌙 Dark');
+        dropdown.addOption('system', '💻 System');
+        dropdown.setValue(fm.mode || 'light');
+        dropdown.onChange(value => {
+          this.themeAppearanceMode = value === 'dark' ? 'dark' : 'light';
+          this.updateFrontmatter({ mode: value as any });
+        });
+      });
 
-    const theme = getTheme(fm.theme || 'zurich');
-    const themePreset = theme?.presets[0];
+    new Setting(container)
+      .setName('Slide Transition')
+      .addDropdown(dropdown => {
+        dropdown.addOption('fade', 'Fade');
+        dropdown.addOption('slide', 'Slide');
+        dropdown.addOption('none', 'None');
+        dropdown.setValue(fm.transition || 'fade');
+        dropdown.onChange(value => this.updateFrontmatter({ transition: value as any }));
+      });
 
-    new Setting(section2)
-      .setName('Title Font')
-      .addText(text => text
-        .setPlaceholder(themePreset?.TitleFont || 'Helvetica, Arial, sans-serif')
-        .setValue(fm.titleFont || '')
-        .onChange(value => this.updateFrontmatter({ titleFont: value })))
-      .addExtraButton(btn => btn
-        .setIcon('rotate-ccw')
-        .setTooltip('Reset to theme default')
-        .onClick(() => this.updateFrontmatter({ titleFont: undefined })));
+    // Section: THEME COLORS
+    this.createSectionHeader(container, 'THEME COLORS');
 
-    new Setting(section2)
-      .setName('Body Font')
-      .addText(text => text
-        .setPlaceholder(themePreset?.BodyFont || 'Georgia, serif')
-        .setValue(fm.bodyFont || '')
-        .onChange(value => this.updateFrontmatter({ bodyFont: value })))
-      .addExtraButton(btn => btn
-        .setIcon('rotate-ccw')
-        .setTooltip('Reset to theme default')
-        .onClick(() => this.updateFrontmatter({ bodyFont: undefined })));
-
-    new Setting(section2)
-      .setName('Font Size Offset')
-      .setDesc('Percentage offset (-50 to +50)')
-      .addSlider(slider => slider
-        .setLimits(-50, 50, 5)
-        .setValue(fm.fontSizeOffset ?? 0)
-        .setDynamicTooltip()
-        .onChange(value => this.updateFrontmatter({ fontSizeOffset: value })))
-      .addExtraButton(btn => btn
-        .setIcon('rotate-ccw')
-        .setTooltip('Reset to theme default')
-        .onClick(() => this.updateFrontmatter({ fontSizeOffset: undefined })));
-
-    new Setting(section2)
-      .setName('Content Top Offset')
-      .setDesc('Push column content down (0 to 20%)')
-      .addSlider(slider => slider
-        .setLimits(0, 20, 0.25)
-        .setValue(fm.contentTopOffset ?? 0)
-        .setDynamicTooltip()
-        .onChange(value => this.updateFrontmatter({ contentTopOffset: value })))
-      .addExtraButton(btn => btn
-        .setIcon('rotate-ccw')
-        .setTooltip('Reset to theme default')
-        .onClick(() => this.updateFrontmatter({ contentTopOffset: undefined })));
-
-    // Colors Section
-    const section3 = container.createDiv({ cls: 'inspector-section' });
-    section3.createEl('h5', { text: 'Colors' });
-
-    // Appearance toggle (Light/Dark)
-    const appearanceRow = section3.createDiv({ cls: 'appearance-toggle-row' });
-    appearanceRow.createEl('span', { text: 'Appearance', cls: 'setting-label' });
-
+    // Appearance toggle (Light/Dark) for color editing
+    const appearanceRow = container.createDiv({ cls: 'appearance-toggle-row' });
+    appearanceRow.createEl('span', { text: 'Editing', cls: 'setting-label' });
     const toggleContainer = appearanceRow.createDiv({ cls: 'appearance-toggle' });
 
-    // Store current appearance mode in a closure variable
-    // Fix: initialize based on the theme's default or frontmatter's mode
-    const defaultAppearance = (themePreset?.Appearance === 'dark' ? 'dark' : 'light');
-    let currentAppearance: 'light' | 'dark' = (fm.mode === 'dark' ? 'dark' : (fm.mode === 'light' ? 'light' : defaultAppearance));
-
     const lightBtn = toggleContainer.createEl('button', {
-      cls: `appearance-btn ${currentAppearance === 'light' ? 'active' : ''}`,
+      cls: `appearance-btn ${this.themeAppearanceMode === 'light' ? 'active' : ''}`,
       text: 'Light'
     });
     const darkBtn = toggleContainer.createEl('button', {
-      cls: `appearance-btn ${currentAppearance === 'dark' ? 'active' : ''}`,
+      cls: `appearance-btn ${this.themeAppearanceMode === 'dark' ? 'active' : ''}`,
       text: 'Dark'
     });
 
-    // Color picker containers that will update based on appearance
-    const colorPickersContainer = section3.createDiv({ cls: 'color-pickers-container' });
+    const colorPickersContainer = container.createDiv({ cls: 'color-pickers-container' });
 
     const renderColorPickers = (mode: 'light' | 'dark') => {
       colorPickersContainer.empty();
-
-      // Get current frontmatter (fresh read, not stale closure)
       const currentFm = this.presentation?.frontmatter;
       if (!currentFm) return;
 
@@ -419,38 +739,27 @@ export class InspectorPanelView extends ItemView {
       bgRow.createEl('span', { text: 'Background', cls: 'color-label' });
       const bgPickerContainer = bgRow.createDiv({ cls: 'color-picker-wrapper' });
 
-      // Check if dynamic background is enabled for this mode
       const useDynamic = currentFm.useDynamicBackground;
       const isDynamicForThisMode = useDynamic === 'both' || useDynamic === mode;
 
       if (isDynamicForThisMode) {
-        // Show dynamic gradient preview - get colors from frontmatter or theme
         const gradientPreview = bgPickerContainer.createDiv({ cls: 'dynamic-gradient-preview' });
-
-        // Priority: frontmatter override > theme gradient > fallback
         let colors: string[];
         const fmColors = mode === 'light' ? currentFm.lightDynamicBackground : currentFm.darkDynamicBackground;
         if (fmColors && fmColors.length > 0) {
           colors = fmColors;
         } else {
-          // Get gradient from theme
-          const themeName = currentFm.theme || 'zurich';
-          const theme = getTheme(themeName);
-          const themePreset = theme?.presets[0];
           const themeGradient = mode === 'light' ? themePreset?.LightBgGradient : themePreset?.DarkBgGradient;
           colors = themeGradient || (mode === 'light' ? ['#ffffff', '#f0f0f0', '#e0e0e0'] : ['#1a1a2e', '#2d2d44', '#3d3d5c']);
         }
-
         gradientPreview.style.background = `linear-gradient(to right, ${colors.join(', ')})`;
         gradientPreview.setAttribute('title', 'Dynamic: background progresses across slides');
 
-        // Button to disable dynamic
         const disableBtn = bgPickerContainer.createEl('button', {
           cls: 'dynamic-toggle-btn active',
           text: 'Dynamic'
         });
         disableBtn.addEventListener('click', () => {
-          // Disable dynamic for this mode
           const currentUseDynamic = this.presentation?.frontmatter?.useDynamicBackground;
           let newValue: 'light' | 'dark' | 'both' | 'none' = 'none';
           if (currentUseDynamic === 'both') {
@@ -460,7 +769,6 @@ export class InspectorPanelView extends ItemView {
           renderColorPickers(mode);
         });
       } else {
-        // Show regular color picker
         new Setting(bgPickerContainer)
           .addColorPicker(picker => picker
             .setValue((mode === 'light' ? currentFm.lightBackground : currentFm.darkBackground) || defaultBgColor)
@@ -483,13 +791,11 @@ export class InspectorPanelView extends ItemView {
               renderColorPickers(mode);
             }));
 
-        // Button to enable dynamic
         const enableBtn = bgPickerContainer.createEl('button', {
           cls: 'dynamic-toggle-btn',
           text: 'Dynamic'
         });
         enableBtn.addEventListener('click', () => {
-          // Enable dynamic for this mode
           const currentUseDynamic = this.presentation?.frontmatter?.useDynamicBackground;
           let newValue: 'light' | 'dark' | 'both' | 'none';
           if (currentUseDynamic === 'none' || !currentUseDynamic) {
@@ -507,29 +813,26 @@ export class InspectorPanelView extends ItemView {
       }
     };
 
-    // Initial render
-    renderColorPickers(currentAppearance);
+    renderColorPickers(this.themeAppearanceMode);
 
-    // Toggle button handlers
     lightBtn.addEventListener('click', () => {
-      currentAppearance = 'light';
+      this.themeAppearanceMode = 'light';
       lightBtn.addClass('active');
       darkBtn.removeClass('active');
       renderColorPickers('light');
     });
 
     darkBtn.addEventListener('click', () => {
-      currentAppearance = 'dark';
+      this.themeAppearanceMode = 'dark';
       darkBtn.addClass('active');
       lightBtn.removeClass('active');
       renderColorPickers('dark');
     });
 
-    // Accent Colors (separate section)
-    const section4 = container.createDiv({ cls: 'inspector-section' });
-    section4.createEl('h5', { text: 'Accent Colors' });
+    // Section: ACCENT COLORS
+    this.createSectionHeader(container, 'ACCENT COLORS');
 
-    new Setting(section4)
+    new Setting(container)
       .setName('Primary (Accent 1)')
       .addColorPicker(picker => picker
         .setValue(fm.accent1 || themePreset?.Accent1 || '#e63946')
@@ -539,7 +842,7 @@ export class InspectorPanelView extends ItemView {
         .setTooltip('Reset to theme default')
         .onClick(() => this.updateFrontmatter({ accent1: undefined })));
 
-    new Setting(section4)
+    new Setting(container)
       .setName('Secondary (Accent 2)')
       .addColorPicker(picker => picker
         .setValue(fm.accent2 || themePreset?.Accent2 || '#43aa8b')
@@ -549,7 +852,7 @@ export class InspectorPanelView extends ItemView {
         .setTooltip('Reset to theme default')
         .onClick(() => this.updateFrontmatter({ accent2: undefined })));
 
-    new Setting(section4)
+    new Setting(container)
       .setName('Tertiary (Accent 3)')
       .addColorPicker(picker => picker
         .setValue(fm.accent3 || themePreset?.Accent3 || '#f9c74f')
@@ -559,7 +862,7 @@ export class InspectorPanelView extends ItemView {
         .setTooltip('Reset to theme default')
         .onClick(() => this.updateFrontmatter({ accent3: undefined })));
 
-    new Setting(section4)
+    new Setting(container)
       .setName('Accent 4')
       .addColorPicker(picker => picker
         .setValue(fm.accent4 || themePreset?.Accent4 || '#f94144')
@@ -569,17 +872,17 @@ export class InspectorPanelView extends ItemView {
         .setTooltip('Reset to theme default')
         .onClick(() => this.updateFrontmatter({ accent4: undefined })));
 
-    new Setting(section4)
+    new Setting(container)
       .setName('Accent 5')
       .addColorPicker(picker => picker
-        .setValue(fm.accent5 || themePreset?.Accent4 || '#f3722c')
+        .setValue(fm.accent5 || themePreset?.Accent5 || '#f3722c')
         .onChange(value => this.updateFrontmatter({ accent5: value })))
       .addExtraButton(btn => btn
         .setIcon('rotate-ccw')
         .setTooltip('Reset to theme default')
         .onClick(() => this.updateFrontmatter({ accent5: undefined })));
 
-    new Setting(section4)
+    new Setting(container)
       .setName('Accent 6')
       .addColorPicker(picker => picker
         .setValue(fm.accent6 || themePreset?.Accent6 || '#f8961e')
@@ -588,16 +891,231 @@ export class InspectorPanelView extends ItemView {
         .setIcon('rotate-ccw')
         .setTooltip('Reset to theme default')
         .onClick(() => this.updateFrontmatter({ accent6: undefined })));
+
+    // Section: HEADING COLORS
+    this.createSectionHeader(container, 'HEADING COLORS');
+
+    const headingsContainer = container.createDiv({ cls: 'heading-colors-container' });
+    this.renderHeadingColors(headingsContainer, this.themeAppearanceMode);
+
+    // Section: LAYOUT BACKGROUNDS
+    this.createSectionHeader(container, 'LAYOUT BACKGROUNDS');
+
+    const layoutBgContainer = container.createDiv({ cls: 'layout-bg-container' });
+    this.renderLayoutBackgrounds(layoutBgContainer, this.themeAppearanceMode);
+  }
+
+  private renderHeadingColors(container: HTMLElement, mode: 'light' | 'dark') {
+    container.empty();
+    const fm = this.presentation?.frontmatter;
+    if (!fm) return;
+
+    const theme = getTheme(fm.theme || 'zurich');
+    const themePreset = theme?.presets[0];
+    const defaultTitleColor = mode === 'light' 
+      ? (themePreset?.LightTitleTextColor || '#000000') 
+      : (themePreset?.DarkTitleTextColor || '#ffffff');
+
+    const headingConfigs = [
+      { level: 1, label: 'Headline #', lightKey: 'lightH1Color' as const, darkKey: 'darkH1Color' as const },
+      { level: 2, label: 'Headline ##', lightKey: 'lightH2Color' as const, darkKey: 'darkH2Color' as const },
+      { level: 3, label: 'Headline ###', lightKey: 'lightH3Color' as const, darkKey: 'darkH3Color' as const },
+      { level: 4, label: 'Headline ####', lightKey: 'lightH4Color' as const, darkKey: 'darkH4Color' as const },
+    ];
+
+    // Find which headings have custom colors set
+    const customHeadings = headingConfigs.filter(config => {
+      const key = mode === 'light' ? config.lightKey : config.darkKey;
+      const value = fm[key] as string[] | undefined;
+      return value && value.length > 0;
+    });
+
+    // Show custom heading colors
+    for (const config of customHeadings) {
+      const key = mode === 'light' ? config.lightKey : config.darkKey;
+      const value = (fm[key] as string[] | undefined)?.[0] || defaultTitleColor;
+
+      const row = container.createDiv({ cls: 'heading-color-row' });
+      row.createEl('span', { text: config.label, cls: 'color-label' });
+      
+      const pickerWrapper = row.createDiv({ cls: 'color-picker-wrapper' });
+      new Setting(pickerWrapper)
+        .addColorPicker(picker => picker
+          .setValue(value)
+          .onChange(newValue => {
+            const update: Partial<PresentationFrontmatter> = {};
+            (update as any)[key] = [newValue];
+            this.updateFrontmatter(update);
+          }))
+        .addExtraButton(btn => btn
+          .setIcon('x')
+          .setTooltip('Remove custom color (use Title color)')
+          .onClick(() => {
+            const update: Partial<PresentationFrontmatter> = {};
+            (update as any)[key] = undefined;
+            this.updateFrontmatter(update);
+            this.renderHeadingColors(container, mode);
+          }));
+    }
+
+    // Show "Add heading color" dropdown for remaining headings
+    const availableHeadings = headingConfigs.filter(config => {
+      const key = mode === 'light' ? config.lightKey : config.darkKey;
+      const value = fm[key] as string[] | undefined;
+      return !value || value.length === 0;
+    });
+
+    if (availableHeadings.length > 0) {
+      const addRow = container.createDiv({ cls: 'add-heading-color-row' });
+      const addBtn = addRow.createEl('button', {
+        cls: 'add-heading-color-btn',
+        text: '+ Add heading color'
+      });
+      
+      const dropdown = addRow.createEl('select', { cls: 'heading-level-select mod-hidden' });
+      availableHeadings.forEach(config => {
+        const opt = dropdown.createEl('option', { value: String(config.level), text: config.label });
+      });
+
+      addBtn.addEventListener('click', () => {
+        addBtn.addClass('mod-hidden');
+        dropdown.removeClass('mod-hidden');
+        dropdown.focus();
+      });
+
+      dropdown.addEventListener('change', () => {
+        const level = parseInt(dropdown.value);
+        const config = headingConfigs.find(c => c.level === level);
+        if (config) {
+          const key = mode === 'light' ? config.lightKey : config.darkKey;
+          const update: Partial<PresentationFrontmatter> = {};
+          (update as any)[key] = [defaultTitleColor];
+          this.updateFrontmatter(update);
+          this.renderHeadingColors(container, mode);
+        }
+      });
+
+      dropdown.addEventListener('blur', () => {
+        dropdown.addClass('mod-hidden');
+        addBtn.removeClass('mod-hidden');
+      });
+    }
+
+    if (customHeadings.length === 0) {
+      const helpText = container.createDiv({ cls: 'setting-item-description' });
+      helpText.setText('Headlines use the Title color by default. Add custom colors for specific heading levels.');
+    }
+  }
+
+  private renderLayoutBackgrounds(container: HTMLElement, mode: 'light' | 'dark') {
+    container.empty();
+    const fm = this.presentation?.frontmatter;
+    if (!fm) return;
+
+    const theme = getTheme(fm.theme || 'zurich');
+    const themePreset = theme?.presets[0];
+
+    const layoutConfigs = [
+      { label: 'Cover Slides', lightKey: 'lightBgCover' as const, darkKey: 'darkBgCover' as const },
+      { label: 'Title Slides', lightKey: 'lightBgTitle' as const, darkKey: 'darkBgTitle' as const },
+      { label: 'Section Slides', lightKey: 'lightBgSection' as const, darkKey: 'darkBgSection' as const },
+    ];
+
+    // Find which layouts have custom backgrounds set
+    const customLayouts = layoutConfigs.filter(config => {
+      const key = mode === 'light' ? config.lightKey : config.darkKey;
+      return fm[key] !== undefined;
+    });
+
+    // Show custom layout backgrounds
+    for (const config of customLayouts) {
+      const key = mode === 'light' ? config.lightKey : config.darkKey;
+      const defaultBg = mode === 'light' 
+        ? (themePreset?.LightBackgroundColor || '#ffffff') 
+        : (themePreset?.DarkBackgroundColor || '#1a1a2e');
+      const value = fm[key] || defaultBg;
+
+      const row = container.createDiv({ cls: 'layout-bg-row' });
+      row.createEl('span', { text: config.label, cls: 'color-label' });
+      
+      const pickerWrapper = row.createDiv({ cls: 'color-picker-wrapper' });
+      new Setting(pickerWrapper)
+        .addColorPicker(picker => picker
+          .setValue(value)
+          .onChange(newValue => {
+            const update: Partial<PresentationFrontmatter> = {};
+            (update as any)[key] = newValue;
+            this.updateFrontmatter(update);
+          }))
+        .addExtraButton(btn => btn
+          .setIcon('x')
+          .setTooltip('Remove custom background (use theme Background)')
+          .onClick(() => {
+            const update: Partial<PresentationFrontmatter> = {};
+            (update as any)[key] = undefined;
+            this.updateFrontmatter(update);
+            this.renderLayoutBackgrounds(container, mode);
+          }));
+    }
+
+    // Show "Add layout background" dropdown for remaining layouts
+    const availableLayouts = layoutConfigs.filter(config => {
+      const key = mode === 'light' ? config.lightKey : config.darkKey;
+      return fm[key] === undefined;
+    });
+
+    if (availableLayouts.length > 0) {
+      const addRow = container.createDiv({ cls: 'add-layout-bg-row' });
+      const addBtn = addRow.createEl('button', {
+        cls: 'add-layout-bg-btn',
+        text: '+ Add layout background'
+      });
+      
+      const dropdown = addRow.createEl('select', { cls: 'layout-select mod-hidden' });
+      availableLayouts.forEach(config => {
+        dropdown.createEl('option', { value: config.label, text: config.label });
+      });
+
+      addBtn.addEventListener('click', () => {
+        addBtn.addClass('mod-hidden');
+        dropdown.removeClass('mod-hidden');
+        dropdown.focus();
+      });
+
+      dropdown.addEventListener('change', () => {
+        const config = layoutConfigs.find(c => c.label === dropdown.value);
+        if (config) {
+          const key = mode === 'light' ? config.lightKey : config.darkKey;
+          const defaultBg = mode === 'light' 
+            ? (themePreset?.LightBackgroundColor || '#ffffff') 
+            : (themePreset?.DarkBackgroundColor || '#1a1a2e');
+          const update: Partial<PresentationFrontmatter> = {};
+          (update as any)[key] = defaultBg;
+          this.updateFrontmatter(update);
+          this.renderLayoutBackgrounds(container, mode);
+        }
+      });
+
+      dropdown.addEventListener('blur', () => {
+        dropdown.addClass('mod-hidden');
+        addBtn.removeClass('mod-hidden');
+      });
+    }
+
+    if (customLayouts.length === 0) {
+      const helpText = container.createDiv({ cls: 'setting-item-description' });
+      helpText.setText('Layouts use the theme Background color by default. Add custom backgrounds for specific slide types.');
+    }
   }
 
   // ============================================
-  // SLIDE TAB - Per-slide layout and appearance
+  // SLIDE TAB - Per-slide layout and overrides
   // ============================================
   private renderSlideTab(container: HTMLElement) {
     if (!this.currentSlide) {
       container.createEl('p', {
         cls: 'help-text centered',
-        text: 'Select a slide in the navigator to edit its design.'
+        text: 'Select a slide to edit its design.'
       });
       return;
     }
@@ -644,10 +1162,6 @@ export class InspectorPanelView extends ItemView {
     // TEXT SLIDES (Column Layouts)
     const columnSection = container.createDiv({ cls: 'inspector-section' });
     columnSection.createEl('h5', { text: 'Text Slides' });
-    columnSection.createEl('p', {
-      cls: 'help-text',
-      text: 'Explicit column control (overrides auto-detection)'
-    });
 
     const columnGrid = columnSection.createDiv({ cls: 'layout-picker' });
 
@@ -676,10 +1190,6 @@ export class InspectorPanelView extends ItemView {
     // IMAGE SLIDES
     const imageSection = container.createDiv({ cls: 'inspector-section' });
     imageSection.createEl('h5', { text: 'Image Slides' });
-    imageSection.createEl('p', {
-      cls: 'help-text',
-      text: 'Layouts optimized for images'
-    });
 
     const imageGrid = imageSection.createDiv({ cls: 'layout-picker' });
 
@@ -704,77 +1214,52 @@ export class InspectorPanelView extends ItemView {
       });
     });
 
-    // Color Mode
-    const section2 = container.createDiv({ cls: 'inspector-section' });
-    section2.createEl('h5', { text: 'Appearance' });
+    // OVERRIDES section (renamed from Appearance)
+    const overridesSection = container.createDiv({ cls: 'inspector-section' });
+    overridesSection.createEl('h5', { text: 'Overrides' });
 
-    const modeToggle = section2.createDiv({ cls: 'mode-toggle' });
+    // Mode toggle with reset
+    const modeRow = overridesSection.createDiv({ cls: 'mode-row' });
+    modeRow.createEl('span', { text: 'Mode', cls: 'setting-label' });
+    
+    const modeToggle = modeRow.createDiv({ cls: 'mode-toggle' });
+    
+    const hasExplicitMode = this.currentSlide?.metadata.mode !== undefined;
 
     const lightBtn = modeToggle.createDiv({
-      cls: `mode-option ${(this.currentSlide?.metadata.mode || 'light') === 'light' ? 'active' : ''}`
+      cls: `mode-option ${hasExplicitMode && this.currentSlide?.metadata.mode === 'light' ? 'active' : ''}`
     });
     lightBtn.createSpan({ text: '☀️ Light' });
     lightBtn.addEventListener('click', () => this.updateSlideMetadata({ mode: 'light' }));
 
     const darkBtn = modeToggle.createDiv({
-      cls: `mode-option ${this.currentSlide?.metadata.mode === 'dark' ? 'active' : ''}`
+      cls: `mode-option ${hasExplicitMode && this.currentSlide?.metadata.mode === 'dark' ? 'active' : ''}`
     });
     darkBtn.createSpan({ text: '🌙 Dark' });
     darkBtn.addEventListener('click', () => this.updateSlideMetadata({ mode: 'dark' }));
 
-    // Custom class
-    new Setting(section2)
-      .setName('Custom CSS Class')
-      .setDesc('Add custom styling class')
-      .addText(text => text
-        .setPlaceholder('my-special-slide')
-        .setValue(this.currentSlide?.metadata.class || '')
-        .onChange(value => this.updateSlideMetadata({ class: value }, true)));
-  }
-
-  // ============================================
-  // IMAGES TAB - Background and media settings
-  // ============================================
-  private renderImagesTab(container: HTMLElement) {
-    if (!this.currentSlide) {
-      container.createEl('p', {
-        cls: 'help-text centered',
-        text: 'Select a slide to edit its images.'
-      });
-      return;
-    }
-
-    // Current slide indicator
-    const slideInfo = container.createDiv({ cls: 'current-slide-info' });
-    slideInfo.createEl('span', {
-      cls: 'slide-badge',
-      text: `Slide ${this.currentSlideIndex + 1}`
+    const resetModeBtn = modeRow.createEl('button', {
+      cls: 'mode-reset-btn clickable-icon',
+      attr: { 'aria-label': 'Reset to presentation default' }
+    });
+    setIcon(resetModeBtn, 'rotate-ccw');
+    resetModeBtn.addEventListener('click', () => {
+      this.updateSlideMetadata({ mode: undefined });
     });
 
-    // Insert image
-    const section1 = container.createDiv({ cls: 'inspector-section' });
-    section1.createEl('h5', { text: 'Add Image' });
-    section1.createEl('p', {
-      cls: 'help-text',
-      text: 'Images in your content appear on the slide automatically.'
-    });
-
-    const formatButtons = section1.createDiv({ cls: 'format-buttons' });
-    this.createFormatButton(formatButtons, '🖼️ Insert Image', '![](image.png)');
-
-    // Background image
-    const section2 = container.createDiv({ cls: 'inspector-section' });
-    section2.createEl('h5', { text: 'Slide Background' });
-
-    new Setting(section2)
+    // Slide Background (moved from Images tab)
+    new Setting(overridesSection)
       .setName('Background Image')
-      .setDesc('Path or URL to background image')
-      .addText(text => text
-        .setPlaceholder('background.jpg')
-        .setValue(this.currentSlide?.metadata.background || '')
-        .onChange(value => this.updateSlideMetadata({ background: value }, true)));
+      .addText(text => {
+        text
+          .setPlaceholder('background.jpg')
+          .setValue(this.currentSlide?.metadata.background || '');
+        text.inputEl.addEventListener('blur', () => {
+          this.updateSlideMetadata({ background: text.getValue() }, true);
+        });
+      });
 
-    new Setting(section2)
+    new Setting(overridesSection)
       .setName('Background Opacity')
       .addSlider(slider => slider
         .setLimits(0, 100, 5)
@@ -782,86 +1267,22 @@ export class InspectorPanelView extends ItemView {
         .setDynamicTooltip()
         .onChange(value => this.updateSlideMetadata({ backgroundOpacity: value / 100 })));
 
-    // Image positioning info
-    const section3 = container.createDiv({ cls: 'inspector-section' });
-    section3.createEl('h5', { text: 'Image Tips' });
-    section3.createEl('p', {
-      cls: 'help-text',
-      text: '• Use Split layout for side-by-side text and image\n• Use Full Image layout for full-bleed images\n• Use Caption layout for image with text below'
-    });
-  }
-
-  // ============================================
-  // TEXT TAB - Formatting helpers
-  // ============================================
-  private renderTextTab(container: HTMLElement) {
-    // Speech (Speaker Notes)
-    const section1 = container.createDiv({ cls: 'inspector-section' });
-    section1.createEl('h5', { text: 'Speech (Speaker Notes)' });
-    section1.createEl('p', {
-      cls: 'help-text',
-      text: 'Regular paragraphs are speaker notes — only you see them.'
-    });
-
-    const formatButtons1 = section1.createDiv({ cls: 'format-buttons' });
-    this.createFormatButton(formatButtons1, 'Bold', '**text**');
-    this.createFormatButton(formatButtons1, 'Italic', '*text*');
-    this.createFormatButton(formatButtons1, 'Highlight', '==text==');
-    this.createFormatButton(formatButtons1, 'Link', '[text](url)');
-
-    // Text on Slide
-    const section2 = container.createDiv({ cls: 'inspector-section' });
-    section2.createEl('h5', { text: 'Text on Slide' });
-    section2.createEl('p', {
-      cls: 'help-text',
-      text: 'Headings and tab-indented content appear on the slide.'
-    });
-
-    const formatButtons2 = section2.createDiv({ cls: 'format-buttons' });
-    this.createFormatButton(formatButtons2, 'H1', '# ');
-    this.createFormatButton(formatButtons2, 'H2', '## ');
-    this.createFormatButton(formatButtons2, 'H3', '### ');
-    this.createFormatButton(formatButtons2, 'H4', '#### ');
-    this.createFormatButton(formatButtons2, 'H5', '##### ');
-    this.createFormatButton(formatButtons2, '^Kicker', '^');
-
-    const formatButtons3 = section2.createDiv({ cls: 'format-buttons' });
-    this.createFormatButton(formatButtons3, '⇥ List', '\t- ');
-    this.createFormatButton(formatButtons3, '⇥ Numbered', '\t1. ');
-    this.createFormatButton(formatButtons3, '⇥ Quote', '\t> ');
-    this.createFormatButton(formatButtons3, '⇥ Text', '\t');
-
-    // Structure
-    const section3 = container.createDiv({ cls: 'inspector-section' });
-    section3.createEl('h5', { text: 'Structure' });
-
-    const formatButtons4 = section3.createDiv({ cls: 'format-buttons' });
-    this.createFormatButton(formatButtons4, '--- New Slide', '\n\n---\n\n');
-    this.createFormatButton(formatButtons4, '// Comment', '// ');
-
-    // Code & Math
-    const section4 = container.createDiv({ cls: 'inspector-section' });
-    section4.createEl('h5', { text: 'Code & Math' });
-
-    const formatButtons5 = section4.createDiv({ cls: 'format-buttons' });
-    this.createFormatButton(formatButtons5, '`Code`', '`code`');
-    this.createFormatButton(formatButtons5, '```Block```', '\n```\ncode\n```\n');
-    this.createFormatButton(formatButtons5, '$Math$', '$x^2$');
+    // Custom class
+    new Setting(overridesSection)
+      .setName('Custom CSS Class')
+      .addText(text => {
+        text
+          .setPlaceholder('my-special-slide')
+          .setValue(this.currentSlide?.metadata.class || '');
+        text.inputEl.addEventListener('blur', () => {
+          this.updateSlideMetadata({ class: text.getValue() }, true);
+        });
+      });
   }
 
   // ============================================
   // Helper methods
   // ============================================
-
-  private createFormatButton(container: HTMLElement, label: string, format: string) {
-    const btn = container.createEl('button', { cls: 'format-button' });
-    btn.createSpan({ text: label });
-    btn.setAttribute('title', `Insert: ${format.replace(/\n/g, '↵')}`);
-
-    btn.addEventListener('click', () => {
-      this.app.workspace.trigger('perspecta:insert-format', format);
-    });
-  }
 
   private getSlideTitle(): string | null {
     if (!this.currentSlide) return null;
@@ -886,7 +1307,7 @@ export class InspectorPanelView extends ItemView {
     }
   }
 
-  private updateFrontmatter(frontmatter: Partial<PresentationFrontmatter>) {
+  private updateFrontmatter(frontmatter: Partial<PresentationFrontmatter>, persistent: boolean = true) {
     if (!this.presentation) return;
 
     // Update local state
@@ -899,12 +1320,14 @@ export class InspectorPanelView extends ItemView {
       }
     }
 
-    // Notify parent to update markdown file
+    // Notify parent
     if (this.onPresentationChange) {
-      this.onPresentationChange(frontmatter);
+      this.onPresentationChange(frontmatter, persistent);
     }
 
-    // Refresh the UI to reflect changes (especially for resets)
-    this.render();
+    // Refresh the UI ONLY if persistent is true
+    if (persistent) {
+      this.render();
+    }
   }
 }

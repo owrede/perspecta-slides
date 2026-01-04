@@ -2,6 +2,20 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.1.9] - 2026-01-04
+
+- **New**: Google Fonts integration - download and cache fonts locally for offline use
+- **New**: Typography tab in Inspector with FONTS, SIZES, SPACING, and OFFSETS sections
+- **New**: Font debugging toggle in Settings → Debug tab
+- **New**: Heading colors now addable/removable - headlines use Title color by default
+- **New**: Layout backgrounds now addable/removable - layouts use theme Background by default
+- **Improved**: Inspector reorganized into 4 tabs: Presentation, Typography, Theme, Slide
+- **Improved**: Slide tab "Appearance" section renamed to "Overrides" with Mode reset button
+- **Improved**: Slide background settings moved from Images tab to Slide tab
+- **Fix**: Text input fields in Inspector now save on blur instead of onChange (fixes single character bug)
+- **Fix**: Font names properly quoted in CSS variables for correct font loading
+- **Removed**: Images and Text tabs from Inspector (functionality consolidated)
+
 ## [0.1.8] - 2026-01-03
 
 - **New**: Support for 6 accent colors (Accent 1-6) with unified color pickers

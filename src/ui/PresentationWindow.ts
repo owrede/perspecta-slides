@@ -2,12 +2,12 @@ import { TFile, Notice } from 'obsidian';
 import { Presentation, Theme } from '../types';
 import { SlideRenderer, ImagePathResolver } from '../renderer/SlideRenderer';
 import { SlideParser } from '../parser/SlideParser';
-import { 
-  PresentationCache, 
-  SlideDiff, 
-  buildPresentationCache, 
-  diffPresentations, 
-  requiresFullRender 
+import {
+  PresentationCache,
+  SlideDiff,
+  buildPresentationCache,
+  diffPresentations,
+  requiresFullRender
 } from '../utils/SlideHasher';
 
 // Access Electron from the global require in Obsidian's context
@@ -31,33 +31,39 @@ export class PresentationWindow {
   private presentationCache: PresentationCache | null = null;
   private currentTheme: Theme | null = null;
   private imagePathResolver: ImagePathResolver | null = null;
-  
+  private presentation: Presentation | null = null;
+
+  public getPresentation(): Presentation | null {
+    return this.presentation;
+  }
+
   constructor() {
     this.parser = new SlideParser();
   }
-  
+
   /**
    * Set the image path resolver for wiki-link images
    */
   setImagePathResolver(resolver: ImagePathResolver): void {
     this.imagePathResolver = resolver;
   }
-  
+
   /**
    * Create a SlideRenderer with the image path resolver
    */
   private createRenderer(presentation: Presentation, theme: Theme | null): SlideRenderer {
     return new SlideRenderer(
-      presentation, 
-      theme || undefined, 
+      presentation,
+      theme || undefined,
       this.imagePathResolver || undefined
     );
   }
-  
+
   /**
    * Open a new presentation window
    */
   async open(presentation: Presentation, theme: Theme | null, sourceFile?: TFile, app?: any, startSlide: number = 0): Promise<void> {
+    this.presentation = presentation;
     this.currentSlideIndex = startSlide;
     this.currentTheme = theme;
     this.presentationCache = buildPresentationCache(presentation);
@@ -65,21 +71,21 @@ export class PresentationWindow {
     const electron = require('electron');
     const remote = electron.remote || (require as any)('@electron/remote');
     const { BrowserWindow, screen } = remote;
-    
+
     // Get screen dimensions for optimal window size
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-    
+
     // Calculate 16:9 window size that fits the screen
     const aspectRatio = 16 / 9;
     let windowWidth = Math.min(screenWidth * 0.9, 1920);
     let windowHeight = windowWidth / aspectRatio;
-    
+
     if (windowHeight > screenHeight * 0.9) {
       windowHeight = screenHeight * 0.9;
       windowWidth = windowHeight * aspectRatio;
     }
-    
+
     // Create the frameless window
     this.win = new BrowserWindow({
       width: Math.round(windowWidth),
@@ -98,28 +104,28 @@ export class PresentationWindow {
       },
       show: false, // Don't show until ready
     });
-    
+
     // Store reference for ESC key handling
     const win = this.win;
-    
+
     // Render the presentation HTML
     const renderer = this.createRenderer(presentation, theme);
     const html = this.generatePresentationHTML(presentation, renderer, theme, startSlide);
-    
+
     // Load the HTML content
     this.win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-    
+
     // Show window when ready
     this.win.once('ready-to-show', () => {
       this.win.show();
       this.win.focus();
     });
-    
+
     // Handle window close
     this.win.on('closed', () => {
       this.win = null;
     });
-    
+
     // Handle ESC key at the window level (before-input-event)
     this.win.webContents.on('before-input-event', (event: any, input: any) => {
       if (input.key === 'Escape' && input.type === 'keyDown') {
@@ -133,10 +139,10 @@ export class PresentationWindow {
         }
       }
     });
-    
+
     // Live updates are now handled by the main plugin via updateContent()
   }
-  
+
   /**
    * Generate the complete HTML for the presentation window
    */
@@ -144,9 +150,9 @@ export class PresentationWindow {
     const slidesHTML = presentation.slides.map((slide, index) => {
       return renderer.renderPresentationSlideHTML(slide, index);
     });
-    
+
     const themeCSS = theme ? this.generateThemeVariables(theme) : '';
-    
+
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -183,7 +189,7 @@ export class PresentationWindow {
 </body>
 </html>`;
   }
-  
+
   /**
    * Styles for the presentation window
    */
@@ -303,7 +309,7 @@ export class PresentationWindow {
       }
     `;
   }
-  
+
   /**
    * JavaScript for the presentation window
    */
@@ -481,14 +487,14 @@ export class PresentationWindow {
       })();
     `;
   }
-  
+
   /**
    * Generate theme CSS variables
    */
   private generateThemeVariables(theme: Theme): string {
     const preset = theme.presets[0];
     if (!preset) return '';
-    
+
     return `
       :root {
         --light-background: ${preset.LightBackgroundColor};
@@ -504,7 +510,7 @@ export class PresentationWindow {
       }
     `;
   }
-  
+
   /**
    * Update the presentation content while preserving current slide.
    * Uses incremental updates when possible - only updates the currently displayed slide
@@ -512,13 +518,13 @@ export class PresentationWindow {
    */
   async updateContent(presentation: Presentation, theme: Theme | null): Promise<void> {
     if (!this.win || this.win.isDestroyed()) return;
-    
+
     // Guard against empty presentations
     if (!presentation.slides || presentation.slides.length === 0) {
       console.warn('Cannot update presentation window: no slides');
       return;
     }
-    
+
     try {
       // Get current slide index from the window
       let currentSlide = this.currentSlideIndex;
@@ -530,37 +536,37 @@ export class PresentationWindow {
       } catch (e) {
         // Use stored index if we can't get it from window
       }
-      
+
       // Ensure slide index is valid
       if (currentSlide < 0 || currentSlide >= presentation.slides.length) {
         currentSlide = Math.max(0, Math.min(currentSlide, presentation.slides.length - 1));
       }
       this.currentSlideIndex = currentSlide;
-      
+
       // Check if we have a cache and can do incremental update
       if (this.presentationCache) {
         const diff = diffPresentations(this.presentationCache, presentation);
-        
+
         // No changes - skip update entirely
         if (diff.type === 'none') {
           return;
         }
-        
+
         // Theme changed or major structural changes - need full reload
         if (requiresFullRender(diff) || diff.type === 'structural') {
           await this.fullReload(presentation, theme, currentSlide);
           return;
         }
-        
+
         // Content-only changes - check if current slide was modified
         if (diff.type === 'content-only') {
           const currentSlideModified = diff.modifiedIndices.includes(currentSlide);
-          
+
           if (currentSlideModified) {
             // Only update the current slide's iframe
             const renderer = this.createRenderer(presentation, theme);
             const slideHTML = renderer.renderPresentationSlideHTML(presentation.slides[currentSlide], currentSlide);
-            
+
             // Escape the HTML for JavaScript string
             const escapedHTML = JSON.stringify(slideHTML);
             await this.win.webContents.executeJavaScript(
@@ -568,36 +574,56 @@ export class PresentationWindow {
             );
           }
           // If current slide wasn't modified, we don't need to update anything visible
-          
+
           // Update cache for next comparison
           this.presentationCache = buildPresentationCache(presentation);
           this.currentTheme = theme;
           return;
         }
       }
-      
+
       // No cache (first update) - do full reload
       await this.fullReload(presentation, theme, currentSlide);
-      
+
     } catch (error) {
       console.error('Failed to update presentation content:', error);
     }
   }
-  
+
+  /**
+   * Specifically update just the frontmatter for live previews
+   */
+  async updateFrontmatter(frontmatter: any, theme: Theme | null): Promise<void> {
+    if (!this.win || this.win.isDestroyed()) return;
+
+    // For now, the simplest way is to trigger a re-render of the current slide
+    // This will pick up the updated frontmatter which should be modified in the object passed here
+    const currentSlide = this.currentSlideIndex;
+    try {
+      const result = await this.win.webContents.executeJavaScript('window.currentSlide');
+      if (typeof result === 'number' && !isNaN(result)) {
+        this.currentSlideIndex = result;
+      }
+    } catch (e) { }
+
+    // We can't easily reach into the renderer without the full presentation object
+    // but the main plugin has it.
+  }
+
   /**
    * Perform a full reload of the presentation window
    */
   private async fullReload(presentation: Presentation, theme: Theme | null, currentSlide: number): Promise<void> {
     const renderer = this.createRenderer(presentation, theme);
     const html = this.generatePresentationHTML(presentation, renderer, theme, currentSlide);
-    
+
     this.win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-    
+
     // Update cache
     this.presentationCache = buildPresentationCache(presentation);
     this.currentTheme = theme;
   }
-  
+
   /**
    * Close the presentation window
    */
@@ -607,14 +633,14 @@ export class PresentationWindow {
       this.win = null;
     }
   }
-  
+
   /**
    * Check if window is open
    */
   isOpen(): boolean {
     return this.win !== null && !this.win.isDestroyed();
   }
-  
+
   private escapeHtml(str: string): string {
     return str
       .replace(/&/g, '&amp;')
@@ -623,7 +649,7 @@ export class PresentationWindow {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
-  
+
   private escapeAttr(str: string): string {
     return str
       .replace(/&/g, '&amp;')

@@ -1,0 +1,109 @@
+{
+    "name": "Milano",
+    "version": "2.0.0",
+    "author": "Perspecta",
+    "description": "Italian elegance with sophisticated warm tones",
+    "fonts": {
+        "title": {
+            "name": "Playfair Display",
+            "css": "Playfair Display, Georgia, serif"
+        },
+        "body": {
+            "name": "Lato",
+            "css": "Lato, system-ui, sans-serif"
+        }
+    },
+    "cssClasses": "variable-size-headings elegant-theme",
+    "presets": {
+        "light": {
+            "text": {
+                "h1": [
+                    "#2c1810"
+                ],
+                "h2": [
+                    "#2c1810"
+                ],
+                "h3": [
+                    "#3d2920"
+                ],
+                "h4": [
+                    "#3d2920"
+                ],
+                "body": "#4a3a30",
+                "header": "#7a6a5a",
+                "footer": "#7a6a5a"
+            },
+            "backgrounds": {
+                "general": {
+                    "type": "solid",
+                    "color": "#faf7f2"
+                },
+                "cover": {
+                    "type": "solid",
+                    "color": "#faf7f2"
+                },
+                "title": {
+                    "type": "solid",
+                    "color": "#faf7f2"
+                },
+                "section": {
+                    "type": "solid",
+                    "color": "#2c1810"
+                }
+            },
+            "accents": [
+                "#c9a87c",
+                "#2c1810",
+                "#8b6914",
+                "#6b4423",
+                "#a08060",
+                "#d4a373"
+            ]
+        },
+        "dark": {
+            "text": {
+                "h1": [
+                    "#faf7f2"
+                ],
+                "h2": [
+                    "#faf7f2"
+                ],
+                "h3": [
+                    "#e5ddd4"
+                ],
+                "h4": [
+                    "#e5ddd4"
+                ],
+                "body": "#d5cdc4",
+                "header": "#a09891",
+                "footer": "#a09891"
+            },
+            "backgrounds": {
+                "general": {
+                    "type": "solid",
+                    "color": "#2c1810"
+                },
+                "cover": {
+                    "type": "solid",
+                    "color": "#1a0f0a"
+                },
+                "title": {
+                    "type": "solid",
+                    "color": "#2c1810"
+                },
+                "section": {
+                    "type": "solid",
+                    "color": "#c9a87c"
+                }
+            },
+            "accents": [
+                "#c9a87c",
+                "#faf7f2",
+                "#d4a373",
+                "#8b6914",
+                "#a08060",
+                "#6b4423"
+            ]
+        }
+    }
+}

@@ -1,0 +1,112 @@
+/* Milano Theme - Italian Elegance */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Lato:wght@300;400;700&display=swap');
+
+/* Elegant typography */
+.elegant-theme .slide h1,
+.elegant-theme .slide h2 {
+    font-family: 'Playfair Display', Georgia, serif;
+}
+
+/* Variable-size headings */
+.slide h1 {
+    font-size: 3.5rem;
+}
+
+.slide h2 {
+    font-size: 2.5rem;
+}
+
+.slide h3 {
+    font-size: 2rem;
+}
+
+.slide h4 {
+    font-size: 1.5rem;
+}
+
+.slide h1,
+.slide h2 {
+    font-weight: 500;
+    letter-spacing: 0;
+}
+
+.slide h3,
+.slide h4 {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+/* Cover slides */
+.cover-container .slide-content,
+.title-container .slide-content {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.layout-cover h1,
+.layout-cover h2,
+.layout-title h1,
+.layout-title h2 {
+    font-size: 4rem;
+}
+
+/* Section slides */
+.section-container .slide-content {
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+/* Kicker styling */
+.kicker {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-weight: 400;
+    font-family: 'Lato', sans-serif;
+}
+
+/* Code blocks */
+pre {
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+}
+
+.dark pre {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Blockquote - elegant italic */
+blockquote {
+    border-left-width: 2px;
+    font-style: italic;
+    font-weight: 400;
+}
+
+/* Tables */
+table {
+    border: none;
+}
+
+th,
+td {
+    border: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+th {
+    background: transparent;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.dark th,
+.dark td {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Column spacing */
+.slot-columns {
+    gap: 3rem;
+}

@@ -1,6 +1,6 @@
-import { 
-  App, 
-  Plugin, 
+import {
+  App,
+  Plugin,
   WorkspaceLeaf,
   TFile,
   MarkdownView,
@@ -9,7 +9,7 @@ import {
   FileSystemAdapter
 } from 'obsidian';
 
-import { PerspecaSlidesSettings, DEFAULT_SETTINGS, Presentation } from './src/types';
+import { PerspecaSlidesSettings, DEFAULT_SETTINGS, Presentation, Theme, PresentationFrontmatter } from './src/types';
 import { SlideParser } from './src/parser/SlideParser';
 import { SlideRenderer, ImagePathResolver } from './src/renderer/SlideRenderer';
 import { getTheme } from './src/themes';
@@ -18,24 +18,27 @@ import { InspectorPanelView, INSPECTOR_VIEW_TYPE } from './src/ui/InspectorPanel
 import { PresentationView, PRESENTATION_VIEW_TYPE } from './src/ui/PresentationView';
 import { PerspectaSlidesSettingTab } from './src/ui/SettingsTab';
 import { PresentationWindow } from './src/ui/PresentationWindow';
-import { 
-  PresentationCache, 
-  SlideDiff, 
-  buildPresentationCache, 
-  diffPresentations, 
-  requiresFullRender 
+import {
+  PresentationCache,
+  SlideDiff,
+  buildPresentationCache,
+  diffPresentations,
+  requiresFullRender
 } from './src/utils/SlideHasher';
+import { FontManager, FontCache } from './src/utils/FontManager';
 
 const SLIDES_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
 
 export default class PerspectaSlidesPlugin extends Plugin {
   settings: PerspecaSlidesSettings = DEFAULT_SETTINGS;
   parser: SlideParser = new SlideParser();
+  fontManager: FontManager | null = null;
   private presentationWindow: PresentationWindow | null = null;
   private currentPresentationFile: TFile | null = null;
   private presentationCache: PresentationCache | null = null;
   private cachedFilePath: string | null = null;
-  
+  private currentTheme: Theme | null = null;
+
   /**
    * Image path resolver for Obsidian wiki-links
    * Resolves ![[image.png]] paths to actual resource URLs
@@ -45,16 +48,16 @@ export default class PerspectaSlidesPlugin extends Plugin {
       // Standard markdown paths - return as-is (may be URL or relative path)
       return path;
     }
-    
+
     // For wiki-links, resolve through Obsidian's system
     try {
       // Get the current file for context
       const activeFile = this.app.workspace.getActiveFile();
       const sourcePath = activeFile?.path || '';
-      
+
       // Resolve the link to a file
       const linkedFile = this.app.metadataCache.getFirstLinkpathDest(path, sourcePath);
-      
+
       if (linkedFile) {
         // Get the resource path for the file
         return this.app.vault.getResourcePath(linkedFile);
@@ -62,7 +65,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     } catch (e) {
       console.warn('Failed to resolve image path:', path, e);
     }
-    
+
     // Fallback - return original path
     return path;
   };
@@ -77,16 +80,16 @@ export default class PerspectaSlidesPlugin extends Plugin {
       // Standard markdown paths - return as-is (may be URL or relative path)
       return path;
     }
-    
+
     // For wiki-links, resolve to file:// URL
     try {
       // Get the current file for context
       const activeFile = this.app.workspace.getActiveFile();
       const sourcePath = activeFile?.path || '';
-      
+
       // Resolve the link to a file
       const linkedFile = this.app.metadataCache.getFirstLinkpathDest(path, sourcePath);
-      
+
       if (linkedFile) {
         // Get the vault's base path
         const adapter = this.app.vault.adapter;
@@ -100,13 +103,24 @@ export default class PerspectaSlidesPlugin extends Plugin {
     } catch (e) {
       console.warn('Failed to resolve image path for presentation:', path, e);
     }
-    
+
     // Fallback - return original path
     return path;
   };
 
   async onload() {
     await this.loadSettings();
+
+    // Initialize font manager
+    this.fontManager = new FontManager(
+      this.app,
+      this.settings.fontCache ? { fonts: this.settings.fontCache.fonts } : null,
+      async (cache: FontCache) => {
+        this.settings.fontCache = { fonts: cache.fonts };
+        await this.saveSettings();
+      }
+    );
+    this.fontManager.setDebugMode(this.settings.debugFontLoading);
 
     addIcon('presentation', SLIDES_ICON);
 
@@ -231,9 +245,45 @@ export default class PerspectaSlidesPlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', () => {
         this.setupCursorTracking();
+        this.updateInspectorFocus();
       })
     );
-    
+
+    // Handle format insertion from inspector
+    (this.app.workspace as any).on('perspecta:insert-format', (format: string) => {
+      const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (activeView) {
+        const editor = activeView.editor;
+        const cursor = editor.getCursor();
+
+        if (format.includes('text')) {
+          // Placeholder replacement like **text**
+          editor.replaceSelection(format);
+          // Move cursor to middle if it's a wrapper
+          if (format.startsWith('**') && format.endsWith('**')) {
+            const pos = editor.getCursor();
+            editor.setCursor({ line: pos.line, ch: pos.ch - 2 });
+          } else if (format.startsWith('*') && format.endsWith('*')) {
+            const pos = editor.getCursor();
+            editor.setCursor({ line: pos.line, ch: pos.ch - 1 });
+          } else if (format.startsWith('==') && format.endsWith('==')) {
+            const pos = editor.getCursor();
+            editor.setCursor({ line: pos.line, ch: pos.ch - 2 });
+          }
+        } else if (format.startsWith('\n\n---\n\n')) {
+          // Slide separator
+          editor.replaceRange(format, cursor);
+          editor.setCursor({ line: cursor.line + 3, ch: 0 });
+        } else {
+          // Simple prefix like "# " or "	- "
+          const lineContent = editor.getLine(cursor.line);
+          editor.replaceRange(format, { line: cursor.line, ch: 0 }, { line: cursor.line, ch: 0 });
+          editor.setCursor({ line: cursor.line, ch: lineContent.length + format.length });
+        }
+        editor.focus();
+      }
+    });
+
     // Initial setup
     this.setupCursorTracking();
   }
@@ -260,10 +310,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const pollInterval = setInterval(() => {
       const currentView = this.app.workspace.getActiveViewOfType(MarkdownView);
       if (!currentView || currentView.file?.path !== file.path) return;
-      
+
       const cursor = currentView.editor.getCursor();
       const currentLine = cursor.line;
-      
+
       // Only trigger if line changed
       if (currentLine !== this.lastTrackedLine || file.path !== this.lastTrackedFile) {
         this.lastTrackedLine = currentLine;
@@ -275,7 +325,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
     this.cursorTrackingCleanup = () => {
       clearInterval(pollInterval);
     };
-    
+
+    // Update inspector focus immediately
+    this.updateInspectorFocus();
+
     // Also try CodeMirror 5 approach as fallback
     const cm = (editor as any).cm;
     if (cm?.on) {
@@ -316,7 +369,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
   private async openPresentationView(file: TFile) {
     const existing = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
-    
+
     let leaf: WorkspaceLeaf;
     if (existing.length > 0) {
       leaf = existing[0];
@@ -347,7 +400,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
   private async toggleThumbnailNavigator() {
     const existing = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
-    
+
     if (existing.length > 0) {
       existing[0].detach();
     } else {
@@ -361,7 +414,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
   private async toggleInspector() {
     const existing = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
-    
+
     if (existing.length > 0) {
       existing[0].detach();
     } else {
@@ -411,9 +464,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       this.updateSidebarsIncrementalWithContent(file, content);
     }, 50);
   }
-  
+
   private pendingContent: string | null = null;
-  
+
   private debounceUpdateSidebarsWithContent(file: TFile, content: string) {
     this.pendingContent = content;
     if (this.updateTimeout) {
@@ -427,28 +480,28 @@ export default class PerspectaSlidesPlugin extends Plugin {
       }
     }, 30);
   }
-  
+
   /**
    * Incrementally update sidebars using content-based diffing.
    * Only re-renders slides that actually changed.
    */
   private async updateSidebarsIncrementalWithContent(file: TFile, content: string) {
     const presentation = this.parser.parse(content);
-    
+
     // Determine current slide index
     const currentSlideIndex = Math.max(0, Math.min(
       this.lastCursorSlideIndex >= 0 ? this.lastCursorSlideIndex : 0,
       presentation.slides.length - 1
     ));
-    
+
     // Check if we have a valid cache for this file
     const hasCacheForThisFile = this.presentationCache && this.cachedFilePath === file.path;
-    
+
     // Compute diff if we have a cache
     let diff: SlideDiff | null = null;
     if (hasCacheForThisFile && this.presentationCache) {
       diff = diffPresentations(this.presentationCache, presentation);
-      
+
       // If no changes detected, skip all updates
       if (diff.type === 'none') {
         // Still update inspector to reflect cursor position
@@ -461,7 +514,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
         }
         return;
       }
-      
+
       // If theme changed or major structural changes, do full re-render
       if (requiresFullRender(diff)) {
         this.presentationCache = buildPresentationCache(presentation);
@@ -471,9 +524,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
         return;
       }
     }
-    
+
     const theme = getTheme(presentation.frontmatter.theme || this.settings.defaultTheme);
-    
+
     // Handle based on diff type
     if (diff && diff.type === 'content-only') {
       // Content-only changes: update only modified slides
@@ -490,24 +543,24 @@ export default class PerspectaSlidesPlugin extends Plugin {
       this.lastSlideCount = presentation.slides.length;
       this.updateSidebarsWithPresentation(file, presentation, theme, currentSlideIndex);
     }
-    
+
     // Update cache for next comparison
     this.presentationCache = buildPresentationCache(presentation);
     this.cachedFilePath = file.path;
     this.lastSlideCount = presentation.slides.length;
   }
-  
+
   /**
    * Apply content-only updates (no structural changes)
    */
   private async applyContentOnlyUpdate(
-    diff: SlideDiff, 
-    presentation: Presentation, 
+    diff: SlideDiff,
+    presentation: Presentation,
     theme: ReturnType<typeof getTheme>,
     currentSlideIndex: number
   ): Promise<boolean> {
     const modifiedSlides = diff.modifiedIndices.map(i => presentation.slides[i]);
-    
+
     // Update thumbnail navigator (only modified slides)
     const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
     for (const leaf of thumbnailLeaves) {
@@ -522,7 +575,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
         return false;
       }
     }
-    
+
     // Update presentation view - always update the presentation object and current slide
     const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
     for (const leaf of presentationLeaves) {
@@ -537,7 +590,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
         view.updateSlide(idx, slide);
       }
     }
-    
+
     // Update inspector with current slide
     const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
     for (const leaf of inspectorLeaves) {
@@ -546,10 +599,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
         view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
       }
     }
-    
+
     return true;
   }
-  
+
   /**
    * Apply structural updates (slides added or removed)
    */
@@ -561,42 +614,42 @@ export default class PerspectaSlidesPlugin extends Plugin {
     currentSlideIndex: number
   ) {
     const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
-    
+
     // For now, if there are too many changes or complex reordering, do full re-render
     // This is a reasonable tradeoff for simplicity
     if (diff.addedIndices.length > 3 || diff.removedIndices.length > 3) {
       this.updateSidebars(file);
       return;
     }
-    
+
     for (const leaf of thumbnailLeaves) {
       const view = leaf.view as ThumbnailNavigatorView;
       view.setImagePathResolver(this.imagePathResolver);
       if (theme) {
         view.setTheme(theme);
       }
-      
+
       // Update internal presentation reference
       view.setPresentation(presentation, file, theme);
-      
+
       // For structural changes, we need to be careful about order
       // Simplest approach: remove then add, then renumber
-      
+
       // Remove slides (process in reverse order to maintain indices)
       const sortedRemoved = [...diff.removedIndices].sort((a, b) => b - a);
       for (const idx of sortedRemoved) {
         view.removeSlideAt(idx);
       }
-      
+
       // Add slides
       for (const idx of diff.addedIndices) {
         view.insertSlideAt(idx, presentation.slides[idx]);
       }
-      
+
       // Renumber all slides
       view.renumberSlides();
     }
-    
+
     // Update presentation view
     const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
     for (const leaf of presentationLeaves) {
@@ -606,7 +659,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       view.setPresentation(presentation, theme);
       view.goToSlide(currentSlideIndex, false);
     }
-    
+
     // Update inspector
     const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
     for (const leaf of inspectorLeaves) {
@@ -628,20 +681,25 @@ export default class PerspectaSlidesPlugin extends Plugin {
     ));
     this.updateSidebarsWithPresentation(file, presentation, theme, currentSlideIndex);
   }
-  
-  private updateSidebarsWithPresentation(
-    file: TFile, 
-    presentation: Presentation, 
+
+  private async updateSidebarsWithPresentation(
+    file: TFile,
+    presentation: Presentation,
     theme: ReturnType<typeof getTheme>,
     currentSlideIndex: number
   ) {
+    this.currentTheme = theme || null;
     // Update slide count tracking
     this.lastSlideCount = presentation.slides.length;
 
     const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
+    // Generate custom font CSS for cached fonts
+    const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
+
     for (const leaf of thumbnailLeaves) {
       const view = leaf.view as ThumbnailNavigatorView;
       view.setImagePathResolver(this.imagePathResolver);
+      view.setCustomFontCSS(customFontCSS);
       view.setPresentation(presentation, file, theme);
       view.setOnSlideSelect((index) => {
         this.navigateToSlide(index, presentation, file);
@@ -659,6 +717,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
     for (const leaf of inspectorLeaves) {
       const view = leaf.view as InspectorPanelView;
+      if (this.fontManager) {
+        view.setFontManager(this.fontManager);
+      }
       view.setPresentation(presentation, file);
       if (presentation.slides.length > 0 && presentation.slides[currentSlideIndex]) {
         view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
@@ -666,8 +727,12 @@ export default class PerspectaSlidesPlugin extends Plugin {
       view.setOnSlideMetadataChange((slideIndex, metadata) => {
         this.updateSlideMetadata(file, slideIndex, metadata);
       });
-      view.setOnPresentationChange((frontmatter) => {
-        this.updatePresentationFrontmatter(file, frontmatter);
+      view.setOnPresentationChange((frontmatter, persistent) => {
+        if (persistent) {
+          this.updatePresentationFrontmatter(file, frontmatter);
+        } else {
+          this.updatePreviewsLive(file, frontmatter);
+        }
       });
     }
 
@@ -676,6 +741,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       const view = leaf.view as PresentationView;
       view.setImagePathResolver(this.imagePathResolver);
       view.setPresentationImagePathResolver(this.presentationImagePathResolver);
+      view.setCustomFontCSS(customFontCSS);
       view.setPresentation(presentation, theme);
       // Wire up slide change callback for navigation controls (prev/next buttons)
       view.setOnSlideChange((index) => {
@@ -718,7 +784,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Find the markdown view for the specific file, not just the active view
     let markdownLeaf: WorkspaceLeaf | null = null;
     let markdownView: MarkdownView | null = null;
-    
+
     if (file) {
       // Find the markdown leaf that has this file open
       this.app.workspace.iterateAllLeaves((leaf) => {
@@ -728,43 +794,43 @@ export default class PerspectaSlidesPlugin extends Plugin {
         }
       });
     }
-    
+
     // Fallback to active view if no specific file
     if (!markdownView) {
       markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
     }
-    
+
     if (markdownView && markdownView.file) {
       const content = await this.app.vault.cachedRead(markdownView.file);
       const lineNumber = this.getLineNumberForSlide(content, index);
       const editor = markdownView.editor;
-      
+
       // Update lastCursorSlideIndex to prevent feedback loop
       this.lastCursorSlideIndex = index;
-      
+
       // Activate the markdown tab so cursor is visible and ready for typing
       if (markdownLeaf) {
         this.app.workspace.setActiveLeaf(markdownLeaf, { focus: true });
       }
-      
+
       // Determine cursor column - if it's a headline, place cursor before first letter
       const lines = content.split('\n');
       const targetLine = lines[lineNumber] || '';
       let cursorColumn = 0;
-      
+
       // Check if line is a headline (# , ## , ### , etc.)
       const headingMatch = targetLine.match(/^(#{1,6})\s+/);
       if (headingMatch) {
         // Place cursor right after "# " (before the first letter)
         cursorColumn = headingMatch[0].length;
       }
-      
+
       // Move cursor to the appropriate position
       editor.setCursor({ line: lineNumber, ch: cursorColumn });
-      
+
       // Scroll the line into view
       editor.scrollIntoView({ from: { line: lineNumber, ch: cursorColumn }, to: { line: lineNumber, ch: cursorColumn } }, true);
-      
+
       // Focus the editor so typing goes directly into it
       editor.focus();
     }
@@ -775,13 +841,13 @@ export default class PerspectaSlidesPlugin extends Plugin {
   private async handleCursorPositionChange(file: TFile, lineNumber: number) {
     const content = await this.app.vault.cachedRead(file);
     const slideIndex = this.getSlideIndexAtLine(content, lineNumber);
-    
+
     // Only update if slide changed
     if (slideIndex === this.lastCursorSlideIndex) return;
     this.lastCursorSlideIndex = slideIndex;
 
     const presentation = this.parser.parse(content);
-    
+
     if (slideIndex >= 0 && slideIndex < presentation.slides.length) {
       // Update thumbnail navigator selection
       const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
@@ -837,16 +903,16 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Count slide separators before the cursor line, ignoring those inside code blocks
     let slideIndex = 0;
     let inCodeBlock = false;
-    
+
     for (let i = frontmatterEnd; i <= lineNumber && i < lines.length; i++) {
       const line = lines[i];
-      
+
       // Track code block state (``` at start of line)
       if (line.startsWith('```')) {
         inCodeBlock = !inCodeBlock;
         continue;
       }
-      
+
       // Only count separators outside code blocks
       if (!inCodeBlock && this.isSlideSeparator(line)) {
         slideIndex++;
@@ -893,16 +959,16 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Find the nth slide separator, ignoring those inside code blocks
     let separatorCount = 0;
     let inCodeBlock = false;
-    
+
     for (let i = frontmatterEnd; i < lines.length; i++) {
       const line = lines[i];
-      
+
       // Track code block state (``` at start of line)
       if (line.startsWith('```')) {
         inCodeBlock = !inCodeBlock;
         continue;
       }
-      
+
       // Only count separators outside code blocks
       if (!inCodeBlock && this.isSlideSeparator(line)) {
         separatorCount++;
@@ -920,10 +986,15 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const presentation = this.parser.parse(content);
     const theme = getTheme(presentation.frontmatter.theme || this.settings.defaultTheme);
     const renderer = new SlideRenderer(presentation, theme);
+    
+    // Generate custom font CSS for cached fonts (uses base64 data URLs)
+    const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
+    renderer.setCustomFontCSS(customFontCSS);
+    
     const html = renderer.renderHTML();
 
     const exportPath = file.path.replace(/\.md$/, '.html');
-    
+
     const existingFile = this.app.vault.getAbstractFileByPath(exportPath);
     if (existingFile instanceof TFile) {
       await this.app.vault.modify(existingFile, html);
@@ -937,24 +1008,24 @@ export default class PerspectaSlidesPlugin extends Plugin {
   private async startPresentation(file: TFile) {
     await this.startPresentationAtSlide(file, 0);
   }
-  
+
   private async startPresentationAtSlide(file: TFile, slideIndex: number) {
     try {
       const content = await this.app.vault.read(file);
       const presentation = this.parser.parse(content);
       const theme = getTheme(presentation.frontmatter.theme || this.settings.defaultTheme);
-      
+
       // Close existing presentation window if open
       if (this.presentationWindow && this.presentationWindow.isOpen()) {
         this.presentationWindow.close();
       }
-      
+
       // Create new presentation window
       // Use presentationImagePathResolver which returns file:// URLs for the external window
       this.presentationWindow = new PresentationWindow();
       this.presentationWindow.setImagePathResolver(this.presentationImagePathResolver);
       await this.presentationWindow.open(presentation, theme || null, file, this.app, slideIndex);
-      
+
       this.currentPresentationFile = file;
     } catch (e) {
       console.error('Failed to start presentation:', e);
@@ -974,7 +1045,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       this.updatePresentationWindowWithContent(file, content);
     }, 100);
   }
-  
+
   private debounceUpdatePresentationWindowWithContent(file: TFile, content: string) {
     this.pendingPresentationContent = content;
     if (this.presentationUpdateTimeout) {
@@ -993,7 +1064,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     if (!this.presentationWindow || !this.presentationWindow.isOpen()) {
       return;
     }
-    
+
     if (!this.currentPresentationFile || this.currentPresentationFile.path !== file.path) {
       return;
     }
@@ -1007,10 +1078,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
   async reorderSlides(file: TFile, fromIndex: number, toIndex: number) {
     const content = await this.app.vault.read(file);
     const presentation = this.parser.parse(content);
-    
+
     if (fromIndex < 0 || fromIndex >= presentation.slides.length ||
-        toIndex < 0 || toIndex >= presentation.slides.length ||
-        fromIndex === toIndex) {
+      toIndex < 0 || toIndex >= presentation.slides.length ||
+      fromIndex === toIndex) {
       return;
     }
 
@@ -1055,7 +1126,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
   async updateSlideMetadata(file: TFile, slideIndex: number, metadata: Record<string, any>) {
     const content = await this.app.vault.read(file);
     const lines = content.split('\n');
-    
+
     // Find frontmatter end
     let inFrontmatter = false;
     let frontmatterEnd = 0;
@@ -1076,7 +1147,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Split by slide separator, preserving the separator pattern
     const separatorPattern = /(\n---+\s*\n)/;
     const parts = bodyContent.split(separatorPattern);
-    
+
     // parts is now: [slide0, sep0, slide1, sep1, slide2, ...]
     // Extract just the slide contents (even indices) and separators (odd indices)
     const slideRawContents: string[] = [];
@@ -1088,7 +1159,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
         separators.push(parts[i]);
       }
     }
-    
+
     if (slideIndex < 0 || slideIndex >= slideRawContents.length) {
       return;
     }
@@ -1096,11 +1167,11 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Get the slide content
     let slideContent = slideRawContents[slideIndex];
     const slideLines = slideContent.split('\n');
-    
+
     // Find or create metadata block at start of slide
     let metadataEndLine = 0;
     const existingMetadata: Record<string, string> = {};
-    
+
     // Check for existing metadata lines at start
     for (let i = 0; i < slideLines.length; i++) {
       const line = slideLines[i].trim();
@@ -1149,7 +1220,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     // Get content after metadata
     const contentLines = slideLines.slice(metadataEndLine);
-    
+
     // Remove leading empty lines from content
     while (contentLines.length > 0 && contentLines[0].trim() === '') {
       contentLines.shift();
@@ -1175,7 +1246,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
 
     await this.app.vault.modify(file, newContent);
-    
+
     // Immediately refresh views for responsive updates
     this.updateSidebarsIncrementalWithContent(file, newContent);
   }
@@ -1183,12 +1254,12 @@ export default class PerspectaSlidesPlugin extends Plugin {
   async updatePresentationFrontmatter(file: TFile, updates: Record<string, any>) {
     const content = await this.app.vault.read(file);
     const lines = content.split('\n');
-    
+
     // Find frontmatter boundaries
     let hasFrontmatter = false;
     let frontmatterStart = -1;
     let frontmatterEnd = -1;
-    
+
     for (let i = 0; i < lines.length; i++) {
       if (i === 0 && lines[i].trim() === '---') {
         hasFrontmatter = true;
@@ -1212,7 +1283,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
           let value = line.slice(colonIndex + 1).trim();
           // Remove quotes
           if ((value.startsWith('"') && value.endsWith('"')) ||
-              (value.startsWith("'") && value.endsWith("'"))) {
+            (value.startsWith("'") && value.endsWith("'"))) {
             value = value.slice(1, -1);
           }
           existingFM[key] = value;
@@ -1224,7 +1295,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     for (const [key, value] of Object.entries(updates)) {
       // Convert camelCase to kebab-case for YAML
       const yamlKey = key.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
-      
+
       if (value === undefined || value === null || value === '') {
         delete existingFM[yamlKey];
         delete existingFM[key];
@@ -1256,10 +1327,73 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     // Reconstruct document
     const newContent = fmLines.join('\n') + '\n' + bodyLines.join('\n');
-    
+
     await this.app.vault.modify(file, newContent);
-    
+
     // Full refresh for frontmatter changes (affects all slides)
     this.updateSidebars(file);
+  }
+
+  private updatePreviewsLive(file: TFile, updates: Record<string, any>) {
+    // Update all views without writing to disk
+    const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
+    for (const leaf of thumbnailLeaves) {
+      const view = leaf.view as ThumbnailNavigatorView;
+      const presentation = view.getPresentation();
+      if (presentation) {
+        Object.assign(presentation.frontmatter, updates);
+        view.updateSlides(Array.from({ length: presentation.slides.length }, (_, i) => i), presentation.slides);
+      }
+    }
+
+    const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
+    for (const leaf of presentationLeaves) {
+      const view = leaf.view as PresentationView;
+      const presentation = view.getPresentation();
+      if (presentation) {
+        Object.assign(presentation.frontmatter, updates);
+        view.updateCurrentSlideOnly();
+      }
+    }
+
+    if (this.presentationWindow && this.presentationWindow.isOpen()) {
+      const presentation = this.presentationWindow.getPresentation();
+      if (presentation) {
+        Object.assign(presentation.frontmatter, updates);
+        // Trigger a re-render of the current slide in the window
+        this.presentationWindow.updateContent(presentation, this.currentTheme || null);
+      }
+    }
+  }
+
+  private updateInspectorFocus() {
+    const activeFile = this.app.workspace.getActiveFile();
+    const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
+
+    for (const leaf of inspectorLeaves) {
+      const view = leaf.view as InspectorPanelView;
+      const isFocused = activeFile !== null && view.getTargetFile()?.path === activeFile.path;
+      view.setFocused(isFocused);
+    }
+  }
+
+  /**
+   * Generate @font-face CSS for cached fonts used in the presentation
+   * Uses base64 data URLs for iframe compatibility
+   */
+  async getCustomFontCSS(frontmatter: PresentationFrontmatter): Promise<string> {
+    if (!this.fontManager) return '';
+
+    const cssRules: string[] = [];
+    const fontsToCheck = [frontmatter.titleFont, frontmatter.bodyFont].filter(Boolean) as string[];
+
+    for (const fontName of fontsToCheck) {
+      if (this.fontManager.isCached(fontName)) {
+        const css = await this.fontManager.generateFontFaceCSS(fontName);
+        if (css) cssRules.push(css);
+      }
+    }
+
+    return cssRules.join('\n');
   }
 }

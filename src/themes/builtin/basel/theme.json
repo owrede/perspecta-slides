@@ -1,0 +1,109 @@
+{
+    "name": "Basel",
+    "version": "2.0.0",
+    "author": "Perspecta",
+    "description": "Swiss design with warm earth tones",
+    "fonts": {
+        "title": {
+            "name": "Helvetica",
+            "css": "Helvetica Neue, Helvetica, Arial, sans-serif"
+        },
+        "body": {
+            "name": "Helvetica",
+            "css": "Helvetica Neue, Helvetica, Arial, sans-serif"
+        }
+    },
+    "cssClasses": "fixed-size-headings",
+    "presets": {
+        "light": {
+            "text": {
+                "h1": [
+                    "#2d2926"
+                ],
+                "h2": [
+                    "#2d2926"
+                ],
+                "h3": [
+                    "#3d3632"
+                ],
+                "h4": [
+                    "#3d3632"
+                ],
+                "body": "#4a4541",
+                "header": "#8b8279",
+                "footer": "#8b8279"
+            },
+            "backgrounds": {
+                "general": {
+                    "type": "solid",
+                    "color": "#f5f0eb"
+                },
+                "cover": {
+                    "type": "solid",
+                    "color": "#f5f0eb"
+                },
+                "title": {
+                    "type": "solid",
+                    "color": "#f5f0eb"
+                },
+                "section": {
+                    "type": "solid",
+                    "color": "#2d2926"
+                }
+            },
+            "accents": [
+                "#c9a87c",
+                "#8b5e3c",
+                "#d4a373",
+                "#a98467",
+                "#6b4423",
+                "#4a3728"
+            ]
+        },
+        "dark": {
+            "text": {
+                "h1": [
+                    "#f5f0eb"
+                ],
+                "h2": [
+                    "#f5f0eb"
+                ],
+                "h3": [
+                    "#e5ddd4"
+                ],
+                "h4": [
+                    "#e5ddd4"
+                ],
+                "body": "#d5cdc4",
+                "header": "#a09891",
+                "footer": "#a09891"
+            },
+            "backgrounds": {
+                "general": {
+                    "type": "solid",
+                    "color": "#2d2926"
+                },
+                "cover": {
+                    "type": "solid",
+                    "color": "#1a1816"
+                },
+                "title": {
+                    "type": "solid",
+                    "color": "#2d2926"
+                },
+                "section": {
+                    "type": "solid",
+                    "color": "#c9a87c"
+                }
+            },
+            "accents": [
+                "#c9a87c",
+                "#d4a373",
+                "#e5ddd4",
+                "#a98467",
+                "#8b5e3c",
+                "#6b4423"
+            ]
+        }
+    }
+}

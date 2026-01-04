@@ -18,11 +18,19 @@ export class SlideRenderer {
   private presentation: Presentation;
   private theme: Theme | null = null;
   private resolveImagePath: ImagePathResolver | null = null;
+  private customFontCSS: string = '';
 
   constructor(presentation: Presentation, theme?: Theme, resolveImagePath?: ImagePathResolver) {
     this.presentation = presentation;
     this.theme = theme || null;
     this.resolveImagePath = resolveImagePath || null;
+  }
+
+  /**
+   * Set custom font CSS (e.g., @font-face rules for cached Google Fonts)
+   */
+  setCustomFontCSS(css: string): void {
+    this.customFontCSS = css;
   }
 
   /**
@@ -91,13 +99,18 @@ export class SlideRenderer {
     const themeCSS = this.theme ? generateThemeCSS(this.theme, context) : '';
     const bodyClass = context === 'thumbnail' ? 'perspecta-thumbnail' : 'perspecta-preview';
     const fontScaleCSS = this.getFontScaleCSS(frontmatter);
+    // Include frontmatter CSS variable overrides so Inspector color changes apply
+    const frontmatterVars = this.generateCSSVariables(frontmatter);
+    const frontmatterCSS = frontmatterVars ? `:root {\n${frontmatterVars}\n}` : '';
 
     return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
+  <style>${this.customFontCSS}</style>
   <style>${this.getBaseStyles(context)}</style>
   <style>${themeCSS}</style>
+  <style>${frontmatterCSS}</style>
   <style>${fontScaleCSS}</style>
 </head>
 <body class="${bodyClass} ${themeClasses}">
@@ -272,10 +285,14 @@ export class SlideRenderer {
       return this.renderHalfImageSlide(slide, index, frontmatter, layout, modeClass, containerClass, customClass, isActive, backgroundStyle, renderSpeakerNotes, dynamicBgColor);
     }
 
+    // Generate overlay if configured
+    const overlayHtml = this.renderOverlay(frontmatter);
+
     return `
     <section class="slide ${containerClass} ${modeClass} ${customClass} ${isActive}" data-index="${index}"${slideInlineStyle ? ` style="${slideInlineStyle}"` : ''}>
       ${backgroundStyle ? `<div class="slide-background" style="${backgroundStyle}"></div>` : ''}
       ${imageBackground}
+      ${overlayHtml}
       ${this.renderHeader(frontmatter, index)}
       <div class="slide-body">
         <div class="slide-content layout-${layout}">
@@ -327,10 +344,12 @@ export class SlideRenderer {
 
     const slideInlineStyle = dynamicBgColor ? `background-color: ${dynamicBgColor};` : '';
     const contentPanelStyle = dynamicBgColor ? ` style="background-color: ${dynamicBgColor};"` : '';
+    const overlayHtml = this.renderOverlay(frontmatter);
 
     return `
     <section class="slide ${containerClass} ${mode} ${customClass} ${isActive} ${directionClass} ${positionClass}" data-index="${index}"${slideInlineStyle ? ` style="${slideInlineStyle}"` : ''}>
       ${backgroundStyle ? `<div class="slide-background" style="${backgroundStyle}"></div>` : ''}
+      ${overlayHtml}
       <div class="half-image-panel">
         ${imagePanel}
       </div>
@@ -870,6 +889,26 @@ export class SlideRenderer {
   }
 
   // ============================================
+  // OVERLAY
+  // ============================================
+
+  private renderOverlay(frontmatter: PresentationFrontmatter): string {
+    if (!frontmatter.imageOverlay) {
+      return '';
+    }
+
+    const opacity = (frontmatter.imageOverlayOpacity ?? 50) / 100;
+    let imagePath = frontmatter.imageOverlay;
+
+    // Resolve image path if resolver available
+    if (this.resolveImagePath) {
+      imagePath = this.resolveImagePath(imagePath, false);
+    }
+
+    return `<div class="slide-overlay" style="background-image: url('${this.escapeHtml(imagePath)}'); opacity: ${opacity};"></div>`;
+  }
+
+  // ============================================
   // HEADER / FOOTER
   // ============================================
 
@@ -961,14 +1000,38 @@ export class SlideRenderer {
         position: relative;
       }
       .slide.light { background: var(--light-background); color: var(--light-body-text); }
+      .slide.light h1 { color: var(--light-h1-color, var(--light-title-text)); }
+      .slide.light h2 { color: var(--light-h2-color, var(--light-title-text)); }
+      .slide.light h3 { color: var(--light-h3-color, var(--light-title-text)); }
+      .slide.light h4 { color: var(--light-h4-color, var(--light-title-text)); }
+      .slide.light h5, .slide.light h6 { color: var(--light-title-text); }
       .slide.dark { background: var(--dark-background); color: var(--dark-body-text); }
+      .slide.dark h1 { color: var(--dark-h1-color, var(--dark-title-text)); }
+      .slide.dark h2 { color: var(--dark-h2-color, var(--dark-title-text)); }
+      .slide.dark h3 { color: var(--dark-h3-color, var(--dark-title-text)); }
+      .slide.dark h4 { color: var(--dark-h4-color, var(--dark-title-text)); }
+      .slide.dark h5, .slide.dark h6 { color: var(--dark-title-text); }
+      
+      /* Layout-specific backgrounds */
+      .slide.light.cover-container { background: var(--light-bg-cover, var(--light-background)); }
+      .slide.light.title-container { background: var(--light-bg-title, var(--light-background)); }
+      .slide.light.section-container { background: var(--light-bg-section, var(--accent1)); }
+      .slide.dark.cover-container { background: var(--dark-bg-cover, var(--dark-background)); }
+      .slide.dark.title-container { background: var(--dark-bg-title, var(--dark-background)); }
+      .slide.dark.section-container { background: var(--dark-bg-section, var(--accent1)); }
       
       /* System mode: follows OS preference */
       .slide.system-mode { background: var(--light-background); color: var(--light-body-text); }
+      .slide.system-mode h1 { color: var(--light-h1-color, var(--light-title-text)); }
+      .slide.system-mode h2 { color: var(--light-h2-color, var(--light-title-text)); }
+      .slide.system-mode h3, .slide.system-mode h4,
+      .slide.system-mode h5, .slide.system-mode h6 { color: var(--light-title-text); }
       @media (prefers-color-scheme: dark) {
         .slide.system-mode { background: var(--dark-background); color: var(--dark-body-text); }
-        .slide.system-mode h1, .slide.system-mode h2, .slide.system-mode h3,
-        .slide.system-mode h4, .slide.system-mode h5, .slide.system-mode h6 {
+        .slide.system-mode h1 { color: var(--dark-h1-color, var(--dark-title-text)); }
+        .slide.system-mode h2 { color: var(--dark-h2-color, var(--dark-title-text)); }
+        .slide.system-mode h3, .slide.system-mode h4,
+        .slide.system-mode h5, .slide.system-mode h6 {
           color: var(--dark-title-text);
         }
       }
@@ -985,6 +1048,16 @@ export class SlideRenderer {
         width: 100%;
         height: 100%;
         object-fit: cover;
+      }
+      /* Image overlay layer */
+      .slide-overlay {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        z-index: 1;
+        pointer-events: none;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
       }
       
       /* Dual image layout: responsive based on orientation */
@@ -1081,17 +1154,19 @@ export class SlideRenderer {
       /* Typography-scaled dynamically based on container and font-scale offset */
       h1, h2, h3, h4, h5, h6 { 
         font-family: var(--title-font, system-ui, -apple-system, sans-serif);
-        font-weight: 700; line-height: 1.15; 
+        font-weight: 700; line-height: 1.15;
+        margin-top: var(--headline-spacing-before, 0);
+        margin-bottom: var(--headline-spacing-after, 0.25em);
       }
-      h1 { font-size: calc(var(--slide-unit) * 7 * var(--font-scale, 1)); margin-bottom: 0.25em; }
-      h2 { font-size: calc(var(--slide-unit) * 5.5 * var(--font-scale, 1)); margin-bottom: 0.25em; }
-      h3 { font-size: calc(var(--slide-unit) * 4.5 * var(--font-scale, 1)); margin-bottom: 0.25em; }
+      h1 { font-size: calc(var(--slide-unit) * 7 * var(--font-scale, 1)); }
+      h2 { font-size: calc(var(--slide-unit) * 5.5 * var(--font-scale, 1)); }
+      h3 { font-size: calc(var(--slide-unit) * 4.5 * var(--font-scale, 1)); }
       h4 { font-size: calc(var(--slide-unit) * 3.5 * var(--font-scale, 1)); }
       h5 { font-size: calc(var(--slide-unit) * 3 * var(--font-scale, 1)); }
       h6 { font-size: calc(var(--slide-unit) * 2.5 * var(--font-scale, 1)); }
       p { font-size: calc(var(--slide-unit) * 2.8 * var(--font-scale, 1)); line-height: 1.4; }
       ul, ol { padding-left: 1.2em; font-size: calc(var(--slide-unit) * 2.8 * var(--font-scale, 1)); }
-      li { margin-bottom: 0.15em; }
+li { margin-bottom: var(--list-item-spacing, 0); }
       
       /* Kicker */
       .kicker { 
@@ -1348,7 +1423,6 @@ export class SlideRenderer {
       .slide-header, .slide-footer { 
         display: flex; 
         justify-content: space-between; 
-        font-size: calc(var(--slide-unit) * 1.5 * var(--font-scale, 1)); 
         position: relative;
         z-index: 2;
         margin-left: -2.5%;
@@ -1357,12 +1431,14 @@ export class SlideRenderer {
         padding-right: 2.5%;
       }
       .slide-header { 
+        font-size: calc(var(--slide-unit) * 1.5 * var(--font-scale, 1) * var(--header-font-size, 1));
         align-items: flex-start; 
         margin-top: -2.5%;
         padding-top: 1%;
         margin-bottom: calc(var(--slide-unit) * 2);
       }
       .slide-footer { 
+        font-size: calc(var(--slide-unit) * 1.5 * var(--font-scale, 1) * var(--footer-font-size, 1));
         align-items: flex-end; 
         margin-bottom: -2.5%;
         padding-bottom: 1%;
@@ -1393,6 +1469,9 @@ export class SlideRenderer {
     const themeCSS = this.theme ? generateThemeCSS(this.theme, 'export') : '';
 
     return `<style>
+/* Custom Fonts */
+${this.customFontCSS}
+
 ${themeCSS}
 :root {
 ${cssVars}
@@ -1445,6 +1524,8 @@ html, body {
 
 .slide h1, .slide h2, .slide h3, .slide h4, .slide h5, .slide h6 {
   font-family: var(--title-font);
+  margin-top: var(--headline-spacing-before, 0);
+  margin-bottom: var(--headline-spacing-after, 0);
 }
 
 .slide.active {
@@ -1520,7 +1601,6 @@ html, body {
 .slide-header, .slide-footer {
   display: flex;
   justify-content: space-between;
-  font-size: calc(var(--slide-unit) * 1.8);
   position: relative;
   z-index: 2;
   margin-left: -2.5%;
@@ -1529,11 +1609,13 @@ html, body {
   padding-right: 2.5%;
 }
 .slide-header {
+  font-size: calc(var(--slide-unit) * 1.8 * var(--header-font-size, 1));
   align-items: flex-start;
   margin-top: -2.5%;
   padding-top: 1%;
 }
 .slide-footer {
+  font-size: calc(var(--slide-unit) * 1.8 * var(--footer-font-size, 1));
   align-items: flex-end;
   margin-bottom: -2.5%;
   padding-bottom: 1%;
@@ -1562,7 +1644,8 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--title-font, system-ui, -apple-system, sans-serif);
   font-weight: 700;
   line-height: 1.15;
-  margin-bottom: 0.4em;
+  margin-top: var(--headline-spacing-before, 0);
+  margin-bottom: var(--headline-spacing-after, 0.4em);
 }
 
 h1 { font-size: calc(var(--slide-unit) * 7); }
@@ -1592,7 +1675,7 @@ ul, ol {
   padding-left: 1.5em;
 }
 
-li { margin-bottom: 0.5em; }
+li { margin-bottom: var(--list-item-spacing, 0); }
 
 blockquote {
   font-size: calc(var(--slide-unit) * 3.2);
@@ -1955,8 +2038,17 @@ mark { background: var(--accent3, #f9c74f); padding: 0.1em 0.2em; }
   private generateCSSVariables(frontmatter: PresentationFrontmatter): string {
     const vars: string[] = [];
 
-    if (frontmatter.titleFont) vars.push(`  --title-font: ${frontmatter.titleFont};`);
-    if (frontmatter.bodyFont) vars.push(`  --body-font: ${frontmatter.bodyFont};`);
+    if (frontmatter.titleFont) {
+      vars.push(`  --title-font: '${frontmatter.titleFont}', sans-serif;`);
+    }
+    if (frontmatter.bodyFont) {
+      vars.push(`  --body-font: '${frontmatter.bodyFont}', sans-serif;`);
+    }
+    if (frontmatter.listItemSpacing !== undefined) vars.push(`  --list-item-spacing: ${frontmatter.listItemSpacing}em;`);
+    if (frontmatter.headerFontSize !== undefined) vars.push(`  --header-font-size: ${frontmatter.headerFontSize};`);
+    if (frontmatter.footerFontSize !== undefined) vars.push(`  --footer-font-size: ${frontmatter.footerFontSize};`);
+    if (frontmatter.headlineSpacingBefore !== undefined) vars.push(`  --headline-spacing-before: ${frontmatter.headlineSpacingBefore}em;`);
+    if (frontmatter.headlineSpacingAfter !== undefined) vars.push(`  --headline-spacing-after: ${frontmatter.headlineSpacingAfter}em;`);
 
     if (frontmatter.accent1) vars.push(`  --accent1: ${frontmatter.accent1};`);
     if (frontmatter.accent2) vars.push(`  --accent2: ${frontmatter.accent2};`);
@@ -1971,6 +2063,35 @@ mark { background: var(--accent3, #f9c74f); padding: 0.1em 0.2em; }
     if (frontmatter.darkTitleText) vars.push(`  --dark-title-text: ${frontmatter.darkTitleText};`);
     if (frontmatter.lightBodyText) vars.push(`  --light-body-text: ${frontmatter.lightBodyText};`);
     if (frontmatter.darkBodyText) vars.push(`  --dark-body-text: ${frontmatter.darkBodyText};`);
+
+    // Per-heading colors (can be gradient if array has 2 elements)
+    const colorOrGradient = (colors: string[]): string => {
+      if (colors.length === 1) return colors[0];
+      return `linear-gradient(to right, ${colors.join(', ')})`;
+    };
+
+    if (frontmatter.lightH1Color?.length) vars.push(`  --light-h1-color: ${colorOrGradient(frontmatter.lightH1Color)};`);
+    if (frontmatter.lightH2Color?.length) vars.push(`  --light-h2-color: ${colorOrGradient(frontmatter.lightH2Color)};`);
+    if (frontmatter.lightH3Color?.length) vars.push(`  --light-h3-color: ${colorOrGradient(frontmatter.lightH3Color)};`);
+    if (frontmatter.lightH4Color?.length) vars.push(`  --light-h4-color: ${colorOrGradient(frontmatter.lightH4Color)};`);
+    if (frontmatter.darkH1Color?.length) vars.push(`  --dark-h1-color: ${colorOrGradient(frontmatter.darkH1Color)};`);
+    if (frontmatter.darkH2Color?.length) vars.push(`  --dark-h2-color: ${colorOrGradient(frontmatter.darkH2Color)};`);
+    if (frontmatter.darkH3Color?.length) vars.push(`  --dark-h3-color: ${colorOrGradient(frontmatter.darkH3Color)};`);
+    if (frontmatter.darkH4Color?.length) vars.push(`  --dark-h4-color: ${colorOrGradient(frontmatter.darkH4Color)};`);
+
+    // Header/Footer text colors
+    if (frontmatter.lightHeaderText) vars.push(`  --light-header-text: ${frontmatter.lightHeaderText};`);
+    if (frontmatter.lightFooterText) vars.push(`  --light-footer-text: ${frontmatter.lightFooterText};`);
+    if (frontmatter.darkHeaderText) vars.push(`  --dark-header-text: ${frontmatter.darkHeaderText};`);
+    if (frontmatter.darkFooterText) vars.push(`  --dark-footer-text: ${frontmatter.darkFooterText};`);
+
+    // Layout-specific backgrounds
+    if (frontmatter.lightBgCover) vars.push(`  --light-bg-cover: ${frontmatter.lightBgCover};`);
+    if (frontmatter.lightBgTitle) vars.push(`  --light-bg-title: ${frontmatter.lightBgTitle};`);
+    if (frontmatter.lightBgSection) vars.push(`  --light-bg-section: ${frontmatter.lightBgSection};`);
+    if (frontmatter.darkBgCover) vars.push(`  --dark-bg-cover: ${frontmatter.darkBgCover};`);
+    if (frontmatter.darkBgTitle) vars.push(`  --dark-bg-title: ${frontmatter.darkBgTitle};`);
+    if (frontmatter.darkBgSection) vars.push(`  --dark-bg-section: ${frontmatter.darkBgSection};`);
 
     if (frontmatter.lightDynamicBackground) {
       vars.push(`  --light-bg-gradient: ${frontmatter.lightDynamicBackground.join(', ')};`);

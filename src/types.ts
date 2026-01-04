@@ -7,20 +7,31 @@ export interface PresentationFrontmatter {
   author?: string;
   date?: string;
   theme?: string;
-  
+
   // Content mode: how to distinguish slide content from speaker notes
   contentMode?: ContentMode;
-  
+
   // Typography (overrides theme)
   titleFont?: string;
   bodyFont?: string;
-  
+
   // Font size offset as percentage (-50 to +50, e.g., -20 makes text 20% smaller)
   fontSizeOffset?: number;
-  
+
   // Content top offset - pushes column content down (0 to 50, as percentage of slide height)
   contentTopOffset?: number;
-  
+
+  // List item spacing (margin-bottom in em)
+  listItemSpacing?: number;
+
+  // Header/Footer font sizes (in em)
+  headerFontSize?: number;
+  footerFontSize?: number;
+
+  // Headline spacing (in em)
+  headlineSpacingBefore?: number;
+  headlineSpacingAfter?: number;
+
   // Colors (overrides theme presets)
   accent1?: string;
   accent2?: string;
@@ -28,22 +39,46 @@ export interface PresentationFrontmatter {
   accent4?: string;
   accent5?: string;
   accent6?: string;
-  
+
   // Light mode colors
   lightBackground?: string;
   lightTitleText?: string;
   lightBodyText?: string;
-  
+
   // Dark mode colors
   darkBackground?: string;
   darkTitleText?: string;
   darkBodyText?: string;
-  
+
+  // Per-heading colors (can be single color or gradient array)
+  lightH1Color?: string[];
+  lightH2Color?: string[];
+  lightH3Color?: string[];
+  lightH4Color?: string[];
+  darkH1Color?: string[];
+  darkH2Color?: string[];
+  darkH3Color?: string[];
+  darkH4Color?: string[];
+
+  // Header/Footer text colors
+  lightHeaderText?: string;
+  lightFooterText?: string;
+  darkHeaderText?: string;
+  darkFooterText?: string;
+
+  // Layout-specific backgrounds
+  lightBgCover?: string;
+  lightBgTitle?: string;
+  lightBgSection?: string;
+  darkBgCover?: string;
+  darkBgTitle?: string;
+  darkBgSection?: string;
+
   // Dynamic background gradient (color stops for gradient across slides)
   lightDynamicBackground?: string[]; // Array of color stops e.g., ['#ffffff', '#f0f0f0', '#e0e0e0']
   darkDynamicBackground?: string[];  // Array of color stops for dark mode
   useDynamicBackground?: 'light' | 'dark' | 'both' | 'none'; // Which mode uses dynamic bg
-  
+
   // Header/Footer
   headerLeft?: string;
   headerMiddle?: string;
@@ -51,19 +86,27 @@ export interface PresentationFrontmatter {
   footerLeft?: string;
   footerMiddle?: string;
   footerRight?: string;
-  
+
   // Logo
   logo?: string;
   logoSize?: string;
-  
+
   // Presentation settings
   aspectRatio?: '16:9' | '4:3' | '16:10' | 'auto';
   showProgress?: boolean;
   showSlideNumbers?: boolean;
   transition?: 'none' | 'fade' | 'slide';
-  
+
   // Appearance mode (default for all slides, can be overridden per-slide)
   mode?: 'light' | 'dark' | 'system';
+
+  // Image overlay settings
+  imageOverlay?: string;           // Path to overlay image
+  imageOverlayOpacity?: number;    // Opacity 0-100 (default 50 = 50% visible)
+  imageOverlays?: {                // Multiple overlays for different aspect ratios
+    path: string;
+    aspectRatio?: '16:9' | '4:3' | '16:10';
+  }[];
 }
 
 export interface SlideMetadata {
@@ -101,7 +144,7 @@ export interface SlideMetadata {
  * GRID SLIDES:
  * - grid: Auto-grid for multiple items (2x2, 2x3, etc.)
  */
-export type SlideLayout = 
+export type SlideLayout =
   // Standard slides (iA Presenter compatible)
   | 'cover'
   | 'title'
@@ -208,17 +251,17 @@ export interface ThemePreset {
   TitleFont?: string;
   BodyFont?: string;
   Appearance: 'light' | 'dark';
-  
+
   // Text colors
   DarkBodyTextColor: string;
   LightBodyTextColor: string;
   DarkTitleTextColor: string;
   LightTitleTextColor: string;
-  
+
   // Background colors
   DarkBackgroundColor: string;
   LightBackgroundColor: string;
-  
+
   // Accent colors (per-appearance and shared)
   DarkAccent1?: string;
   LightAccent1?: string;
@@ -228,7 +271,7 @@ export interface ThemePreset {
   Accent4: string;
   Accent5: string;
   Accent6: string;
-  
+
   // Background gradients (array of colors)
   LightBgGradient?: string[];
   DarkBgGradient?: string[];
@@ -266,6 +309,25 @@ export interface PerspecaSlidesSettings {
   exportIncludeSpeakerNotes: boolean;
   customThemesFolder: string;
   debugSlideRendering: boolean;
+  debugFontLoading: boolean;
+  fontCache?: FontCacheData;
+}
+
+/**
+ * Font cache data stored in plugin settings
+ */
+export interface FontCacheData {
+  fonts: Record<string, CachedFontData>;
+}
+
+export interface CachedFontData {
+  name: string;
+  displayName: string;
+  sourceUrl: string;
+  weights: number[];
+  styles: string[];
+  files: { weight: number; style: string; localPath: string; format: string }[];
+  cachedAt: number;
 }
 
 export const DEFAULT_SETTINGS: PerspecaSlidesSettings = {
@@ -277,4 +339,6 @@ export const DEFAULT_SETTINGS: PerspecaSlidesSettings = {
   exportIncludeSpeakerNotes: false,
   customThemesFolder: 'perspecta-themes',
   debugSlideRendering: false,
+  debugFontLoading: false,
+  fontCache: { fonts: {} },
 };

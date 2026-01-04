@@ -36,6 +36,9 @@ const context = await esbuild.context({
   sourcemap: prod ? false : "inline",
   treeShaking: true,
   outfile: "main.js",
+  loader: {
+    ".css": "text",  // Load CSS files as text strings
+  },
 });
 
 if (prod) {

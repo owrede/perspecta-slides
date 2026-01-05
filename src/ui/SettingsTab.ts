@@ -364,6 +364,58 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 					}
 				}));
 
+		containerEl.createEl('h2', { text: 'Add Local Font' });
+
+		const addLocalFontSection = containerEl.createDiv({ cls: 'perspecta-add-font-section' });
+
+		let localFontPath = '';
+		let localFontName = '';
+
+		new Setting(addLocalFontSection)
+			.setName('Font folder path')
+			.setDesc('Path to a folder containing .otf, .ttf, .woff, or .woff2 files (relative to vault root)')
+			.addText(text => text
+				.setPlaceholder('sample-data/Fonts/MyFont')
+				.onChange(value => {
+					localFontPath = value;
+				}));
+
+		new Setting(addLocalFontSection)
+			.setName('Font family name')
+			.setDesc('Optional custom name (auto-detected from filenames if empty)')
+			.addText(text => text
+				.setPlaceholder('MyFont')
+				.onChange(value => {
+					localFontName = value;
+				}));
+
+		new Setting(addLocalFontSection)
+			.addButton(button => button
+				.setButtonText('Add Local Font')
+				.setCta()
+				.onClick(async () => {
+					if (!localFontPath.trim()) {
+						new Notice('Please enter a folder path');
+						return;
+					}
+
+					const isValidFolder = await fontManager.isLocalFontFolder(localFontPath.trim());
+					if (!isValidFolder) {
+						new Notice('Folder not found or contains no font files (.otf, .ttf, .woff, .woff2)');
+						return;
+					}
+
+					new Notice('Adding local font...');
+					
+					const result = await fontManager.cacheLocalFont(localFontPath.trim(), localFontName.trim() || undefined);
+					if (result) {
+						new Notice(`Font "${result}" added successfully`);
+						this.display();
+					} else {
+						new Notice('Failed to add local font');
+					}
+				}));
+
 		containerEl.createEl('h2', { text: 'Downloaded Fonts' });
 
 		const cachedFonts = fontManager.getAllCachedFonts();

@@ -220,6 +220,147 @@ export class FontManager {
   }
 
   /**
+   * Cache a local font from a folder path
+   * Scans the folder for .otf, .ttf, .woff, .woff2 files and creates a cached font entry
+   * @param folderPath Path to folder containing font files (relative to vault root)
+   * @param fontName Optional font family name (auto-detected from filenames if not provided)
+   * @returns The font name if successful, null if failed
+   */
+  async cacheLocalFont(folderPath: string, fontName?: string): Promise<string | null> {
+    this.log('Caching local font from folder:', folderPath);
+
+    try {
+      const folder = this.app.vault.getAbstractFileByPath(folderPath);
+      if (!folder || !(folder instanceof TFolder)) {
+        console.error('Folder not found:', folderPath);
+        return null;
+      }
+
+      // Find all font files in the folder
+      const fontExtensions = ['otf', 'ttf', 'woff', 'woff2'];
+      const fontFilesInFolder = folder.children.filter(
+        f => f instanceof TFile && fontExtensions.includes(f.extension.toLowerCase())
+      ) as TFile[];
+
+      if (fontFilesInFolder.length === 0) {
+        console.error('No font files found in folder:', folderPath);
+        return null;
+      }
+
+      // Auto-detect font name from first file if not provided
+      // E.g., "ClanOT-Bold.otf" -> "ClanOT"
+      if (!fontName) {
+        const firstFile = fontFilesInFolder[0];
+        const match = firstFile.basename.match(/^([^-]+)/);
+        fontName = match ? match[1] : firstFile.basename;
+      }
+
+      // Parse font files to extract weight and style info
+      const fontFiles: CachedFontFile[] = [];
+      const weights: number[] = [];
+      const styles: string[] = [];
+
+      // Weight name mapping
+      const weightMap: Record<string, number> = {
+        'thin': 100,
+        'hairline': 100,
+        'extralight': 200,
+        'ultralight': 200,
+        'light': 300,
+        'regular': 400,
+        'normal': 400,
+        'book': 400,
+        'news': 400,
+        'medium': 500,
+        'semibold': 600,
+        'demibold': 600,
+        'bold': 700,
+        'extrabold': 800,
+        'ultrabold': 800,
+        'black': 900,
+        'heavy': 900,
+        'ultra': 950,
+      };
+
+      // Ensure cache folder exists
+      await this.ensureCacheFolder();
+
+      for (const file of fontFilesInFolder) {
+        const baseName = file.basename.toLowerCase();
+        
+        // Detect weight from filename
+        let weight = 400;
+        for (const [name, w] of Object.entries(weightMap)) {
+          if (baseName.includes(name)) {
+            weight = w;
+            break;
+          }
+        }
+
+        // Detect style from filename
+        const isItalic = baseName.includes('ita') || baseName.includes('italic') || baseName.includes('oblique');
+        const style = isItalic ? 'italic' : 'normal';
+
+        // Copy file to cache folder
+        const format = file.extension.toLowerCase();
+        const destFileName = `${fontName.replace(/\s+/g, '-')}-${weight}-${style}.${format}`;
+        const destPath = `${this.fontCacheFolder}/${destFileName}`;
+
+        // Check if destination exists
+        const existing = this.app.vault.getAbstractFileByPath(destPath);
+        if (!existing) {
+          const data = await this.app.vault.readBinary(file);
+          await this.app.vault.createBinary(destPath, data);
+        }
+
+        fontFiles.push({
+          weight,
+          style,
+          localPath: destPath,
+          format,
+        });
+
+        if (!weights.includes(weight)) weights.push(weight);
+        if (!styles.includes(style)) styles.push(style);
+      }
+
+      // Create cached font entry
+      const cachedFont: CachedFont = {
+        name: fontName,
+        displayName: fontName,
+        sourceUrl: `local:${folderPath}`,
+        weights: weights.sort((a, b) => a - b),
+        styles: [...new Set(styles)],
+        files: fontFiles,
+        cachedAt: Date.now(),
+      };
+
+      this.cache.fonts[fontName] = cachedFont;
+      await this.saveCallback(this.cache);
+
+      this.log('Successfully cached local font:', fontName, 'with', fontFiles.length, 'files');
+      return fontName;
+
+    } catch (error) {
+      console.error('Error caching local font:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Check if a path is a local font folder (contains font files)
+   */
+  async isLocalFontFolder(folderPath: string): Promise<boolean> {
+    const folder = this.app.vault.getAbstractFileByPath(folderPath);
+    if (!folder || !(folder instanceof TFolder)) return false;
+
+    const fontExtensions = ['otf', 'ttf', 'woff', 'woff2'];
+    return folder.children.some(
+      f => f instanceof TFile && fontExtensions.includes(f.extension.toLowerCase())
+    );
+  }
+
+  /**
    * Parse CSS and download font files
    * Handles variable fonts (single file for all weights) efficiently
    * Returns font files, all parsed weights, and all parsed styles from CSS

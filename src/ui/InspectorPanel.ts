@@ -1836,14 +1836,10 @@ export class InspectorPanelView extends ItemView {
       }
     }
 
-    // Notify parent
+    // Notify parent - the parent will trigger a full refresh via file modification
+    // and editor-change event, so no need to call this.render() here
     if (this.onPresentationChange) {
       this.onPresentationChange(frontmatter, persistent);
-    }
-
-    // Refresh the UI ONLY if persistent is true
-    if (persistent) {
-      this.render();
     }
   }
 }

@@ -1475,9 +1475,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const newContent = fmLines.join('\n') + '\n' + bodyLines.join('\n');
 
     await this.app.vault.modify(file, newContent);
-
-    // Full refresh for frontmatter changes (affects all slides)
-    this.updateSidebars(file);
+    // Note: No explicit updateSidebars call needed here - the file modification
+    // triggers the editor-change event which handles the update with debouncing
   }
 
   private updatePreviewsLive(file: TFile, updates: Record<string, any>) {

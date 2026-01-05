@@ -73,9 +73,20 @@ export class FontManager {
 
   /**
    * Parse a Google Fonts URL and extract the font name
-   * Supports: https://fonts.google.com/specimen/Barlow
+   * Supports:
+   * - https://fonts.google.com/specimen/Barlow
+   * - https://fonts.google.com/specimen/Open+Sans
+   * - https://fonts.google.com/noto/specimen/Noto+Sans (Noto fonts)
+   * - https://fonts.googleapis.com/css2?family=Barlow
    */
   static parseGoogleFontsUrl(url: string): string | null {
+    // Match: https://fonts.google.com/noto/specimen/FontName (Noto fonts have special path)
+    const notoMatch = url.match(/fonts\.google\.com\/noto\/specimen\/([^/?#]+)/i);
+    if (notoMatch) {
+      // Convert URL-encoded name (e.g., "Noto+Sans" -> "Noto Sans")
+      return decodeURIComponent(notoMatch[1].replace(/\+/g, ' '));
+    }
+
     // Match: https://fonts.google.com/specimen/FontName
     const specimenMatch = url.match(/fonts\.google\.com\/specimen\/([^/?#]+)/i);
     if (specimenMatch) {
@@ -96,7 +107,7 @@ export class FontManager {
    * Check if a string is a Google Fonts URL
    */
   static isGoogleFontsUrl(value: string): boolean {
-    return /fonts\.google\.com\/specimen\//i.test(value) ||
+    return /fonts\.google\.com\/(noto\/)?specimen\//i.test(value) ||
            /fonts\.googleapis\.com\/css/i.test(value);
   }
 

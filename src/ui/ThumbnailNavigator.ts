@@ -48,7 +48,19 @@ export class ThumbnailNavigatorView extends ItemView {
     if (this.customFontCSS) {
       renderer.setCustomFontCSS(this.customFontCSS);
     }
+    // Set system color scheme so 'system' mode resolves correctly
+    renderer.setSystemColorScheme(this.getSystemColorScheme());
     return renderer;
+  }
+
+  /**
+   * Detect the system color scheme (light or dark)
+   */
+  private getSystemColorScheme(): 'light' | 'dark' {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'light';
   }
 
   getViewType(): string {
@@ -86,6 +98,22 @@ export class ThumbnailNavigatorView extends ItemView {
     this.selectedSlideIndex = Math.min(this.selectedSlideIndex, presentation.slides.length - 1);
     if (this.selectedSlideIndex < 0) this.selectedSlideIndex = 0;
     this.render();
+  }
+
+  /**
+   * Update the presentation reference without triggering a full re-render
+   * Used for incremental updates where we manually add/remove slides
+   */
+  updatePresentationRef(presentation: Presentation, file?: TFile, theme?: Theme) {
+    this.presentation = presentation;
+    if (file) {
+      this.currentFile = file;
+    }
+    if (theme) {
+      this.theme = theme;
+    }
+    this.selectedSlideIndex = Math.min(this.selectedSlideIndex, presentation.slides.length - 1);
+    if (this.selectedSlideIndex < 0) this.selectedSlideIndex = 0;
   }
 
   setCurrentFile(file: TFile) {
@@ -341,29 +369,32 @@ export class ThumbnailNavigatorView extends ItemView {
     previewContainer.appendChild(iframe);
     item.appendChild(previewContainer);
 
-    // Click handler
+    // Click handler - read index from DOM to handle renumbering after inserts/removes
     item.addEventListener('click', () => {
-      this.selectedSlideIndex = index;
+      const currentIndex = parseInt(item.dataset.index || '0', 10);
+      this.selectedSlideIndex = currentIndex;
       this.updateSelection();
       if (this.onSlideSelect) {
-        this.onSlideSelect(index);
+        this.onSlideSelect(currentIndex);
       }
     });
 
     // Double-click to start presentation at this slide
     item.addEventListener('dblclick', () => {
+      const currentIndex = parseInt(item.dataset.index || '0', 10);
       if (this.onStartPresentation) {
-        this.onStartPresentation(index);
+        this.onStartPresentation(currentIndex);
       }
     });
 
-    // Drag and drop handlers
+    // Drag and drop handlers - read index from DOM to handle renumbering
     item.addEventListener('dragstart', (e) => {
-      this.draggedIndex = index;
+      const currentIndex = parseInt(item.dataset.index || '0', 10);
+      this.draggedIndex = currentIndex;
       item.classList.add('dragging');
       if (e.dataTransfer) {
         e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', String(index));
+        e.dataTransfer.setData('text/plain', String(currentIndex));
       }
     });
 
@@ -378,7 +409,8 @@ export class ThumbnailNavigatorView extends ItemView {
 
     item.addEventListener('dragover', (e) => {
       e.preventDefault();
-      if (this.draggedIndex === -1 || this.draggedIndex === index) return;
+      const currentIndex = parseInt(item.dataset.index || '0', 10);
+      if (this.draggedIndex === -1 || this.draggedIndex === currentIndex) return;
 
       const rect = item.getBoundingClientRect();
       const midpoint = rect.top + rect.height / 2;
@@ -401,11 +433,12 @@ export class ThumbnailNavigatorView extends ItemView {
       e.preventDefault();
       item.classList.remove('drop-before', 'drop-after');
 
-      if (this.draggedIndex === -1 || this.draggedIndex === index) return;
+      const currentIndex = parseInt(item.dataset.index || '0', 10);
+      if (this.draggedIndex === -1 || this.draggedIndex === currentIndex) return;
 
       const rect = item.getBoundingClientRect();
       const midpoint = rect.top + rect.height / 2;
-      let toIndex = e.clientY < midpoint ? index : index + 1;
+      let toIndex = e.clientY < midpoint ? currentIndex : currentIndex + 1;
 
       // Adjust toIndex if dragging from before to after
       if (this.draggedIndex < toIndex) {

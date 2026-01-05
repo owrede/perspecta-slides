@@ -32,6 +32,17 @@ import { getBuiltInThemeNames } from './src/themes/builtin';
 
 const SLIDES_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
 
+/**
+ * Detect the system color scheme (light or dark)
+ * Uses window.matchMedia which works in Obsidian's Electron context
+ */
+function getSystemColorScheme(): 'light' | 'dark' {
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return 'light';
+}
+
 export default class PerspectaSlidesPlugin extends Plugin {
   settings: PerspecaSlidesSettings = DEFAULT_SETTINGS;
   parser: SlideParser = new SlideParser();
@@ -137,13 +148,39 @@ export default class PerspectaSlidesPlugin extends Plugin {
       async (cache: FontCache) => {
         this.settings.fontCache = { fonts: cache.fonts };
         await this.saveSettings();
-      }
+      },
+      this.settings.fontCacheFolder
     );
     this.fontManager.setDebugMode(this.settings.debugFontLoading);
 
-    // Initialize theme loader
+    // Initialize theme loader with built-in themes first
     this.themeLoader = new ThemeLoader(this.app, this.settings.customThemesFolder);
     await this.themeLoader.loadThemes();
+    
+    // Reload custom themes when layout is ready (vault file index is complete)
+    this.app.workspace.onLayoutReady(async () => {
+      if (this.themeLoader) {
+        await this.themeLoader.loadThemes();
+      }
+    });
+
+    // Listen for system color scheme changes and refresh all views
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleColorSchemeChange = () => {
+        // Refresh the active presentation if there is one
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile && activeFile.extension === 'md') {
+          this.updateSidebars(activeFile);
+        }
+        // Also update the presentation window if it's open
+        if (this.presentationWindow?.isOpen() && this.currentPresentationFile) {
+          this.refreshPresentationWindow();
+        }
+      };
+      colorSchemeQuery.addEventListener('change', handleColorSchemeChange);
+      this.register(() => colorSchemeQuery.removeEventListener('change', handleColorSchemeChange));
+    }
 
     addIcon('presentation', SLIDES_ICON);
 
@@ -663,12 +700,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
     for (const leaf of thumbnailLeaves) {
       const view = leaf.view as ThumbnailNavigatorView;
       view.setImagePathResolver(this.imagePathResolver);
-      if (theme) {
-        view.setTheme(theme);
-      }
 
-      // Update internal presentation reference
-      view.setPresentation(presentation, file, theme);
+      // Update internal presentation reference WITHOUT triggering a full re-render
+      view.updatePresentationRef(presentation, file, theme);
 
       // For structural changes, we need to be careful about order
       // Simplest approach: remove then add, then renumber
@@ -794,6 +828,15 @@ export default class PerspectaSlidesPlugin extends Plugin {
       // Wire up reload callback for full refresh
       view.setOnReload(() => {
         this.updateSidebars(file);
+      });
+      // Wire up font CSS callback for presentation window
+      // Accepts frontmatter parameter so it uses fresh data from startPresentation
+      view.setOnGetFontCSS(async (frontmatter) => {
+        return this.getCustomFontCSS(frontmatter);
+      });
+      // Wire up start presentation callback to use the same code path as double-click
+      view.setOnStartPresentation((f, slideIndex) => {
+        this.startPresentationAtSlide(f, slideIndex);
       });
       // Preserve current slide position (without triggering callback)
       view.goToSlide(currentSlideIndex, false);
@@ -1035,6 +1078,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
     renderer.setCustomFontCSS(customFontCSS);
     
+    // Set system color scheme so 'system' mode resolves correctly
+    renderer.setSystemColorScheme(getSystemColorScheme());
+    
     const html = renderer.renderHTML();
 
     const exportPath = file.path.replace(/\.md$/, '.html');
@@ -1120,7 +1166,26 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Update the presentation window with new content
     const presentation = this.parser.parse(content);
     const theme = this.getThemeByName(presentation.frontmatter.theme || this.settings.defaultTheme);
+    
+    // Regenerate custom font CSS in case fonts changed in frontmatter
+    const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
+    this.presentationWindow.setCustomFontCSS(customFontCSS);
+    
     this.presentationWindow.updateContent(presentation, theme || null);
+  }
+
+  /**
+   * Refresh the presentation window (e.g., when system color scheme changes)
+   */
+  private async refreshPresentationWindow() {
+    if (!this.presentationWindow || !this.presentationWindow.isOpen()) {
+      return;
+    }
+    if (!this.currentPresentationFile) {
+      return;
+    }
+    const content = await this.app.vault.read(this.currentPresentationFile);
+    await this.updatePresentationWindowWithContent(this.currentPresentationFile, content);
   }
 
   async reorderSlides(file: TFile, fromIndex: number, toIndex: number) {
@@ -1156,15 +1221,30 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const frontmatter = lines.slice(0, frontmatterEnd).join('\n');
     const bodyContent = lines.slice(frontmatterEnd).join('\n');
 
-    // Split by slide separator
-    const slideRawContents = bodyContent.split(/\n---+\s*\n/);
+    // Split by slide separator, preserving exact content
+    const separatorPattern = /(\n---+\s*\n)/;
+    const parts = bodyContent.split(separatorPattern);
 
-    // Reorder
+    // parts is: [slide0, sep0, slide1, sep1, slide2, ...]
+    // Extract slide contents (even indices) and separators (odd indices)
+    const slideRawContents: string[] = [];
+    const separators: string[] = [];
+    for (let i = 0; i < parts.length; i++) {
+      if (i % 2 === 0) {
+        slideRawContents.push(parts[i]);
+      } else {
+        separators.push(parts[i]);
+      }
+    }
+
+    // Reorder slides
     const [movedSlide] = slideRawContents.splice(fromIndex, 1);
     slideRawContents.splice(toIndex, 0, movedSlide);
 
-    // Reconstruct the document
-    const newBody = slideRawContents.join('\n\n---\n\n');
+    // Reconstruct the document preserving original separator style
+    // Use the first separator as template, or default to '\n---\n'
+    const sep = separators[0] || '\n---\n';
+    const newBody = slideRawContents.join(sep);
     const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
 
     await this.app.vault.modify(file, newContent);
@@ -1465,13 +1545,13 @@ export default class PerspectaSlidesPlugin extends Plugin {
    * This should be used instead of getTheme() to support custom themes
    */
   getThemeByName(name: string): Theme | undefined {
-    // First try the theme loader (includes both built-in and custom)
-    if (this.themeLoader) {
+    // Try the theme loader for custom themes
+    if (this.themeLoader && name) {
       const theme = this.themeLoader.getTheme(name);
       if (theme) return theme;
     }
-    // Fallback to built-in themes only
-    return getTheme(name);
+    // No theme found - return undefined (will use CSS defaults)
+    return undefined;
   }
 
   /**
@@ -1484,11 +1564,13 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     // Get list of existing theme names (built-in + custom)
     const builtInNames = getBuiltInThemeNames();
+    const customThemeNames = this.themeLoader?.getCustomThemes().map(t => t.template.Name) || [];
     
     const modal = new SaveThemeModal(
       this.app,
       builtInNames,
-      async (themeName: string) => {
+      customThemeNames,
+      async (themeName: string, overwrite: boolean) => {
         const exporter = new ThemeExporter(
           this.app,
           this.fontManager,
@@ -1498,8 +1580,16 @@ export default class PerspectaSlidesPlugin extends Plugin {
         await exporter.exportTheme(
           themeName,
           frontmatter,
-          frontmatter.theme
+          content,
+          file,
+          frontmatter.theme,
+          overwrite
         );
+        
+        // Reload themes after saving
+        if (this.themeLoader) {
+          await this.themeLoader.loadThemes();
+        }
       }
     );
     

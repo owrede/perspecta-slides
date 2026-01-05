@@ -15,7 +15,6 @@ import { App, PluginSettingTab, Setting, Notice, setIcon, TFolder } from 'obsidi
 import type PerspectaSlidesPlugin from '../../main';
 import { renderChangelogToContainer } from '../changelog';
 import { getThemeNames } from '../themes';
-import { getBuiltInThemeNames } from '../themes/builtin';
 import { ContentMode, Theme } from '../types';
 import { FontManager, CachedFont } from '../utils/FontManager';
 
@@ -106,20 +105,16 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 			.setName('Default theme')
 			.setDesc('The theme to use when no theme is specified in the presentation frontmatter.')
 			.addDropdown(dropdown => {
-				// Add built-in themes
-				getBuiltInThemeNames().forEach(name => {
-					dropdown.addOption(name, name.charAt(0).toUpperCase() + name.slice(1));
-				});
+				// Add "Default" option for no theme (uses CSS defaults)
+				dropdown.addOption('', '(Default - No Theme)');
 				// Add custom themes
 				if (this.plugin.themeLoader) {
 					const customThemes = this.plugin.themeLoader.getCustomThemes();
-					if (customThemes.length > 0) {
-						customThemes.forEach(theme => {
-							const name = theme.template.Name.toLowerCase();
-							const displayName = theme.template.Name;
-							dropdown.addOption(name, `${displayName} ★`);
-						});
-					}
+					customThemes.forEach(theme => {
+						const name = theme.template.Name.toLowerCase();
+						const displayName = theme.template.Name;
+						dropdown.addOption(name, displayName);
+					});
 				}
 				dropdown.setValue(this.plugin.settings.defaultTheme);
 				dropdown.onChange(async (value) => {
@@ -232,14 +227,25 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 				const deleteBtn = themeActions.createEl('button', { cls: 'perspecta-font-btn perspecta-font-btn-danger' });
 				setIcon(deleteBtn, 'trash-2');
 				deleteBtn.setAttribute('aria-label', 'Delete theme');
-				deleteBtn.addEventListener('click', async () => {
+				deleteBtn.addEventListener('click', async (e) => {
+					e.stopPropagation();
+					e.preventDefault();
+					if (!theme.basePath) {
+						new Notice('Cannot delete theme: missing path');
+						return;
+					}
 					if (confirm(`Delete theme "${theme.template.Name}"? This will remove the theme folder and all its files.`)) {
-						await this.deleteCustomTheme(theme.basePath);
-						new Notice(`Theme "${theme.template.Name}" deleted`);
-						if (this.plugin.themeLoader) {
-							await this.plugin.themeLoader.loadThemes();
+						try {
+							await this.deleteCustomTheme(theme.basePath);
+							new Notice(`Theme "${theme.template.Name}" deleted`);
+							if (this.plugin.themeLoader) {
+								await this.plugin.themeLoader.loadThemes();
+							}
+							this.display();
+						} catch (err) {
+							console.error('Failed to delete theme:', err);
+							new Notice(`Failed to delete theme: ${err}`);
 						}
-						this.display();
 					}
 				});
 			}
@@ -256,12 +262,20 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 	private async deleteCustomTheme(themePath: string): Promise<void> {
 		const folder = this.app.vault.getAbstractFileByPath(themePath);
 		if (folder instanceof TFolder) {
-			// Delete all files in the folder first
-			for (const child of [...folder.children]) {
-				await this.app.vault.delete(child);
-			}
-			// Then delete the folder
-			await this.app.vault.delete(folder);
+			// Recursively delete all children (files and subfolders)
+			const deleteRecursively = async (f: TFolder) => {
+				for (const child of [...f.children]) {
+					if (child instanceof TFolder) {
+						await deleteRecursively(child);
+					} else {
+						await this.app.vault.delete(child);
+					}
+				}
+				await this.app.vault.delete(f);
+			};
+			await deleteRecursively(folder);
+		} else {
+			throw new Error(`Theme folder not found: ${themePath}`);
 		}
 	}
 
@@ -271,6 +285,22 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 			containerEl.createEl('p', { text: 'Font manager not initialized.' });
 			return;
 		}
+
+		containerEl.createEl('h2', { text: 'Font Storage Folder' });
+
+		new Setting(containerEl)
+			.setName('Storage folder')
+			.setDesc('Folder in your vault where downloaded font files are stored.')
+			.addText(text => text
+				.setPlaceholder('perspecta-fonts')
+				.setValue(this.plugin.settings.fontCacheFolder)
+				.onChange(async (value) => {
+					this.plugin.settings.fontCacheFolder = value.trim() || 'perspecta-fonts';
+					if (this.plugin.fontManager) {
+						this.plugin.fontManager.setFontCacheFolder(this.plugin.settings.fontCacheFolder);
+					}
+					await this.plugin.saveSettings();
+				}));
 
 		containerEl.createEl('h2', { text: 'Add Google Font' });
 

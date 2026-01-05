@@ -27,7 +27,7 @@ export interface FontCache {
   fonts: Record<string, CachedFont>; // Keyed by font name
 }
 
-const FONT_CACHE_FOLDER = 'perspecta-fonts';
+const DEFAULT_FONT_CACHE_FOLDER = 'perspecta-fonts';
 const GOOGLE_FONTS_API_BASE = 'https://fonts.googleapis.com/css2';
 
 /**
@@ -38,11 +38,27 @@ export class FontManager {
   private cache: FontCache = { fonts: {} };
   private saveCallback: (cache: FontCache) => Promise<void>;
   private debugMode: boolean = false;
+  private fontCacheFolder: string;
 
-  constructor(app: App, initialCache: FontCache | null, saveCallback: (cache: FontCache) => Promise<void>) {
+  constructor(app: App, initialCache: FontCache | null, saveCallback: (cache: FontCache) => Promise<void>, fontCacheFolder?: string) {
     this.app = app;
     this.cache = initialCache || { fonts: {} };
     this.saveCallback = saveCallback;
+    this.fontCacheFolder = fontCacheFolder || DEFAULT_FONT_CACHE_FOLDER;
+  }
+
+  /**
+   * Set the font cache folder path
+   */
+  setFontCacheFolder(folder: string): void {
+    this.fontCacheFolder = folder || DEFAULT_FONT_CACHE_FOLDER;
+  }
+
+  /**
+   * Get the current font cache folder path
+   */
+  getFontCacheFolder(): string {
+    return this.fontCacheFolder;
   }
 
   setDebugMode(enabled: boolean): void {
@@ -127,9 +143,15 @@ export class FontManager {
       // Ensure cache folder exists
       await this.ensureCacheFolder();
 
-      // Fetch font CSS with multiple weights
+      // Fetch font CSS with multiple weights and both normal + italic styles
+      // Google Fonts API requires tuples sorted: all normal (0,wght) first, then all italic (1,wght)
       const weights = [400, 500, 600, 700];
-      const cssUrl = `${GOOGLE_FONTS_API_BASE}?family=${encodeURIComponent(fontName)}:wght@${weights.join(';')}&display=swap`;
+      const normalParams = weights.map(w => `0,${w}`);
+      const italicParams = weights.map(w => `1,${w}`);
+      const weightParams = [...normalParams, ...italicParams].join(';');
+      const cssUrl = `${GOOGLE_FONTS_API_BASE}?family=${encodeURIComponent(fontName)}:ital,wght@${weightParams}&display=swap`;
+      
+      this.log('Fetching font CSS:', cssUrl);
       
       // Request with a browser-like User-Agent to get woff2 format
       const cssResponse = await requestUrl({
@@ -145,9 +167,10 @@ export class FontManager {
       }
 
       const cssText = cssResponse.text;
+      this.log('Font CSS response length:', cssText.length);
       
       // Parse @font-face rules and download font files
-      const { fontFiles, allWeights } = await this.parseCssAndDownloadFonts(cssText, fontName);
+      const { fontFiles, allWeights, allStyles } = await this.parseCssAndDownloadFonts(cssText, fontName);
       
       if (fontFiles.length === 0) {
         console.error('No font files found in CSS for font:', fontName);
@@ -156,6 +179,9 @@ export class FontManager {
 
       // Use all weights from CSS (for variable fonts, this is all available weights)
       const downloadedWeights = [...new Set(allWeights)].sort((a, b) => a - b);
+      const downloadedStyles = [...new Set(allStyles)].sort();
+      
+      this.log('Downloaded weights:', downloadedWeights, 'styles:', downloadedStyles);
 
       // Store in cache
       const cachedFont: CachedFont = {
@@ -163,7 +189,7 @@ export class FontManager {
         displayName: displayName || fontName,
         sourceUrl: url,
         weights: downloadedWeights,
-        styles: ['normal'],
+        styles: downloadedStyles,
         files: fontFiles,
         cachedAt: Date.now()
       };
@@ -185,12 +211,13 @@ export class FontManager {
   /**
    * Parse CSS and download font files
    * Handles variable fonts (single file for all weights) efficiently
-   * Returns both font files and all parsed weights from CSS
+   * Returns font files, all parsed weights, and all parsed styles from CSS
    */
-  private async parseCssAndDownloadFonts(css: string, fontName: string): Promise<{ fontFiles: CachedFontFile[], allWeights: number[] }> {
+  private async parseCssAndDownloadFonts(css: string, fontName: string): Promise<{ fontFiles: CachedFontFile[], allWeights: number[], allStyles: string[] }> {
     const fontFiles: CachedFontFile[] = [];
     const downloadedUrls = new Map<string, string>(); // URL -> localPath mapping
     const allWeights: number[] = [];
+    const allStyles: string[] = [];
     
     // Match @font-face blocks (use [\s\S] to match across newlines)
     const fontFaceRegex = /@font-face\s*\{([\s\S]*?)\}/g;
@@ -207,29 +234,35 @@ export class FontManager {
       // Extract font-style
       const styleMatch = block.match(/font-style:\s*(\w+)/);
       const style = styleMatch ? styleMatch[1] : 'normal';
+      allStyles.push(style);
 
       // Extract src URL and format - handles both quoted and unquoted URLs
       // Example: src: url(https://...) format('woff2');
-      const srcMatch = block.match(/src:\s*url\(([^)]+)\)\s*format\(['"](woff2?)['"]\)/);
+      // Also handles truetype (.ttf) and opentype (.otf) formats
+      const srcMatch = block.match(/src:\s*url\(([^)]+)\)\s*format\(['"]([^'"]+)['"]\)/);
       if (!srcMatch) continue;
 
       const fontUrl = srcMatch[1].replace(/['"]/g, '');
-      const format = srcMatch[2] || 'woff2';
+      // Map format names to file extensions
+      const formatMap: Record<string, string> = {
+        'woff2': 'woff2',
+        'woff': 'woff',
+        'truetype': 'ttf',
+        'opentype': 'otf',
+      };
+      const format = formatMap[srcMatch[2]] || srcMatch[2];
 
       // Check if we already downloaded this URL (variable fonts use same file for all weights)
       if (downloadedUrls.has(fontUrl)) {
-        // Already downloaded - add weight to existing file entry
+        // Already downloaded - reuse existing file but track this weight/style combo
         const existingPath = downloadedUrls.get(fontUrl)!;
-        const existingFile = fontFiles.find(f => f.localPath === existingPath);
-        if (existingFile) {
-          // Weight already tracked via the weights array
-        }
+        // Don't add duplicate entries, the file handles all weights
         continue;
       }
 
-      // Use a single filename for the font (not weight-specific for variable fonts)
-      const fileName = `${fontName.replace(/\s+/g, '-')}-${style}.${format}`;
-      const localPath = `${FONT_CACHE_FOLDER}/${fileName}`;
+      // Include weight in filename to handle non-variable fonts with separate files per weight
+      const fileName = `${fontName.replace(/\s+/g, '-')}-${weight}-${style}.${format}`;
+      const localPath = `${this.fontCacheFolder}/${fileName}`;
       downloadedUrls.set(fontUrl, localPath);
 
       try {
@@ -269,17 +302,17 @@ export class FontManager {
       }
     }
 
-    return { fontFiles, allWeights };
+    return { fontFiles, allWeights, allStyles };
   }
 
   /**
    * Ensure the font cache folder exists
    */
   private async ensureCacheFolder(): Promise<void> {
-    const folder = this.app.vault.getAbstractFileByPath(FONT_CACHE_FOLDER);
+    const folder = this.app.vault.getAbstractFileByPath(this.fontCacheFolder);
     if (!folder) {
       try {
-        await this.app.vault.createFolder(FONT_CACHE_FOLDER);
+        await this.app.vault.createFolder(this.fontCacheFolder);
       } catch (e) {
         // Folder might already exist (race condition) - ignore
         if (!(e instanceof Error && e.message.includes('Folder already exists'))) {
@@ -321,21 +354,31 @@ export class FontManager {
       try {
         const data = await this.app.vault.readBinary(fontFile);
         const base64 = this.arrayBufferToBase64(data);
-        const mimeType = file.format === 'woff2' ? 'font/woff2' : 'font/woff';
+        
+        // Map file extensions to MIME types and format strings
+        const mimeTypes: Record<string, string> = {
+          'woff2': 'font/woff2',
+          'woff': 'font/woff',
+          'ttf': 'font/ttf',
+          'otf': 'font/otf',
+        };
+        const formatStrings: Record<string, string> = {
+          'woff2': 'woff2',
+          'woff': 'woff',
+          'ttf': 'truetype',
+          'otf': 'opentype',
+        };
+        const mimeType = mimeTypes[file.format] || 'font/woff2';
+        const formatString = formatStrings[file.format] || file.format;
 
-        // For variable fonts, use weight range; otherwise use single weight
-        const isVariableFont = font.weights.length > 1;
-        const weightValue = isVariableFont 
-          ? `${Math.min(...font.weights)} ${Math.max(...font.weights)}`
-          : `${file.weight}`;
-
+        // Each file has its own weight (non-variable fonts have separate files per weight)
         rules.push(`
 @font-face {
   font-family: '${font.name}';
   font-style: ${file.style};
-  font-weight: ${weightValue};
+  font-weight: ${file.weight};
   font-display: swap;
-  src: url('data:${mimeType};base64,${base64}') format('${file.format}');
+  src: url('data:${mimeType};base64,${base64}') format('${formatString}');
 }`);
       } catch (e) {
         this.log('Failed to read font file for export:', file.localPath);
@@ -398,7 +441,7 @@ export class FontManager {
     }
 
     // Delete cache folder if empty
-    const folder = this.app.vault.getAbstractFileByPath(FONT_CACHE_FOLDER);
+    const folder = this.app.vault.getAbstractFileByPath(this.fontCacheFolder);
     if (folder instanceof TFolder && folder.children.length === 0) {
       await this.app.vault.delete(folder);
     }

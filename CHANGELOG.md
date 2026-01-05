@@ -2,19 +2,30 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
-## [0.2.0] - 2026-01-05
+## [0.2.0] - 2026-01-06
+
+### Theme System Overhaul
+
+- **Breaking**: Removed all 14 built-in themes - themes now come only from user's custom themes folder
+- **New**: Semantic colors replace generic accent colors (link, bullet, blockquote border, table header, code border, progress bar)
+- **New**: Save current presentation as self-contained theme package with all assets
+- **New**: Theme export includes: `theme.json`, `theme.css`, fonts/, images, and `<themename>-demo.md`
+- **New**: Images automatically copied with `<themename>-` prefix for uniqueness
+- **New**: Demo markdown file with clean frontmatter (only theme reference) and updated image paths
+- **New**: All slider values become theme defaults - can be reset via "Reset" icons
+- **New**: Sensible CSS defaults when no theme is loaded
 
 ### Custom Themes
 
-- **New**: Save current presentation settings as a reusable custom theme via command palette
-- **New**: Custom themes saved to configurable folder (default: `perspecta-themes/`) with `theme.json` and `theme.css`
+- **New**: Custom themes saved to configurable folder (default: `perspecta-themes/`)
 - **New**: Custom themes include all settings: fonts, colors, typography, margins, and spacing
-- **New**: Bundled fonts - custom themes automatically include cached Google Fonts in a `fonts/` subfolder
-- **New**: Themes tab in Settings for managing storage folder and deleting custom themes
+- **New**: Bundled fonts - custom themes automatically include cached Google Fonts in `fonts/` subfolder
+- **New**: Existing themes can be overwritten after user confirmation
 - **New**: Custom themes appear in all theme dropdowns with ★ marker
 
 ### Inspector Improvements
 
+- **New**: Semantic Colors section with explicit color pickers for links, bullets, blockquotes, tables, code, progress bar
 - **Improved**: Font dropdowns now show theme default font name (e.g., "Theme Default (Barlow)")
 - **Improved**: Header/Footer font dropdowns show inherited font (e.g., "Inherit from Body (Helvetica)")
 - **Improved**: Theme color and typography settings from custom themes now apply correctly to slides
@@ -24,8 +35,8 @@ All notable changes to Perspecta Slides will be documented in this file.
 - **New**: ThemeLoader supports loading from new `theme.json` format (Perspecta custom themes)
 - **New**: Custom theme fonts loaded from theme's `fonts/` folder (not just global cache)
 - **New**: Theme presets data preserved for per-heading colors and layout-specific backgrounds
+- **New**: ThemeExporter creates complete, shareable theme packages ready to become built-in themes
 - **Fix**: Theme resolution unified across all components (main, Inspector, PresentationView)
-- **Fix**: Custom themes with same name as built-in themes get "(custom)" suffix
 
 ## [0.1.9] - 2026-01-04
 

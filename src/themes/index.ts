@@ -1,16 +1,21 @@
-import { Theme } from '../types';
-import { builtInThemes, getBuiltInTheme, getBuiltInThemeNames, getThemeJson } from './builtin';
-import { ThemeJsonFile } from './ThemeSchema';
+import { Theme, DEFAULT_SEMANTIC_COLORS } from '../types';
+import { DEFAULT_SEMANTIC_COLORS_LIGHT, DEFAULT_SEMANTIC_COLORS_DARK } from './ThemeSchema';
 
 export { ThemeLoader } from './ThemeLoader';
-export { builtInThemes };
 
+/**
+ * Get a theme by name - now returns undefined for built-in themes
+ * since all built-in themes are removed. Themes come from user's custom themes folder.
+ */
 export function getTheme(name: string): Theme | undefined {
-  return getBuiltInTheme(name);
+  return undefined;
 }
 
+/**
+ * Get available theme names - returns empty since no built-in themes
+ */
 export function getThemeNames(): string[] {
-  return getBuiltInThemeNames();
+  return [];
 }
 
 /**
@@ -24,8 +29,64 @@ function colorOrGradient(colors: string[]): string {
 }
 
 /**
+ * Generate default CSS variables when no theme is loaded
+ */
+export function generateDefaultCSS(): string {
+  return `
+:root {
+  --title-font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --body-font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  
+  /* Light mode colors */
+  --light-body-text: #333333;
+  --light-title-text: #000000;
+  --light-background: #ffffff;
+  --light-h1-color: #000000;
+  --light-h2-color: #000000;
+  --light-h3-color: #333333;
+  --light-h4-color: #333333;
+  --light-header-text: #666666;
+  --light-footer-text: #666666;
+  --light-bg-cover: #f0f0f0;
+  --light-bg-title: #f0f0f0;
+  --light-bg-section: #000000;
+  
+  /* Light mode semantic colors */
+  --light-link-color: ${DEFAULT_SEMANTIC_COLORS.light.link};
+  --light-bullet-color: ${DEFAULT_SEMANTIC_COLORS.light.bullet};
+  --light-blockquote-border: ${DEFAULT_SEMANTIC_COLORS.light.blockquoteBorder};
+  --light-table-header-bg: ${DEFAULT_SEMANTIC_COLORS.light.tableHeaderBg};
+  --light-code-border: ${DEFAULT_SEMANTIC_COLORS.light.codeBorder};
+  --light-progress-bar: ${DEFAULT_SEMANTIC_COLORS.light.progressBar};
+  
+  /* Dark mode colors */
+  --dark-body-text: #e0e0e0;
+  --dark-title-text: #ffffff;
+  --dark-background: #1a1a1a;
+  --dark-h1-color: #ffffff;
+  --dark-h2-color: #ffffff;
+  --dark-h3-color: #e0e0e0;
+  --dark-h4-color: #e0e0e0;
+  --dark-header-text: #999999;
+  --dark-footer-text: #999999;
+  --dark-bg-cover: #0d0d0d;
+  --dark-bg-title: #1a1a1a;
+  --dark-bg-section: #ffffff;
+  
+  /* Dark mode semantic colors */
+  --dark-link-color: ${DEFAULT_SEMANTIC_COLORS.dark.link};
+  --dark-bullet-color: ${DEFAULT_SEMANTIC_COLORS.dark.bullet};
+  --dark-blockquote-border: ${DEFAULT_SEMANTIC_COLORS.dark.blockquoteBorder};
+  --dark-table-header-bg: ${DEFAULT_SEMANTIC_COLORS.dark.tableHeaderBg};
+  --dark-code-border: ${DEFAULT_SEMANTIC_COLORS.dark.codeBorder};
+  --dark-progress-bar: ${DEFAULT_SEMANTIC_COLORS.dark.progressBar};
+}
+`;
+}
+
+/**
  * Generate CSS variables from a theme's preset
- * Enhanced to support per-heading colors and layout-specific backgrounds
+ * Enhanced to support per-heading colors, layout-specific backgrounds, and semantic colors
  */
 export function generateThemeCSS(theme: Theme, context: 'thumbnail' | 'preview' | 'presentation' | 'export' = 'export'): string {
   const preset = theme.presets[0];
@@ -33,12 +94,10 @@ export function generateThemeCSS(theme: Theme, context: 'thumbnail' | 'preview' 
     return context === 'thumbnail' ? '' : theme.css;
   }
 
-  // Try to get enhanced theme.json data for new features
-  // For custom themes, use themeJsonData stored on the Theme object
-  // For built-in themes, use getThemeJson
-  const themeJson = theme.themeJsonData || getThemeJson(theme.template.Name.toLowerCase());
+  // Get theme.json data for advanced features
+  const themeJson = theme.themeJsonData;
 
-  // Basic CSS variables from legacy preset
+  // Basic CSS variables from preset
   let cssVars = `
 :root {
   --title-font: ${preset.TitleFont || theme.template.TitleFont}, sans-serif;
@@ -49,14 +108,23 @@ export function generateThemeCSS(theme: Theme, context: 'thumbnail' | 'preview' 
   --light-title-text: ${preset.LightTitleTextColor};
   --dark-background: ${preset.DarkBackgroundColor};
   --light-background: ${preset.LightBackgroundColor};
-  --dark-accent1: ${preset.DarkAccent1 || preset.Accent1};
-  --light-accent1: ${preset.LightAccent1 || preset.Accent1};
-  --accent1: ${preset.Accent1};
-  --accent2: ${preset.Accent2};
-  --accent3: ${preset.Accent3};
-  --accent4: ${preset.Accent4};
-  --accent5: ${preset.Accent5};
-  --accent6: ${preset.Accent6};
+  
+  /* Semantic colors (light mode) */
+  --light-link-color: ${preset.LightLinkColor};
+  --light-bullet-color: ${preset.LightBulletColor};
+  --light-blockquote-border: ${preset.LightBlockquoteBorder};
+  --light-table-header-bg: ${preset.LightTableHeaderBg};
+  --light-code-border: ${preset.LightCodeBorder};
+  --light-progress-bar: ${preset.LightProgressBar};
+  
+  /* Semantic colors (dark mode) */
+  --dark-link-color: ${preset.DarkLinkColor};
+  --dark-bullet-color: ${preset.DarkBulletColor};
+  --dark-blockquote-border: ${preset.DarkBlockquoteBorder};
+  --dark-table-header-bg: ${preset.DarkTableHeaderBg};
+  --dark-code-border: ${preset.DarkCodeBorder};
+  --dark-progress-bar: ${preset.DarkProgressBar};
+  
   --light-bg-gradient: ${preset.LightBgGradient?.join(', ') || 'none'};
   --dark-bg-gradient: ${preset.DarkBgGradient?.join(', ') || 'none'};
 `;

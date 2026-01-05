@@ -60,7 +60,19 @@ export class PresentationWindow {
     if (this.customFontCSS) {
       renderer.setCustomFontCSS(this.customFontCSS);
     }
+    // Set system color scheme so 'system' mode resolves correctly
+    renderer.setSystemColorScheme(this.getSystemColorScheme());
     return renderer;
+  }
+
+  /**
+   * Detect the system color scheme (light or dark)
+   */
+  private getSystemColorScheme(): 'light' | 'dark' {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'light';
   }
 
   /**
@@ -188,7 +200,7 @@ export class PresentationWindow {
     const slidesHTML = presentation.slides.map((slide, index) => {
       return renderer.renderPresentationSlideHTML(slide, index);
     });
-
+    
     const themeCSS = theme ? this.generateThemeVariables(theme) : '';
 
     return `<!DOCTYPE html>
@@ -541,8 +553,18 @@ export class PresentationWindow {
         --dark-body-text: ${preset.DarkBodyTextColor};
         --light-title-text: ${preset.LightTitleTextColor};
         --dark-title-text: ${preset.DarkTitleTextColor};
-        --accent1: ${preset.Accent1};
-        --accent2: ${preset.Accent2};
+        --light-link-color: ${preset.LightLinkColor};
+        --light-bullet-color: ${preset.LightBulletColor};
+        --light-blockquote-border: ${preset.LightBlockquoteBorder};
+        --light-table-header-bg: ${preset.LightTableHeaderBg};
+        --light-code-border: ${preset.LightCodeBorder};
+        --light-progress-bar: ${preset.LightProgressBar};
+        --dark-link-color: ${preset.DarkLinkColor};
+        --dark-bullet-color: ${preset.DarkBulletColor};
+        --dark-blockquote-border: ${preset.DarkBlockquoteBorder};
+        --dark-table-header-bg: ${preset.DarkTableHeaderBg};
+        --dark-code-border: ${preset.DarkCodeBorder};
+        --dark-progress-bar: ${preset.DarkProgressBar};
         --title-font: ${theme.template.TitleFont};
         --body-font: ${theme.template.BodyFont};
       }
@@ -652,6 +674,9 @@ export class PresentationWindow {
    * Perform a full reload of the presentation window
    */
   private async fullReload(presentation: Presentation, theme: Theme | null, currentSlide: number): Promise<void> {
+    // Update stored presentation
+    this.presentation = presentation;
+    
     const renderer = this.createRenderer(presentation, theme);
     const html = this.generatePresentationHTML(presentation, renderer, theme, currentSlide);
 

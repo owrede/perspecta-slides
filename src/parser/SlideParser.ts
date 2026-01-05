@@ -146,12 +146,30 @@ export class SlideParser {
         'footerToEdge': 'footerToEdge',
         'line-height': 'lineHeight',
         'lineHeight': 'lineHeight',
-        'accent1': 'accent1',
-        'accent2': 'accent2',
-        'accent3': 'accent3',
-        'accent4': 'accent4',
-        'accent5': 'accent5',
-        'accent6': 'accent6',
+        'light-link-color': 'lightLinkColor',
+        'lightLinkColor': 'lightLinkColor',
+        'light-bullet-color': 'lightBulletColor',
+        'lightBulletColor': 'lightBulletColor',
+        'light-blockquote-border': 'lightBlockquoteBorder',
+        'lightBlockquoteBorder': 'lightBlockquoteBorder',
+        'light-table-header-bg': 'lightTableHeaderBg',
+        'lightTableHeaderBg': 'lightTableHeaderBg',
+        'light-code-border': 'lightCodeBorder',
+        'lightCodeBorder': 'lightCodeBorder',
+        'light-progress-bar': 'lightProgressBar',
+        'lightProgressBar': 'lightProgressBar',
+        'dark-link-color': 'darkLinkColor',
+        'darkLinkColor': 'darkLinkColor',
+        'dark-bullet-color': 'darkBulletColor',
+        'darkBulletColor': 'darkBulletColor',
+        'dark-blockquote-border': 'darkBlockquoteBorder',
+        'darkBlockquoteBorder': 'darkBlockquoteBorder',
+        'dark-table-header-bg': 'darkTableHeaderBg',
+        'darkTableHeaderBg': 'darkTableHeaderBg',
+        'dark-code-border': 'darkCodeBorder',
+        'darkCodeBorder': 'darkCodeBorder',
+        'dark-progress-bar': 'darkProgressBar',
+        'darkProgressBar': 'darkProgressBar',
         'light-background': 'lightBackground',
         'lightBackground': 'lightBackground',
         'dark-background': 'darkBackground',
@@ -208,6 +226,48 @@ export class SlideParser {
         'imageOverlay': 'imageOverlay',
         'image-overlay-opacity': 'imageOverlayOpacity',
         'imageOverlayOpacity': 'imageOverlayOpacity',
+        // Per-heading colors
+        'light-h1-color': 'lightH1Color',
+        'lightH1Color': 'lightH1Color',
+        'light-h2-color': 'lightH2Color',
+        'lightH2Color': 'lightH2Color',
+        'light-h3-color': 'lightH3Color',
+        'lightH3Color': 'lightH3Color',
+        'light-h4-color': 'lightH4Color',
+        'lightH4Color': 'lightH4Color',
+        'dark-h1-color': 'darkH1Color',
+        'darkH1Color': 'darkH1Color',
+        'dark-h2-color': 'darkH2Color',
+        'darkH2Color': 'darkH2Color',
+        'dark-h3-color': 'darkH3Color',
+        'darkH3Color': 'darkH3Color',
+        'dark-h4-color': 'darkH4Color',
+        'darkH4Color': 'darkH4Color',
+        // Header/footer text colors
+        'light-header-text': 'lightHeaderText',
+        'lightHeaderText': 'lightHeaderText',
+        'light-footer-text': 'lightFooterText',
+        'lightFooterText': 'lightFooterText',
+        'dark-header-text': 'darkHeaderText',
+        'darkHeaderText': 'darkHeaderText',
+        'dark-footer-text': 'darkFooterText',
+        'darkFooterText': 'darkFooterText',
+        // Layout-specific backgrounds
+        'light-bg-cover': 'lightBgCover',
+        'lightBgCover': 'lightBgCover',
+        'light-bg-title': 'lightBgTitle',
+        'lightBgTitle': 'lightBgTitle',
+        'light-bg-section': 'lightBgSection',
+        'lightBgSection': 'lightBgSection',
+        'dark-bg-cover': 'darkBgCover',
+        'darkBgCover': 'darkBgCover',
+        'dark-bg-title': 'darkBgTitle',
+        'darkBgTitle': 'darkBgTitle',
+        'dark-bg-section': 'darkBgSection',
+        'darkBgSection': 'darkBgSection',
+        // Dynamic background options
+        'dynamic-background-restart-at-section': 'dynamicBackgroundRestartAtSection',
+        'dynamicBackgroundRestartAtSection': 'dynamicBackgroundRestartAtSection',
       };
 
       const mappedKey = keyMap[key];
@@ -235,7 +295,13 @@ export class SlideParser {
           if (!isNaN(num)) {
             (frontmatter as any)[mappedKey] = num;
           }
-        } else if (mappedKey === 'lightDynamicBackground' || mappedKey === 'darkDynamicBackground') {
+        } else if (
+          mappedKey === 'lightDynamicBackground' || mappedKey === 'darkDynamicBackground' ||
+          mappedKey === 'lightH1Color' || mappedKey === 'lightH2Color' ||
+          mappedKey === 'lightH3Color' || mappedKey === 'lightH4Color' ||
+          mappedKey === 'darkH1Color' || mappedKey === 'darkH2Color' ||
+          mappedKey === 'darkH3Color' || mappedKey === 'darkH4Color'
+        ) {
           // Parse as array of colors (comma-separated or JSON array)
           if (value.startsWith('[')) {
             try {

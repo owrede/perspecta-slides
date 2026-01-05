@@ -49,13 +49,22 @@ export interface PresentationFrontmatter {
   headerToEdge?: number;
   footerToEdge?: number;
 
-  // Colors (overrides theme presets)
-  accent1?: string;
-  accent2?: string;
-  accent3?: string;
-  accent4?: string;
-  accent5?: string;
-  accent6?: string;
+  // Semantic colors (overrides theme presets)
+  // Light mode semantic colors
+  lightLinkColor?: string;
+  lightBulletColor?: string;
+  lightBlockquoteBorder?: string;
+  lightTableHeaderBg?: string;
+  lightCodeBorder?: string;
+  lightProgressBar?: string;
+
+  // Dark mode semantic colors
+  darkLinkColor?: string;
+  darkBulletColor?: string;
+  darkBlockquoteBorder?: string;
+  darkTableHeaderBg?: string;
+  darkCodeBorder?: string;
+  darkProgressBar?: string;
 
   // Light mode colors
   lightBackground?: string;
@@ -95,6 +104,7 @@ export interface PresentationFrontmatter {
   lightDynamicBackground?: string[]; // Array of color stops e.g., ['#ffffff', '#f0f0f0', '#e0e0e0']
   darkDynamicBackground?: string[];  // Array of color stops for dark mode
   useDynamicBackground?: 'light' | 'dark' | 'both' | 'none'; // Which mode uses dynamic bg
+  dynamicBackgroundRestartAtSection?: boolean; // Restart gradient interpolation at each section slide
 
   // Header/Footer
   headerLeft?: string;
@@ -131,7 +141,7 @@ export interface SlideMetadata {
   background?: string;
   backgroundOpacity?: number;
   backgroundFilter?: 'darken' | 'lighten' | 'blur' | 'none';
-  mode?: 'light' | 'dark';
+  mode?: 'light' | 'dark' | 'system';
   class?: string;
   transition?: string;
   notes?: string;
@@ -279,15 +289,21 @@ export interface ThemePreset {
   DarkBackgroundColor: string;
   LightBackgroundColor: string;
 
-  // Accent colors (per-appearance and shared)
-  DarkAccent1?: string;
-  LightAccent1?: string;
-  Accent1: string;
-  Accent2: string;
-  Accent3: string;
-  Accent4: string;
-  Accent5: string;
-  Accent6: string;
+  // Semantic colors (light mode)
+  LightLinkColor: string;
+  LightBulletColor: string;
+  LightBlockquoteBorder: string;
+  LightTableHeaderBg: string;
+  LightCodeBorder: string;
+  LightProgressBar: string;
+
+  // Semantic colors (dark mode)
+  DarkLinkColor: string;
+  DarkBulletColor: string;
+  DarkBlockquoteBorder: string;
+  DarkTableHeaderBg: string;
+  DarkCodeBorder: string;
+  DarkProgressBar: string;
 
   // Background gradients (array of colors)
   LightBgGradient?: string[];
@@ -321,7 +337,14 @@ export interface ThemeModePreset {
     title: { type: 'solid' | 'gradient' | 'dynamic'; color?: string; colors?: string[] };
     section: { type: 'solid' | 'gradient' | 'dynamic'; color?: string; colors?: string[] };
   };
-  accents: string[];
+  semanticColors: {
+    link: string;
+    bullet: string;
+    blockquoteBorder: string;
+    tableHeaderBg: string;
+    codeBorder: string;
+    progressBar: string;
+  };
 }
 
 /**
@@ -355,6 +378,7 @@ export interface PerspecaSlidesSettings {
   defaultContentMode: ContentMode;
   exportIncludeSpeakerNotes: boolean;
   customThemesFolder: string;
+  fontCacheFolder: string;
   debugSlideRendering: boolean;
   debugFontLoading: boolean;
   fontCache?: FontCacheData;
@@ -378,14 +402,37 @@ export interface CachedFontData {
 }
 
 export const DEFAULT_SETTINGS: PerspecaSlidesSettings = {
-  defaultTheme: 'zurich',
+  defaultTheme: '',  // Empty = use CSS defaults
   showThumbnailNavigator: true,
   showInspector: true,
   defaultAspectRatio: '16:9',
   defaultContentMode: 'ia-presenter',
   exportIncludeSpeakerNotes: false,
   customThemesFolder: 'perspecta-themes',
+  fontCacheFolder: 'perspecta-fonts',
   debugSlideRendering: false,
   debugFontLoading: false,
   fontCache: { fonts: {} },
+};
+
+/**
+ * Default semantic colors for when no theme is loaded
+ */
+export const DEFAULT_SEMANTIC_COLORS = {
+  light: {
+    link: '#0066cc',
+    bullet: '#333333',
+    blockquoteBorder: '#cccccc',
+    tableHeaderBg: '#f0f0f0',
+    codeBorder: '#e0e0e0',
+    progressBar: '#0066cc',
+  },
+  dark: {
+    link: '#66b3ff',
+    bullet: '#e0e0e0',
+    blockquoteBorder: '#555555',
+    tableHeaderBg: '#333333',
+    codeBorder: '#444444',
+    progressBar: '#66b3ff',
+  },
 };

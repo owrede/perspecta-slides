@@ -19,11 +19,21 @@ export class SlideRenderer {
   private theme: Theme | null = null;
   private resolveImagePath: ImagePathResolver | null = null;
   private customFontCSS: string = '';
+  private systemColorScheme: 'light' | 'dark' = 'light';
 
   constructor(presentation: Presentation, theme?: Theme, resolveImagePath?: ImagePathResolver) {
     this.presentation = presentation;
     this.theme = theme || null;
     this.resolveImagePath = resolveImagePath || null;
+  }
+
+  /**
+   * Set the resolved system color scheme.
+   * This should be called from the Obsidian context where we can properly detect the OS preference.
+   * When mode is 'system', this value will be used instead of relying on CSS media queries.
+   */
+  setSystemColorScheme(scheme: 'light' | 'dark'): void {
+    this.systemColorScheme = scheme;
   }
 
   /**
@@ -196,6 +206,50 @@ export class SlideRenderer {
   }
 
   /**
+   * Check if a layout has a specific background defined (from frontmatter or theme)
+   * Layout backgrounds take precedence over dynamic backgrounds
+   */
+  private hasLayoutBackground(layout: SlideLayout, mode: 'light' | 'dark', frontmatter: PresentationFrontmatter): boolean {
+    // Check frontmatter first
+    if (layout === 'cover') {
+      if (mode === 'light' && frontmatter.lightBgCover) return true;
+      if (mode === 'dark' && frontmatter.darkBgCover) return true;
+    } else if (layout === 'title') {
+      if (mode === 'light' && frontmatter.lightBgTitle) return true;
+      if (mode === 'dark' && frontmatter.darkBgTitle) return true;
+    } else if (layout === 'section') {
+      if (mode === 'light' && frontmatter.lightBgSection) return true;
+      if (mode === 'dark' && frontmatter.darkBgSection) return true;
+    } else {
+      // Default and other layouts don't have specific backgrounds
+      return false;
+    }
+
+    // Check theme for layout-specific backgrounds
+    if (this.theme?.themeJsonData) {
+      const presets = this.theme.themeJsonData.presets;
+      const modePreset = mode === 'light' ? presets.light : presets.dark;
+      
+      if (layout === 'cover' && modePreset.backgrounds.cover) {
+        // Check if it's explicitly set (not just inheriting from general)
+        const bg = modePreset.backgrounds.cover;
+        if (bg.type === 'solid' && bg.color) return true;
+        if ((bg.type === 'gradient' || bg.type === 'dynamic') && bg.colors?.length) return true;
+      } else if (layout === 'title' && modePreset.backgrounds.title) {
+        const bg = modePreset.backgrounds.title;
+        if (bg.type === 'solid' && bg.color) return true;
+        if ((bg.type === 'gradient' || bg.type === 'dynamic') && bg.colors?.length) return true;
+      } else if (layout === 'section' && modePreset.backgrounds.section) {
+        const bg = modePreset.backgrounds.section;
+        if (bg.type === 'solid' && bg.color) return true;
+        if ((bg.type === 'gradient' || bg.type === 'dynamic') && bg.colors?.length) return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Get dynamic background color for a slide if enabled
    */
   private getDynamicBackgroundColor(slideIndex: number, totalSlides: number, mode: 'light' | 'dark', frontmatter: PresentationFrontmatter): string | null {
@@ -213,7 +267,7 @@ export class SlideRenderer {
 
     // If no frontmatter colors, try to get from theme
     if (!colors || colors.length === 0) {
-      const themeName = frontmatter.theme || 'zurich';
+      const themeName = frontmatter.theme || '';
       const theme = this.theme;
       if (theme) {
         const preset = theme.presets[0];
@@ -231,7 +285,36 @@ export class SlideRenderer {
     }
 
     // Calculate position (0 to 1) based on slide index
-    const position = totalSlides > 1 ? slideIndex / (totalSlides - 1) : 0;
+    let position: number;
+    
+    if (frontmatter.dynamicBackgroundRestartAtSection) {
+      // Find section boundaries for this slide
+      const slides = this.presentation.slides;
+      let sectionStart = 0;
+      let sectionEnd = totalSlides - 1;
+      
+      // Find the section slide before or at this index (this is the section start)
+      for (let i = slideIndex; i >= 0; i--) {
+        if (slides[i].metadata.layout === 'section') {
+          sectionStart = i;
+          break;
+        }
+      }
+      
+      // Find the next section slide after this index (the slide before it is section end)
+      for (let i = slideIndex + 1; i < totalSlides; i++) {
+        if (slides[i].metadata.layout === 'section') {
+          sectionEnd = i - 1;
+          break;
+        }
+      }
+      
+      // Calculate position within this section
+      const sectionLength = sectionEnd - sectionStart;
+      position = sectionLength > 0 ? (slideIndex - sectionStart) / sectionLength : 0;
+    } else {
+      position = totalSlides > 1 ? slideIndex / (totalSlides - 1) : 0;
+    }
 
     return this.interpolateGradientColor(colors, position);
   }
@@ -239,21 +322,30 @@ export class SlideRenderer {
   /**
    * Determine the effective mode for a slide
    * Priority: per-slide override > presentation default > 'light'
-   * 'system' mode adds a CSS class that uses prefers-color-scheme media query
+   * 'system' mode is now resolved to 'light' or 'dark' based on systemColorScheme
    */
-  private getEffectiveMode(slide: Slide, frontmatter: PresentationFrontmatter): 'light' | 'dark' | 'system' {
+  private getEffectiveMode(slide: Slide, frontmatter: PresentationFrontmatter): 'light' | 'dark' {
     // Per-slide override takes precedence
     if (slide.metadata.mode) {
+      // Resolve 'system' to actual scheme
+      if (slide.metadata.mode === 'system') {
+        return this.systemColorScheme;
+      }
       return slide.metadata.mode;
     }
     // Fall back to presentation-wide setting
-    return frontmatter.mode || 'light';
+    const mode = frontmatter.mode || 'light';
+    // Resolve 'system' to actual scheme
+    if (mode === 'system') {
+      return this.systemColorScheme;
+    }
+    return mode;
   }
 
   private renderSlide(slide: Slide, index: number, frontmatter: PresentationFrontmatter, renderSpeakerNotes: boolean = true): string {
     const effectiveMode = this.getEffectiveMode(slide, frontmatter);
-    // For 'system' mode, we'll add both classes and let CSS handle it
-    const modeClass = effectiveMode === 'system' ? 'system-mode' : effectiveMode;
+    // Mode is now always 'light' or 'dark' (system is resolved)
+    const modeClass = effectiveMode;
     const layout = (slide.metadata.layout || 'default') as SlideLayout;
     const containerClass = this.getContainerClass(layout);
     const customClass = slide.metadata.class || '';
@@ -263,9 +355,10 @@ export class SlideRenderer {
     // This sits between the background color/gradient and the overlay
     const slideBackgroundHtml = this.renderSlideBackground(slide);
 
-    // Compute dynamic background color if enabled (for system mode, compute for light-CSS will handle dark)
-    const dynamicMode = effectiveMode === 'system' ? 'light' : effectiveMode;
-    const dynamicBgColor = this.getDynamicBackgroundColor(index, this.presentation.slides.length, dynamicMode, frontmatter);
+    // Compute dynamic background color if enabled
+    // Skip dynamic background if this layout has a specific layout background defined
+    const hasLayoutBackground = this.hasLayoutBackground(layout, effectiveMode, frontmatter);
+    const dynamicBgColor = hasLayoutBackground ? null : this.getDynamicBackgroundColor(index, this.presentation.slides.length, effectiveMode, frontmatter);
     const slideInlineStyle = dynamicBgColor ? `background-color: ${dynamicBgColor};` : '';
 
     // For full-image layout, render images as background layer (edge-to-edge)
@@ -283,18 +376,21 @@ export class SlideRenderer {
     const overlayHtml = this.renderOverlay(frontmatter);
 
     // Layer order: background color/gradient (on section) -> slide background image -> full-image -> overlay -> content
+    // Cover layout does not include header/footer slots
+    const showHeaderFooter = layout !== 'cover';
+    
     return `
     <section class="slide ${containerClass} ${modeClass} ${customClass} ${isActive}" data-index="${index}"${slideInlineStyle ? ` style="${slideInlineStyle}"` : ''}>
       ${slideBackgroundHtml}
       ${imageBackground}
       ${overlayHtml}
-      ${this.renderHeader(frontmatter, index)}
+      ${showHeaderFooter ? this.renderHeader(frontmatter, index) : ''}
       <div class="slide-body">
         <div class="slide-content layout-${layout}">
           ${layout === 'full-image' ? '' : this.renderSlideContent(slide, layout)}
         </div>
       </div>
-      ${this.renderFooter(frontmatter, index, this.presentation.slides.length)}
+      ${showHeaderFooter ? this.renderFooter(frontmatter, index, this.presentation.slides.length) : ''}
       ${renderSpeakerNotes && slide.speakerNotes.length > 0 ? `<aside class="speaker-notes">${slide.speakerNotes.map(n => this.renderMarkdown(n)).join('<br>')}</aside>` : ''}
     </section>`;
   }
@@ -1040,27 +1136,13 @@ export class SlideRenderer {
       .slide.dark h4 { color: var(--dark-h4-color, var(--dark-title-text)); }
       .slide.dark h5, .slide.dark h6 { color: var(--dark-title-text); }
       
-      /* Layout-specific backgrounds */
+      /* Layout-specific backgrounds - fall back to normal background if not defined */
       .slide.light.cover-container { background: var(--light-bg-cover, var(--light-background)); }
       .slide.light.title-container { background: var(--light-bg-title, var(--light-background)); }
-      .slide.light.section-container { background: var(--light-bg-section, var(--accent1)); }
+      .slide.light.section-container { background: var(--light-bg-section, var(--light-background)); }
       .slide.dark.cover-container { background: var(--dark-bg-cover, var(--dark-background)); }
       .slide.dark.title-container { background: var(--dark-bg-title, var(--dark-background)); }
-      .slide.dark.section-container { background: var(--dark-bg-section, var(--accent1)); }
-      
-      /* System mode: follows OS preference */
-      .slide.system-mode { background: var(--light-background); color: var(--light-body-text); }
-      .slide.system-mode h1 { color: var(--light-h1-color, var(--light-title-text)); }
-      .slide.system-mode h2 { color: var(--light-h2-color, var(--light-title-text)); }
-      .slide.system-mode h3, .slide.system-mode h4,
-      .slide.system-mode h5, .slide.system-mode h6 { color: var(--light-title-text); }
-      @media (prefers-color-scheme: dark) {
-        .slide.system-mode { background: var(--dark-background); color: var(--dark-body-text); }
-        .slide.system-mode h1 { color: var(--dark-h1-color, var(--dark-title-text)); }
-        .slide.system-mode h2 { color: var(--dark-h2-color, var(--dark-title-text)); }
-        .slide.system-mode h3, .slide.system-mode h4,
-        .slide.system-mode h5, .slide.system-mode h6 { color: var(--dark-title-text); }
-      }
+      .slide.dark.section-container { background: var(--dark-bg-section, var(--dark-background)); }
       
       /* ============================================
          BACKGROUND LAYERS
@@ -1253,7 +1335,7 @@ export class SlideRenderer {
          ============================================ */
       .slot-columns { 
         position: absolute;
-        top: calc(var(--content-top, 12) * var(--slide-unit));
+        top: calc(var(--content-top, 24) * var(--slide-unit));
         left: 0;
         right: 0;
         bottom: calc(var(--footer-bottom, 2.5) * var(--slide-unit) + var(--slide-unit) * 4);
@@ -1261,7 +1343,7 @@ export class SlideRenderer {
         flex-direction: row;
         gap: calc(var(--slide-unit) * 3); 
         align-items: stretch;
-        overflow: hidden;
+        overflow: visible;
       }
       
       .slot-columns .column { 
@@ -1270,7 +1352,7 @@ export class SlideRenderer {
         flex-direction: column; 
         min-height: 0;
         min-width: 0;
-        overflow: hidden;
+        overflow: visible;
       }
       .slot-columns.columns-1 { flex-direction: column; }
       .slot-columns.columns-2, .slot-columns.columns-3 { flex-direction: row; }
@@ -1306,11 +1388,33 @@ export class SlideRenderer {
       
       ul, ol { 
         font-weight: var(--body-font-weight, 400);
-        padding-left: calc(var(--slide-unit) * 2); 
+        padding-left: 0;
+        margin-left: 0;
         font-size: calc(var(--slide-unit) * 2.8 * var(--body-font-scale, 1) * var(--font-scale, 1)); 
         line-height: var(--line-height, 1.1);
+        list-style: none;
       }
-      li { margin-bottom: calc(var(--list-item-spacing, 1) * var(--slide-unit)); }
+      li { 
+        margin-bottom: calc(var(--list-item-spacing, 1) * var(--slide-unit));
+        padding-left: calc(var(--slide-unit) * 2);
+        position: relative;
+      }
+      li::before {
+        content: '•';
+        position: absolute;
+        left: 0;
+        width: calc(var(--slide-unit) * 2);
+        text-align: left;
+      }
+      ol { counter-reset: list-counter; }
+      ol li { 
+        counter-increment: list-counter;
+        padding-left: calc(var(--slide-unit) * 3);
+      }
+      ol li::before {
+        content: counter(list-counter) '. ';
+        width: calc(var(--slide-unit) * 3);
+      }
       
       .kicker { 
         font-size: calc(var(--slide-unit) * 1.8 * var(--body-font-scale, 1) * var(--font-scale, 1)); 
@@ -1318,6 +1422,77 @@ export class SlideRenderer {
         letter-spacing: 0.08em; 
         opacity: 0.7; 
       }
+      
+      /* ============================================
+         SEMANTIC COLORS - Links, bullets, etc.
+         ============================================ */
+      
+      /* Links */
+      a { 
+        color: var(--light-link-color, #0066cc);
+        text-decoration: underline;
+      }
+      a:hover { opacity: 0.8; }
+      .slide.dark a { color: var(--dark-link-color, #66b3ff); }
+      
+      /* Bullets */
+      li::before { color: var(--light-bullet-color, inherit); }
+      .slide.dark li::before { color: var(--dark-bullet-color, inherit); }
+      
+      /* Blockquotes */
+      blockquote {
+        border-left: calc(var(--slide-unit) * 0.5) solid var(--light-blockquote-border, #cccccc);
+        padding-left: calc(var(--slide-unit) * 2);
+        margin-left: 0;
+        font-style: italic;
+        opacity: 0.9;
+      }
+      .slide.dark blockquote { 
+        border-left-color: var(--dark-blockquote-border, #555555); 
+      }
+      
+      /* Tables */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: calc(var(--slide-unit) * 2.4 * var(--body-font-scale, 1) * var(--font-scale, 1));
+      }
+      th, td {
+        padding: calc(var(--slide-unit) * 1);
+        text-align: left;
+        border-bottom: 1px solid var(--light-blockquote-border, #cccccc);
+      }
+      th {
+        background: var(--light-table-header-bg, #f0f0f0);
+        font-weight: 600;
+      }
+      .slide.dark th { background: var(--dark-table-header-bg, #333333); }
+      .slide.dark th, .slide.dark td { border-bottom-color: var(--dark-blockquote-border, #555555); }
+      
+      /* Code */
+      code {
+        font-family: 'SF Mono', Monaco, 'Fira Code', monospace;
+        font-size: 0.9em;
+        padding: 0.15em 0.4em;
+        border-radius: calc(var(--slide-unit) * 0.3);
+        background: rgba(128, 128, 128, 0.1);
+        border: 1px solid var(--light-code-border, #e0e0e0);
+      }
+      pre {
+        background: rgba(128, 128, 128, 0.1);
+        border: 1px solid var(--light-code-border, #e0e0e0);
+        border-radius: calc(var(--slide-unit) * 0.5);
+        padding: calc(var(--slide-unit) * 1.5);
+        overflow-x: auto;
+        font-size: calc(var(--slide-unit) * 2 * var(--body-font-scale, 1) * var(--font-scale, 1));
+      }
+      pre code {
+        padding: 0;
+        border: none;
+        background: none;
+      }
+      .slide.dark code { border-color: var(--dark-code-border, #444444); }
+      .slide.dark pre { border-color: var(--dark-code-border, #444444); }
       
       /* ============================================
          IMAGES
@@ -1384,12 +1559,9 @@ export class SlideRenderer {
       .title-content h2 { font-size: calc(var(--slide-unit) * 7 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
       
       /* ============================================
-         LAYOUT: SECTION - Accent background, centered
+         LAYOUT: SECTION - Centered content
+         Background comes from layout-specific bg or normal background
          ============================================ */
-      .section-container .slide-body { 
-        background: var(--accent1, #1a1a2e); 
-        color: var(--light-body-text, #fff);
-      }
       .layout-section {
         display: flex;
         justify-content: center;
@@ -1402,11 +1574,6 @@ export class SlideRenderer {
         align-items: center;
         text-align: center;
         padding: calc(var(--slide-unit) * 5);
-      }
-      .section-content h1,
-      .section-content h2,
-      .section-content h3 {
-        color: var(--light-body-text, #fff);
       }
       
       /* ============================================
@@ -1438,24 +1605,44 @@ export class SlideRenderer {
       .layout-full-image .image-slot img { width: 100%; height: 100%; object-fit: cover; }
       
       /* ============================================
-         LAYOUT: CAPTION
+         LAYOUT: CAPTION - Full bleed image with headline overlay
          ============================================ */
-      .layout-caption { padding: 0; }
-      .caption-container .slide-body { 
+      .caption-container {
+        display: flex;
+        flex-direction: column;
+      }
+      .caption-container .slide-header,
+      .caption-container .slide-footer {
+        display: none;
+      }
+      .caption-container .slide-body {
         position: absolute;
         top: 0; left: 0; right: 0; bottom: 0;
         display: flex;
         flex-direction: column;
+        z-index: 2;
+      }
+      .layout-caption { 
+        padding: 0;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+      .layout-caption .caption-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        position: relative;
       }
       .layout-caption .slot-title-bar { 
-        height: calc(var(--slide-unit) * 5); 
-        padding: 0 calc(var(--slide-unit) * 2); 
-        background: var(--light-background, #fff);
+        position: absolute;
+        top: calc(var(--slide-unit) * 4);
+        left: calc(var(--slide-unit) * 5);
+        right: calc(var(--slide-unit) * 5);
+        z-index: 3;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: flex-start;
-        flex-shrink: 0;
-        margin: 0;
       }
       .layout-caption .slot-title-bar h1,
       .layout-caption .slot-title-bar h2,
@@ -1463,16 +1650,16 @@ export class SlideRenderer {
       .layout-caption .slot-title-bar h4,
       .layout-caption .slot-title-bar h5,
       .layout-caption .slot-title-bar h6 {
-        font-size: calc(var(--slide-unit) * 2.5 * var(--title-font-scale, 1) * var(--font-scale, 1));
+        font-size: calc(var(--slide-unit) * 5 * var(--title-font-scale, 1) * var(--font-scale, 1));
         margin: 0;
         line-height: 1.2;
+        text-shadow: 0 2px 8px rgba(0,0,0,0.3);
       }
       .layout-caption .slot-image { 
-        flex: 1; 
-        display: flex; 
-        min-height: 0; 
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        z-index: 1;
         overflow: hidden;
-        position: relative;
       }
       .layout-caption .slot-image .image-slot {
         position: absolute;
@@ -1485,41 +1672,48 @@ export class SlideRenderer {
         display: block;
       }
       .layout-caption .slot-caption { 
-        padding: calc(var(--slide-unit) * 1) calc(var(--slide-unit) * 2); 
-        text-align: center; 
-        font-size: calc(var(--slide-unit) * 2 * var(--body-font-scale, 1) * var(--font-scale, 1)); 
-        background: var(--light-background, #fff);
-        flex-shrink: 0;
-      }
-      
-      .caption-container .slide-header,
-      .caption-container .slide-footer {
-        display: none;
+        position: absolute;
+        bottom: calc(var(--slide-unit) * 4);
+        left: calc(var(--slide-unit) * 5);
+        right: calc(var(--slide-unit) * 5);
+        z-index: 3;
+        text-align: left;
+        font-size: calc(var(--slide-unit) * 2.5 * var(--body-font-scale, 1) * var(--font-scale, 1));
+        text-shadow: 0 1px 4px rgba(0,0,0,0.3);
       }
       
       /* ============================================
          LAYOUT: HALF-IMAGE (Vertical Split)
          ============================================ */
-      .split-container .slide-body,
-      .split-horizontal-container .slide-body {
-        position: absolute;
-        top: 0; left: 0; right: 0; bottom: 0;
+      .split-container,
+      .split-horizontal-container {
         display: flex;
         overflow: hidden;
       }
-      
-      .split-container .slide-body {
+      .split-container {
         flex-direction: row;
       }
-      .split-container.image-right .slide-body {
+      .split-container.image-right {
         flex-direction: row-reverse;
       }
-      
-      .split-horizontal-container .slide-body {
+      .split-horizontal-container {
         flex-direction: column;
       }
-      .split-horizontal-container.image-bottom .slide-body {
+      .split-horizontal-container.image-top {
+        flex-direction: column;
+      }
+      .split-horizontal-container.image-bottom {
         flex-direction: column-reverse;
+      }
+      
+      /* Hide main slide header/footer in split layouts - they're inside content panel */
+      .split-container > .slide-header,
+      .split-container > .slide-footer,
+      .split-container > .slide-body,
+      .split-horizontal-container > .slide-header,
+      .split-horizontal-container > .slide-footer,
+      .split-horizontal-container > .slide-body {
+        display: none;
       }
       
       .half-image-panel {
@@ -1534,6 +1728,9 @@ export class SlideRenderer {
         width: 100%;
         height: 100%;
         object-fit: cover;
+        position: absolute;
+        top: 0;
+        left: 0;
       }
       
       .half-content-panel {
@@ -1542,41 +1739,53 @@ export class SlideRenderer {
         min-height: 0;
         display: flex;
         flex-direction: column;
-        padding: calc(var(--slide-unit) * 4);
         overflow: hidden;
         position: relative;
       }
+      /* Header in half panel - uses same margins as full slide but relative to panel */
       .half-content-panel .slide-header {
-        position: relative;
-        top: auto;
-        left: auto;
-        right: auto;
+        position: absolute;
+        top: calc(var(--header-top, 2.5) * var(--slide-unit));
+        left: calc(var(--content-width, 5) * var(--slide-unit));
+        right: calc(var(--content-width, 5) * var(--slide-unit));
+        z-index: 10;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
         font-size: calc(var(--slide-unit) * 1.5 * var(--header-font-scale, 1) * var(--font-scale, 1));
-        margin-bottom: calc(var(--slide-unit) * 1);
       }
+      /* Footer in half panel - uses same margins as full slide but relative to panel */
       .half-content-panel .slide-footer {
-        position: relative;
-        bottom: auto;
-        left: auto;
-        right: auto;
+        position: absolute;
+        bottom: calc(var(--footer-bottom, 2.5) * var(--slide-unit));
+        left: calc(var(--content-width, 5) * var(--slide-unit));
+        right: calc(var(--content-width, 5) * var(--slide-unit));
+        z-index: 10;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
         font-size: calc(var(--slide-unit) * 1.5 * var(--footer-font-scale, 1) * var(--font-scale, 1));
-        margin-top: auto;
       }
+      /* Slide body in half panel - uses title-top for positioning (title + content together) */
       .half-content-panel .slide-body {
-        position: relative;
-        flex: 1;
+        position: absolute;
+        top: calc(var(--title-top, 5) * var(--slide-unit));
+        left: calc(var(--content-width, 5) * var(--slide-unit));
+        right: calc(var(--content-width, 5) * var(--slide-unit));
+        bottom: calc(var(--footer-bottom, 2.5) * var(--slide-unit) + var(--slide-unit) * 3);
         display: flex;
         flex-direction: column;
-        justify-content: center;
-        gap: calc(var(--slide-unit) * 1);
+        justify-content: flex-start;
+        gap: calc(var(--slide-unit) * 1.5);
+        z-index: 5;
       }
-      
-      /* Hide main slide header/footer in split layouts */
-      .split-container > .slide-header,
-      .split-container > .slide-footer,
-      .split-horizontal-container > .slide-header,
-      .split-horizontal-container > .slide-footer {
-        display: none;
+      .half-content-panel .slide-content {
+        position: relative;
+        left: 0;
+        right: 0;
+        display: flex;
+        flex-direction: column;
+        gap: calc(var(--slide-unit) * 1.5);
       }
     `;
   }
@@ -1683,8 +1892,12 @@ ${this.getSlideCSS()}
 
 .progress-bar-fill {
   height: 100%;
-  background: var(--accent1, #007acc);
+  background: var(--progress-bar, var(--light-progress-bar, #007acc));
   transition: width 0.3s ease;
+}
+
+.slide.appearance-dark .progress-bar-fill {
+  background: var(--dark-progress-bar, #66b3ff);
 }
 
 /* Slide numbers */
@@ -1766,12 +1979,21 @@ ${this.getSlideCSS()}
     if (frontmatter.contentTop !== undefined) vars.push(`  --content-top: ${frontmatter.contentTop};`);
     if (frontmatter.contentWidth !== undefined) vars.push(`  --content-width: ${frontmatter.contentWidth};`);
 
-    if (frontmatter.accent1) vars.push(`  --accent1: ${frontmatter.accent1};`);
-    if (frontmatter.accent2) vars.push(`  --accent2: ${frontmatter.accent2};`);
-    if (frontmatter.accent3) vars.push(`  --accent3: ${frontmatter.accent3};`);
-    if (frontmatter.accent4) vars.push(`  --accent4: ${frontmatter.accent4};`);
-    if (frontmatter.accent5) vars.push(`  --accent5: ${frontmatter.accent5};`);
-    if (frontmatter.accent6) vars.push(`  --accent6: ${frontmatter.accent6};`);
+    // Semantic colors (light mode)
+    if (frontmatter.lightLinkColor) vars.push(`  --light-link-color: ${frontmatter.lightLinkColor};`);
+    if (frontmatter.lightBulletColor) vars.push(`  --light-bullet-color: ${frontmatter.lightBulletColor};`);
+    if (frontmatter.lightBlockquoteBorder) vars.push(`  --light-blockquote-border: ${frontmatter.lightBlockquoteBorder};`);
+    if (frontmatter.lightTableHeaderBg) vars.push(`  --light-table-header-bg: ${frontmatter.lightTableHeaderBg};`);
+    if (frontmatter.lightCodeBorder) vars.push(`  --light-code-border: ${frontmatter.lightCodeBorder};`);
+    if (frontmatter.lightProgressBar) vars.push(`  --light-progress-bar: ${frontmatter.lightProgressBar};`);
+
+    // Semantic colors (dark mode)
+    if (frontmatter.darkLinkColor) vars.push(`  --dark-link-color: ${frontmatter.darkLinkColor};`);
+    if (frontmatter.darkBulletColor) vars.push(`  --dark-bullet-color: ${frontmatter.darkBulletColor};`);
+    if (frontmatter.darkBlockquoteBorder) vars.push(`  --dark-blockquote-border: ${frontmatter.darkBlockquoteBorder};`);
+    if (frontmatter.darkTableHeaderBg) vars.push(`  --dark-table-header-bg: ${frontmatter.darkTableHeaderBg};`);
+    if (frontmatter.darkCodeBorder) vars.push(`  --dark-code-border: ${frontmatter.darkCodeBorder};`);
+    if (frontmatter.darkProgressBar) vars.push(`  --dark-progress-bar: ${frontmatter.darkProgressBar};`);
 
     if (frontmatter.lightBackground) vars.push(`  --light-background: ${frontmatter.lightBackground};`);
     if (frontmatter.darkBackground) vars.push(`  --dark-background: ${frontmatter.darkBackground};`);

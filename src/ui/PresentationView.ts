@@ -22,6 +22,8 @@ export class PresentationView extends ItemView {
   
   private onSlideChange: ((index: number) => void) | null = null;
   private onReload: (() => void) | null = null;
+  private onGetFontCSS: ((frontmatter: any) => Promise<string>) | null = null;
+  private onStartPresentation: ((file: TFile, slideIndex: number) => void) | null = null;
   
   // Live update related properties
   private sourceFile: TFile | null = null;
@@ -83,7 +85,19 @@ export class PresentationView extends ItemView {
     if (this.customFontCSS) {
       renderer.setCustomFontCSS(this.customFontCSS);
     }
+    // Set system color scheme so 'system' mode resolves correctly
+    renderer.setSystemColorScheme(this.getSystemColorScheme());
     return renderer;
+  }
+
+  /**
+   * Detect the system color scheme (light or dark)
+   */
+  private getSystemColorScheme(): 'light' | 'dark' {
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    return 'light';
   }
   
   getViewType(): string {
@@ -150,6 +164,14 @@ export class PresentationView extends ItemView {
   
   setOnReload(callback: () => void) {
     this.onReload = callback;
+  }
+  
+  setOnGetFontCSS(callback: (frontmatter: any) => Promise<string>) {
+    this.onGetFontCSS = callback;
+  }
+  
+  setOnStartPresentation(callback: (file: TFile, slideIndex: number) => void) {
+    this.onStartPresentation = callback;
   }
   
   private setupLiveUpdates(sourceFile: TFile) {
@@ -245,7 +267,7 @@ export class PresentationView extends ItemView {
       const iframe = this.containerEl.querySelector('.slide-wrapper .slide-iframe') as HTMLIFrameElement;
       if (!iframe) return false;
       
-      const theme = this.getThemeByName(this.presentation.frontmatter.theme || 'zurich');
+      const theme = this.getThemeByName(this.presentation.frontmatter.theme || '');
       const renderer = this.createRenderer(theme);
       
       const slideHTML = renderer.renderSingleSlideHTML(
@@ -433,7 +455,7 @@ More content here...`
   private renderSlides(container: HTMLElement) {
     if (!this.presentation) return;
     
-    const theme = this.getThemeByName(this.presentation.frontmatter.theme || 'zurich');
+    const theme = this.getThemeByName(this.presentation.frontmatter.theme || '');
     const themeClasses = theme?.template.CssClasses || '';
     
     // Create slide wrapper with aspect ratio
@@ -948,43 +970,26 @@ More content here...`
   private async startPresentation() {
     console.log('startPresentation called');
     
-    let presentation = this.presentation;
     let file = this.file;
     
     // If no file is loaded in this view, try to use the active file
-    if (!file || !presentation) {
+    if (!file) {
       const activeFile = this.app.workspace.getActiveFile();
-      
       if (activeFile && activeFile.extension === 'md') {
-        try {
-          const content = await this.app.vault.read(activeFile);
-          presentation = this.parser.parse(content);
-          file = activeFile;
-        } catch (error) {
-          console.error('Failed to load active file:', error);
-          new Notice('No presentation loaded');
-          return;
-        }
+        file = activeFile;
       } else {
         new Notice('Please open a markdown file first');
         return;
       }
     }
     
-    try {
-      const theme = this.getThemeByName(presentation.frontmatter.theme || 'zurich');
-      const presentationWindow = new PresentationWindow();
-      // Use presentationImagePathResolver for file:// URLs in the external window
-      if (this.presentationImagePathResolver) {
-        presentationWindow.setImagePathResolver(this.presentationImagePathResolver);
-      } else if (this.imagePathResolver) {
-        // Fallback to regular resolver
-        presentationWindow.setImagePathResolver(this.imagePathResolver);
-      }
-      await presentationWindow.open(presentation, theme || null, file);
-    } catch (error) {
-      console.error('Failed to open presentation window:', error);
-      new Notice(`Failed to start presentation: ${(error as Error).message}`);
+    // Use the main plugin's startPresentationAtSlide for consistent behavior
+    if (this.onStartPresentation) {
+      console.log('Using main plugin startPresentationAtSlide');
+      this.onStartPresentation(file, this.currentSlideIndex);
+    } else {
+      console.error('onStartPresentation callback not set');
+      new Notice('Cannot start presentation - callback not configured');
     }
   }
   
@@ -1073,7 +1078,7 @@ More content here...`
   private async exportHTML() {
     if (!this.presentation || !this.file) return;
     
-    const theme = this.getThemeByName(this.presentation.frontmatter.theme || 'zurich');
+    const theme = this.getThemeByName(this.presentation.frontmatter.theme || '');
     const renderer = this.createRenderer(theme);
     const html = renderer.renderHTML();
     
@@ -1132,12 +1137,19 @@ More content here...`
       root.style.setProperty('--dark-body-text', preset.DarkBodyTextColor);
       root.style.setProperty('--light-title-text', preset.LightTitleTextColor);
       root.style.setProperty('--dark-title-text', preset.DarkTitleTextColor);
-      root.style.setProperty('--accent1', preset.Accent1);
-      root.style.setProperty('--accent2', preset.Accent2);
-      root.style.setProperty('--accent3', preset.Accent3);
-      root.style.setProperty('--accent4', preset.Accent4);
-      root.style.setProperty('--accent5', preset.Accent5);
-      root.style.setProperty('--accent6', preset.Accent6);
+      // Semantic colors
+      root.style.setProperty('--light-link-color', preset.LightLinkColor);
+      root.style.setProperty('--light-bullet-color', preset.LightBulletColor);
+      root.style.setProperty('--light-blockquote-border', preset.LightBlockquoteBorder);
+      root.style.setProperty('--light-table-header-bg', preset.LightTableHeaderBg);
+      root.style.setProperty('--light-code-border', preset.LightCodeBorder);
+      root.style.setProperty('--light-progress-bar', preset.LightProgressBar);
+      root.style.setProperty('--dark-link-color', preset.DarkLinkColor);
+      root.style.setProperty('--dark-bullet-color', preset.DarkBulletColor);
+      root.style.setProperty('--dark-blockquote-border', preset.DarkBlockquoteBorder);
+      root.style.setProperty('--dark-table-header-bg', preset.DarkTableHeaderBg);
+      root.style.setProperty('--dark-code-border', preset.DarkCodeBorder);
+      root.style.setProperty('--dark-progress-bar', preset.DarkProgressBar);
     }
     
     // Apply font variables

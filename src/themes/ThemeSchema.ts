@@ -1,7 +1,7 @@
 /**
  * Theme JSON Schema Types
  * 
- * Defines the structure for theme.json files used by all built-in themes.
+ * Defines the structure for theme.json files used by custom themes.
  */
 
 /**
@@ -45,12 +45,24 @@ export interface ThemeBackgrounds {
 }
 
 /**
+ * Semantic colors for UI elements
+ */
+export interface ThemeSemanticColors {
+    link: string;
+    bullet: string;
+    blockquoteBorder: string;
+    tableHeaderBg: string;
+    codeBorder: string;
+    progressBar: string;
+}
+
+/**
  * Color preset for a single mode (light or dark)
  */
 export interface ThemeModePreset {
     text: ThemeTextColors;
     backgrounds: ThemeBackgrounds;
-    accents: string[];     // Array of 6 accent colors
+    semanticColors: ThemeSemanticColors;
 }
 
 /**
@@ -86,6 +98,30 @@ export interface ThemeJsonFile {
 }
 
 /**
+ * Default semantic colors for light mode
+ */
+export const DEFAULT_SEMANTIC_COLORS_LIGHT: ThemeSemanticColors = {
+    link: '#0066cc',
+    bullet: '#333333',
+    blockquoteBorder: '#cccccc',
+    tableHeaderBg: '#f0f0f0',
+    codeBorder: '#e0e0e0',
+    progressBar: '#0066cc',
+};
+
+/**
+ * Default semantic colors for dark mode
+ */
+export const DEFAULT_SEMANTIC_COLORS_DARK: ThemeSemanticColors = {
+    link: '#66b3ff',
+    bullet: '#e0e0e0',
+    blockquoteBorder: '#555555',
+    tableHeaderBg: '#333333',
+    codeBorder: '#444444',
+    progressBar: '#66b3ff',
+};
+
+/**
  * Default values for creating new themes
  */
 export const DEFAULT_THEME_PRESET: ThemeModePreset = {
@@ -104,7 +140,7 @@ export const DEFAULT_THEME_PRESET: ThemeModePreset = {
         title: { type: 'solid', color: '#f0f0f0' },
         section: { type: 'solid', color: '#000000' }
     },
-    accents: ['#000000', '#43aa8b', '#f9c74f', '#90be6d', '#f8961e', '#577590']
+    semanticColors: DEFAULT_SEMANTIC_COLORS_LIGHT,
 };
 
 export const DEFAULT_DARK_PRESET: ThemeModePreset = {
@@ -123,5 +159,5 @@ export const DEFAULT_DARK_PRESET: ThemeModePreset = {
         title: { type: 'solid', color: '#1a1a1a' },
         section: { type: 'solid', color: '#ffffff' }
     },
-    accents: ['#ffffff', '#43aa8b', '#f9c74f', '#90be6d', '#f8961e', '#577590']
+    semanticColors: DEFAULT_SEMANTIC_COLORS_DARK,
 };

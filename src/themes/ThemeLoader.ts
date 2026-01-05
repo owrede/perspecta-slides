@@ -1,29 +1,21 @@
 import { App, TFolder, TFile } from 'obsidian';
-import { Theme, ThemeTemplate, ThemePreset, ThemePresetsFile } from '../types';
-import { builtInThemes, getBuiltInThemeNames } from './builtin';
-import { ThemeJsonFile } from './ThemeSchema';
+import { Theme, ThemeTemplate, ThemePreset, ThemePresetsFile, DEFAULT_SEMANTIC_COLORS } from '../types';
+import { ThemeJsonFile, DEFAULT_SEMANTIC_COLORS_LIGHT, DEFAULT_SEMANTIC_COLORS_DARK } from './ThemeSchema';
 
 export class ThemeLoader {
   private app: App;
   private themes: Map<string, Theme> = new Map();
   private customThemesFolder: string;
-  private builtInNames: Set<string>;
 
   constructor(app: App, customThemesFolder: string = 'perspecta-themes') {
     this.app = app;
     this.customThemesFolder = customThemesFolder;
-    this.builtInNames = new Set(getBuiltInThemeNames().map(n => n.toLowerCase()));
   }
 
   async loadThemes(): Promise<void> {
     this.themes.clear();
 
-    // Load built-in themes first
-    for (const [name, theme] of Object.entries(builtInThemes)) {
-      this.themes.set(name.toLowerCase(), theme);
-    }
-
-    // Load custom themes from vault
+    // Load custom themes from vault only (no built-in themes)
     await this.loadCustomThemes();
   }
 
@@ -45,16 +37,7 @@ export class ThemeLoader {
         try {
           const theme = await this.loadThemeFromFolder(child);
           if (theme) {
-            // Check for name conflict with built-in themes
-            const baseName = theme.template.Name.toLowerCase();
-            let themeName = baseName;
-            
-            if (this.builtInNames.has(baseName)) {
-              // Add "(custom)" suffix for conflicting names
-              themeName = `${baseName} (custom)`;
-              theme.template.Name = `${theme.template.Name} (custom)`;
-            }
-            
+            const themeName = theme.template.Name.toLowerCase();
             console.log('[ThemeLoader] Loaded custom theme:', themeName);
             this.themes.set(themeName, theme);
           }
@@ -75,7 +58,7 @@ export class ThemeLoader {
       return this.loadThemeFromThemeJson(folder, themeJsonFile);
     }
 
-    // Fall back to template.json (iA Presenter format)
+    // Fall back to template.json (legacy iA Presenter format)
     const templateFile = folder.children.find(
       f => f instanceof TFile && f.name === 'template.json'
     ) as TFile | undefined;
@@ -205,7 +188,7 @@ export class ThemeLoader {
   }
 
   /**
-   * Convert ThemeJsonFile mode preset to legacy ThemePreset format
+   * Convert ThemeJsonFile mode preset to ThemePreset format
    */
   private convertModeToPreset(json: ThemeJsonFile, mode: 'light' | 'dark'): ThemePreset {
     const preset = json.presets[mode];
@@ -222,6 +205,9 @@ export class ThemeLoader {
     } else {
       bgColor = mode === 'light' ? '#ffffff' : '#1a1a1a';
     }
+
+    // Get semantic colors with defaults
+    const semanticColors = preset.semanticColors || (mode === 'light' ? DEFAULT_SEMANTIC_COLORS_LIGHT : DEFAULT_SEMANTIC_COLORS_DARK);
 
     return {
       Name: mode === 'light' ? 'Light' : 'Dark',
@@ -243,17 +229,21 @@ export class ThemeLoader {
         ? json.presets.light.backgrounds.general.color || '#ffffff'
         : json.presets.light.backgrounds.general.colors?.[0] || '#ffffff',
 
-      // Accent colors
-      Accent1: preset.accents[0],
-      Accent2: preset.accents[1],
-      Accent3: preset.accents[2],
-      Accent4: preset.accents[3],
-      Accent5: preset.accents[4],
-      Accent6: preset.accents[5],
+      // Semantic colors (light mode)
+      LightLinkColor: json.presets.light.semanticColors?.link || DEFAULT_SEMANTIC_COLORS_LIGHT.link,
+      LightBulletColor: json.presets.light.semanticColors?.bullet || DEFAULT_SEMANTIC_COLORS_LIGHT.bullet,
+      LightBlockquoteBorder: json.presets.light.semanticColors?.blockquoteBorder || DEFAULT_SEMANTIC_COLORS_LIGHT.blockquoteBorder,
+      LightTableHeaderBg: json.presets.light.semanticColors?.tableHeaderBg || DEFAULT_SEMANTIC_COLORS_LIGHT.tableHeaderBg,
+      LightCodeBorder: json.presets.light.semanticColors?.codeBorder || DEFAULT_SEMANTIC_COLORS_LIGHT.codeBorder,
+      LightProgressBar: json.presets.light.semanticColors?.progressBar || DEFAULT_SEMANTIC_COLORS_LIGHT.progressBar,
 
-      // Mode-specific accent colors
-      DarkAccent1: json.presets.dark.accents[0],
-      LightAccent1: json.presets.light.accents[0],
+      // Semantic colors (dark mode)
+      DarkLinkColor: json.presets.dark.semanticColors?.link || DEFAULT_SEMANTIC_COLORS_DARK.link,
+      DarkBulletColor: json.presets.dark.semanticColors?.bullet || DEFAULT_SEMANTIC_COLORS_DARK.bullet,
+      DarkBlockquoteBorder: json.presets.dark.semanticColors?.blockquoteBorder || DEFAULT_SEMANTIC_COLORS_DARK.blockquoteBorder,
+      DarkTableHeaderBg: json.presets.dark.semanticColors?.tableHeaderBg || DEFAULT_SEMANTIC_COLORS_DARK.tableHeaderBg,
+      DarkCodeBorder: json.presets.dark.semanticColors?.codeBorder || DEFAULT_SEMANTIC_COLORS_DARK.codeBorder,
+      DarkProgressBar: json.presets.dark.semanticColors?.progressBar || DEFAULT_SEMANTIC_COLORS_DARK.progressBar,
 
       // Background gradients
       LightBgGradient: json.presets.light.backgrounds.general.type === 'dynamic'
@@ -276,11 +266,12 @@ export class ThemeLoader {
   }
 
   getBuiltInThemes(): Theme[] {
-    return Array.from(this.themes.values()).filter(t => t.isBuiltIn);
+    // No built-in themes anymore
+    return [];
   }
 
   getCustomThemes(): Theme[] {
-    return Array.from(this.themes.values()).filter(t => !t.isBuiltIn);
+    return Array.from(this.themes.values());
   }
 
   setCustomThemesFolder(folder: string): void {
@@ -308,14 +299,18 @@ export class ThemeLoader {
       `--light-title-text: ${preset.LightTitleTextColor};`,
       `--dark-background: ${preset.DarkBackgroundColor};`,
       `--light-background: ${preset.LightBackgroundColor};`,
-      `--dark-accent1: ${preset.DarkAccent1 || preset.Accent1};`,
-      `--light-accent1: ${preset.LightAccent1 || preset.Accent1};`,
-      `--accent1: ${preset.Accent1};`,
-      `--accent2: ${preset.Accent2};`,
-      `--accent3: ${preset.Accent3};`,
-      `--accent4: ${preset.Accent4};`,
-      `--accent5: ${preset.Accent5};`,
-      `--accent6: ${preset.Accent6};`,
+      `--light-link-color: ${preset.LightLinkColor};`,
+      `--light-bullet-color: ${preset.LightBulletColor};`,
+      `--light-blockquote-border: ${preset.LightBlockquoteBorder};`,
+      `--light-table-header-bg: ${preset.LightTableHeaderBg};`,
+      `--light-code-border: ${preset.LightCodeBorder};`,
+      `--light-progress-bar: ${preset.LightProgressBar};`,
+      `--dark-link-color: ${preset.DarkLinkColor};`,
+      `--dark-bullet-color: ${preset.DarkBulletColor};`,
+      `--dark-blockquote-border: ${preset.DarkBlockquoteBorder};`,
+      `--dark-table-header-bg: ${preset.DarkTableHeaderBg};`,
+      `--dark-code-border: ${preset.DarkCodeBorder};`,
+      `--dark-progress-bar: ${preset.DarkProgressBar};`,
     ];
 
     return `:root {\n  ${vars.join('\n  ')}\n}`;

@@ -1,20 +1,31 @@
-import { App, TFile, TFolder, Modal, Setting, Notice } from 'obsidian';
-import { PresentationFrontmatter, Theme, ThemePreset } from '../types';
-import { ThemeJsonFile, ThemeModePreset, ThemeBackground } from '../themes/ThemeSchema';
+import { App, TFile, TFolder, Modal, Setting, Notice, FileSystemAdapter } from 'obsidian';
+import { PresentationFrontmatter, Theme, ThemePreset, DEFAULT_SEMANTIC_COLORS } from '../types';
+import { ThemeJsonFile, ThemeModePreset, ThemeBackground, ThemeSemanticColors, DEFAULT_SEMANTIC_COLORS_LIGHT, DEFAULT_SEMANTIC_COLORS_DARK } from '../themes/ThemeSchema';
 import { FontManager } from './FontManager';
 import { getTheme } from '../themes';
+
+/**
+ * Represents an image reference found in markdown
+ */
+interface ImageReference {
+  originalPath: string;
+  isWikiLink: boolean;
+  fullMatch: string;
+}
 
 /**
  * Modal dialog for saving a custom theme
  */
 export class SaveThemeModal extends Modal {
   private themeName: string = '';
-  private onSave: (name: string) => Promise<void>;
+  private onSave: (name: string, overwrite: boolean) => Promise<void>;
   private existingThemes: string[];
+  private customThemeNames: string[];
 
-  constructor(app: App, existingThemes: string[], onSave: (name: string) => Promise<void>) {
+  constructor(app: App, existingThemes: string[], customThemeNames: string[], onSave: (name: string, overwrite: boolean) => Promise<void>) {
     super(app);
     this.existingThemes = existingThemes;
+    this.customThemeNames = customThemeNames;
     this.onSave = onSave;
   }
 
@@ -62,11 +73,24 @@ export class SaveThemeModal extends Modal {
         new Notice(`A built-in theme named "${this.themeName}" exists. Your custom theme will be saved as "${this.themeName} (custom)".`);
       }
 
+      // Check for existing custom theme with same name
+      const customThemeExists = this.customThemeNames.some(t => 
+        t.toLowerCase().replace(/\s+/g, '-') === normalizedName
+      );
+      
+      let overwrite = false;
+      if (customThemeExists) {
+        if (!confirm(`A custom theme named "${this.themeName}" already exists. Do you want to overwrite it?`)) {
+          return;
+        }
+        overwrite = true;
+      }
+
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
 
       try {
-        await this.onSave(this.themeName);
+        await this.onSave(this.themeName, overwrite);
         this.close();
       } catch (e) {
         console.error('Failed to save theme:', e);
@@ -99,38 +123,81 @@ export class ThemeExporter {
 
   /**
    * Export the current presentation settings as a custom theme
+   * @param themeName - Name for the custom theme
+   * @param frontmatter - Presentation frontmatter with settings
+   * @param markdownContent - Full markdown content of the presentation
+   * @param sourceFile - Source file for resolving image paths
+   * @param baseThemeName - Optional base theme name for fallback values
+   * @param overwrite - Whether to overwrite existing theme
    */
   async exportTheme(
     themeName: string,
     frontmatter: PresentationFrontmatter,
-    baseThemeName?: string
+    markdownContent: string,
+    sourceFile: TFile,
+    baseThemeName?: string,
+    overwrite: boolean = false
   ): Promise<string> {
     // Get the base theme for fallback values
-    const baseTheme = getTheme(baseThemeName || frontmatter.theme || 'zurich');
+    const baseTheme = getTheme(baseThemeName || frontmatter.theme || '');
     const basePreset = baseTheme?.presets[0];
 
     // Create theme folder
     const folderName = themeName.toLowerCase().replace(/\s+/g, '-');
     const themePath = `${this.customThemesFolder}/${folderName}`;
     
+    // If overwriting, delete existing theme folder first
+    if (overwrite) {
+      await this.deleteThemeFolder(themePath);
+    }
+    
     await this.ensureFolder(themePath);
 
     // Generate theme.json
     const themeJson = this.generateThemeJson(themeName, frontmatter, baseTheme);
-    await this.app.vault.create(
-      `${themePath}/theme.json`,
-      JSON.stringify(themeJson, null, 2)
-    );
+    const themeJsonPath = `${themePath}/theme.json`;
+    const themeJsonContent = JSON.stringify(themeJson, null, 2);
+    await this.createOrModifyFile(themeJsonPath, themeJsonContent);
 
     // Generate theme.css with typography/margin defaults
     const themeCss = this.generateThemeCss(frontmatter, baseTheme);
-    await this.app.vault.create(`${themePath}/theme.css`, themeCss);
+    const themeCssPath = `${themePath}/theme.css`;
+    await this.createOrModifyFile(themeCssPath, themeCss);
 
     // Copy fonts if using cached Google Fonts
     await this.copyFonts(themePath, frontmatter);
 
+    // Extract and copy images, generate demo file
+    const imageRefs = this.extractImageReferences(markdownContent);
+    if (imageRefs.length > 0) {
+      await this.copyImages(themePath, imageRefs, sourceFile);
+    }
+    
+    // Create demo markdown file with updated image paths
+    await this.createDemoFile(themePath, themeName, markdownContent, imageRefs);
+
     new Notice(`Theme "${themeName}" saved to ${themePath}`);
     return themePath;
+  }
+
+  /**
+   * Delete an existing theme folder and all its contents
+   */
+  private async deleteThemeFolder(themePath: string): Promise<void> {
+    const folder = this.app.vault.getAbstractFileByPath(themePath);
+    if (folder instanceof TFolder) {
+      const deleteRecursively = async (f: TFolder) => {
+        for (const child of [...f.children]) {
+          if (child instanceof TFolder) {
+            await deleteRecursively(child);
+          } else {
+            await this.app.vault.delete(child);
+          }
+        }
+        await this.app.vault.delete(f);
+      };
+      await deleteRecursively(folder);
+    }
   }
 
   /**
@@ -168,14 +235,14 @@ export class ThemeExporter {
         title: this.buildBackground(fm.lightBgTitle, fm.lightBackground || basePreset?.LightBackgroundColor || '#ffffff'),
         section: this.buildBackground(fm.lightBgSection, '#000000'),
       },
-      accents: [
-        fm.accent1 || basePreset?.Accent1 || '#000000',
-        fm.accent2 || basePreset?.Accent2 || '#43aa8b',
-        fm.accent3 || basePreset?.Accent3 || '#f9c74f',
-        fm.accent4 || basePreset?.Accent4 || '#90be6d',
-        fm.accent5 || basePreset?.Accent5 || '#f8961e',
-        fm.accent6 || basePreset?.Accent6 || '#577590',
-      ],
+      semanticColors: {
+        link: fm.lightLinkColor || basePreset?.LightLinkColor || DEFAULT_SEMANTIC_COLORS_LIGHT.link,
+        bullet: fm.lightBulletColor || basePreset?.LightBulletColor || DEFAULT_SEMANTIC_COLORS_LIGHT.bullet,
+        blockquoteBorder: fm.lightBlockquoteBorder || basePreset?.LightBlockquoteBorder || DEFAULT_SEMANTIC_COLORS_LIGHT.blockquoteBorder,
+        tableHeaderBg: fm.lightTableHeaderBg || basePreset?.LightTableHeaderBg || DEFAULT_SEMANTIC_COLORS_LIGHT.tableHeaderBg,
+        codeBorder: fm.lightCodeBorder || basePreset?.LightCodeBorder || DEFAULT_SEMANTIC_COLORS_LIGHT.codeBorder,
+        progressBar: fm.lightProgressBar || basePreset?.LightProgressBar || DEFAULT_SEMANTIC_COLORS_LIGHT.progressBar,
+      },
     };
 
     // Build dark mode preset
@@ -195,14 +262,14 @@ export class ThemeExporter {
         title: this.buildBackground(fm.darkBgTitle, fm.darkBackground || basePreset?.DarkBackgroundColor || '#1a1a1a'),
         section: this.buildBackground(fm.darkBgSection, '#ffffff'),
       },
-      accents: [
-        fm.accent1 || basePreset?.Accent1 || '#ffffff',
-        fm.accent2 || basePreset?.Accent2 || '#43aa8b',
-        fm.accent3 || basePreset?.Accent3 || '#f9c74f',
-        fm.accent4 || basePreset?.Accent4 || '#90be6d',
-        fm.accent5 || basePreset?.Accent5 || '#f8961e',
-        fm.accent6 || basePreset?.Accent6 || '#577590',
-      ],
+      semanticColors: {
+        link: fm.darkLinkColor || basePreset?.DarkLinkColor || DEFAULT_SEMANTIC_COLORS_DARK.link,
+        bullet: fm.darkBulletColor || basePreset?.DarkBulletColor || DEFAULT_SEMANTIC_COLORS_DARK.bullet,
+        blockquoteBorder: fm.darkBlockquoteBorder || basePreset?.DarkBlockquoteBorder || DEFAULT_SEMANTIC_COLORS_DARK.blockquoteBorder,
+        tableHeaderBg: fm.darkTableHeaderBg || basePreset?.DarkTableHeaderBg || DEFAULT_SEMANTIC_COLORS_DARK.tableHeaderBg,
+        codeBorder: fm.darkCodeBorder || basePreset?.DarkCodeBorder || DEFAULT_SEMANTIC_COLORS_DARK.codeBorder,
+        progressBar: fm.darkProgressBar || basePreset?.DarkProgressBar || DEFAULT_SEMANTIC_COLORS_DARK.progressBar,
+      },
     };
 
     // Handle dynamic backgrounds if present
@@ -223,7 +290,7 @@ export class ThemeExporter {
       name: themeName,
       version: '1.0.0',
       author: fm.author || 'Custom',
-      description: `Custom theme based on ${baseTheme?.template.Name || 'Zurich'}`,
+      description: `Custom theme created with Perspecta Slides`,
       fonts: {
         title: {
           name: titleFontName,
@@ -398,7 +465,19 @@ export class ThemeExporter {
   }
 
   /**
-   * Ensure a folder exists, creating it if necessary
+   * Create a file or modify it if it already exists
+   */
+  private async createOrModifyFile(path: string, content: string): Promise<void> {
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing instanceof TFile) {
+      await this.app.vault.modify(existing, content);
+    } else {
+      await this.app.vault.create(path, content);
+    }
+  }
+
+  /**
+   * Ensure a folder exists, creating it and parent folders if necessary
    */
   private async ensureFolder(path: string): Promise<void> {
     const existing = this.app.vault.getAbstractFileByPath(path);
@@ -422,5 +501,151 @@ export class ThemeExporter {
         }
       }
     }
+  }
+
+  /**
+   * Extract all image references from markdown content
+   * Supports both standard markdown ![alt](path) and Obsidian wiki-links ![[path]]
+   */
+  private extractImageReferences(content: string): ImageReference[] {
+    const refs: ImageReference[] = [];
+    
+    // Match standard markdown images: ![alt](path)
+    const mdImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    let match;
+    while ((match = mdImageRegex.exec(content)) !== null) {
+      const path = match[2].split(/[#?]/)[0].trim(); // Remove anchors/queries
+      if (path && !path.startsWith('http://') && !path.startsWith('https://')) {
+        refs.push({
+          originalPath: path,
+          isWikiLink: false,
+          fullMatch: match[0],
+        });
+      }
+    }
+    
+    // Match Obsidian wiki-link images: ![[path]] or ![[path|alt]]
+    const wikiImageRegex = /!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
+    while ((match = wikiImageRegex.exec(content)) !== null) {
+      const path = match[1].split(/[#?]/)[0].trim();
+      if (path && !path.startsWith('http://') && !path.startsWith('https://')) {
+        refs.push({
+          originalPath: path,
+          isWikiLink: true,
+          fullMatch: match[0],
+        });
+      }
+    }
+    
+    return refs;
+  }
+
+  /**
+   * Copy images to the theme folder with <themename>- prefix
+   * Returns a map of original paths to new filenames
+   */
+  private async copyImages(
+    themePath: string,
+    imageRefs: ImageReference[],
+    sourceFile: TFile
+  ): Promise<Map<string, string>> {
+    const pathMap = new Map<string, string>();
+    const folderName = themePath.split('/').pop() || 'theme';
+    
+    for (const ref of imageRefs) {
+      try {
+        // Resolve the image file
+        const decodedPath = decodeURIComponent(ref.originalPath);
+        let imageFile = this.app.metadataCache.getFirstLinkpathDest(decodedPath, sourceFile.path);
+        if (!imageFile) {
+          imageFile = this.app.metadataCache.getFirstLinkpathDest(ref.originalPath, sourceFile.path);
+        }
+        
+        if (imageFile instanceof TFile) {
+          // Generate new filename with theme prefix
+          const ext = imageFile.extension;
+          const baseName = imageFile.basename;
+          const newFileName = `${folderName}-${baseName}.${ext}`;
+          const destPath = `${themePath}/${newFileName}`;
+          
+          // Check if already copied (same original path)
+          if (!pathMap.has(ref.originalPath)) {
+            // Check if destination exists
+            const existing = this.app.vault.getAbstractFileByPath(destPath);
+            if (!existing) {
+              const data = await this.app.vault.readBinary(imageFile);
+              await this.app.vault.createBinary(destPath, data);
+            }
+            pathMap.set(ref.originalPath, newFileName);
+          }
+        }
+      } catch (e) {
+        console.warn(`Failed to copy image: ${ref.originalPath}`, e);
+      }
+    }
+    
+    return pathMap;
+  }
+
+  /**
+   * Create a demo markdown file with:
+   * - Clean frontmatter (only theme reference)
+   * - Updated image paths pointing to local theme folder images
+   */
+  private async createDemoFile(
+    themePath: string,
+    themeName: string,
+    markdownContent: string,
+    imageRefs: ImageReference[]
+  ): Promise<void> {
+    const folderName = themePath.split('/').pop() || 'theme';
+    
+    // Build image path map from refs
+    const pathMap = new Map<string, string>();
+    for (const ref of imageRefs) {
+      const baseName = ref.originalPath.split('/').pop()?.split('.')[0] || 'image';
+      const ext = ref.originalPath.split('.').pop() || 'png';
+      const newFileName = `${folderName}-${baseName}.${ext}`;
+      pathMap.set(ref.originalPath, newFileName);
+    }
+    
+    // Replace frontmatter with clean version (just theme reference)
+    let demoContent = markdownContent;
+    const frontmatterRegex = /^---\s*\n[\s\S]*?\n---\s*\n/;
+    const cleanFrontmatter = `---
+theme: ${folderName}
+---
+`;
+    
+    if (frontmatterRegex.test(demoContent)) {
+      demoContent = demoContent.replace(frontmatterRegex, cleanFrontmatter);
+    } else {
+      demoContent = cleanFrontmatter + demoContent;
+    }
+    
+    // Update image references to use local paths
+    for (const ref of imageRefs) {
+      const newFileName = pathMap.get(ref.originalPath);
+      if (newFileName) {
+        if (ref.isWikiLink) {
+          // Replace ![[original]] with ![[newFileName]]
+          const escapedMatch = ref.fullMatch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const regex = new RegExp(escapedMatch, 'g');
+          demoContent = demoContent.replace(regex, `![[${newFileName}]]`);
+        } else {
+          // Replace ![alt](original) with ![alt](newFileName)
+          const escapedMatch = ref.fullMatch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const regex = new RegExp(escapedMatch, 'g');
+          // Extract alt text from original match
+          const altMatch = ref.fullMatch.match(/!\[([^\]]*)\]/);
+          const alt = altMatch ? altMatch[1] : '';
+          demoContent = demoContent.replace(regex, `![${alt}](${newFileName})`);
+        }
+      }
+    }
+    
+    // Save demo file
+    const demoPath = `${themePath}/${folderName}-demo.md`;
+    await this.createOrModifyFile(demoPath, demoContent);
   }
 }

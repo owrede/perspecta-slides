@@ -491,6 +491,35 @@ More content here...`
       iframe.style.height = '100%';
       iframe.style.border = 'none';
       iframe.style.background = 'transparent';
+      
+      // Handle link clicks inside iframe - open in external browser
+      iframe.addEventListener('load', () => {
+        this.setupIframeLinkHandlers(iframe);
+      });
+    }
+  }
+  
+  /**
+   * Setup click handlers for links inside an iframe to open in external browser
+   */
+  private setupIframeLinkHandlers(iframe: HTMLIFrameElement): void {
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (iframeDoc) {
+        iframeDoc.querySelectorAll('a[href]').forEach((link: Element) => {
+          link.addEventListener('click', (e: Event) => {
+            e.preventDefault();
+            const url = (link as HTMLAnchorElement).href;
+            if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+              // Open in external browser
+              window.open(url, '_blank');
+            }
+          });
+        });
+      }
+    } catch (err) {
+      // Security restrictions may prevent access to iframe content
+      console.debug('Could not setup iframe link handlers:', err);
     }
   }
   

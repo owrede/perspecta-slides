@@ -982,8 +982,8 @@ export class SlideRenderer {
     // Inline code
     html = html.replace(/`(.+?)`/g, '<code>$1</code>');
 
-    // Links
-    html = html.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>');
+    // Links - open in new window/tab
+    html = html.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 
     return html;
   }

@@ -162,6 +162,25 @@ export class PresentationWindow {
         }
       }
     });
+
+    // Handle link clicks - open external URLs in system browser
+    const { shell } = electron;
+    this.win.webContents.on('will-navigate', (event: any, url: string) => {
+      // Prevent navigation within the presentation window
+      event.preventDefault();
+      // Open external URLs in system browser
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        shell.openExternal(url);
+      }
+    });
+
+    // Also handle new-window events (for target="_blank" links)
+    this.win.webContents.setWindowOpenHandler(({ url }: { url: string }) => {
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        shell.openExternal(url);
+      }
+      return { action: 'deny' };
+    });
   }
 
   /**

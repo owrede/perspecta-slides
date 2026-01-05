@@ -259,15 +259,9 @@ export class SlideRenderer {
     const customClass = slide.metadata.class || '';
     const isActive = index === 0 ? 'active' : '';
 
-    // Handle background from metadata
-    let backgroundStyle = '';
-    if (slide.metadata.background) {
-      const opacity = slide.metadata.backgroundOpacity ?? 1;
-      backgroundStyle = `background-image: url('${slide.metadata.background}'); background-size: cover; background-position: center;`;
-      if (opacity < 1) {
-        backgroundStyle += ` opacity: ${opacity};`;
-      }
-    }
+    // Handle per-slide background image from metadata
+    // This sits between the background color/gradient and the overlay
+    const slideBackgroundHtml = this.renderSlideBackground(slide);
 
     // Compute dynamic background color if enabled (for system mode, compute for light-CSS will handle dark)
     const dynamicMode = effectiveMode === 'system' ? 'light' : effectiveMode;
@@ -282,15 +276,16 @@ export class SlideRenderer {
 
     // For half-image layouts, use special split rendering
     if (layout === 'half-image' || layout === 'half-image-horizontal') {
-      return this.renderHalfImageSlide(slide, index, frontmatter, layout, modeClass, containerClass, customClass, isActive, backgroundStyle, renderSpeakerNotes, dynamicBgColor);
+      return this.renderHalfImageSlide(slide, index, frontmatter, layout, modeClass, containerClass, customClass, isActive, slideBackgroundHtml, renderSpeakerNotes, dynamicBgColor);
     }
 
-    // Generate overlay if configured
+    // Generate overlay if configured (presentation-wide)
     const overlayHtml = this.renderOverlay(frontmatter);
 
+    // Layer order: background color/gradient (on section) -> slide background image -> full-image -> overlay -> content
     return `
     <section class="slide ${containerClass} ${modeClass} ${customClass} ${isActive}" data-index="${index}"${slideInlineStyle ? ` style="${slideInlineStyle}"` : ''}>
-      ${backgroundStyle ? `<div class="slide-background" style="${backgroundStyle}"></div>` : ''}
+      ${slideBackgroundHtml}
       ${imageBackground}
       ${overlayHtml}
       ${this.renderHeader(frontmatter, index)}
@@ -318,7 +313,7 @@ export class SlideRenderer {
     containerClass: string,
     customClass: string,
     isActive: string,
-    backgroundStyle: string,
+    slideBackgroundHtml: string,
     renderSpeakerNotes: boolean,
     dynamicBgColor?: string | null
   ): string {
@@ -348,7 +343,7 @@ export class SlideRenderer {
 
     return `
     <section class="slide ${containerClass} ${mode} ${customClass} ${isActive} ${directionClass} ${positionClass}" data-index="${index}"${slideInlineStyle ? ` style="${slideInlineStyle}"` : ''}>
-      ${backgroundStyle ? `<div class="slide-background" style="${backgroundStyle}"></div>` : ''}
+      ${slideBackgroundHtml}
       ${overlayHtml}
       <div class="half-image-panel">
         ${imagePanel}
@@ -526,35 +521,57 @@ export class SlideRenderer {
 
   /**
    * Cover Layout: Opening slide with centered content (iA Presenter compatible)
+   * Uses centered flex layout - no slots needed
    */
   private renderCoverLayout(elements: SlideElement[]): string {
-    return elements.map(e => this.renderElement(e)).join('\n');
+    return `<div class="cover-content">
+      ${elements.map(e => this.renderElement(e)).join('\n')}
+    </div>`;
   }
 
   /**
    * Title Layout: Centered content with large headings
+   * Uses centered flex layout - no slots needed
    */
   private renderTitleLayout(elements: SlideElement[]): string {
-    return elements.map(e => this.renderElement(e)).join('\n');
+    return `<div class="title-content">
+      ${elements.map(e => this.renderElement(e)).join('\n')}
+    </div>`;
   }
 
   /**
    * Section Layout: Accent background, centered heading
+   * Uses centered flex layout - no slots needed
    */
   private renderSectionLayout(elements: SlideElement[]): string {
-    return elements.map(e => this.renderElement(e)).join('\n');
+    return `<div class="section-content">
+      ${elements.map(e => this.renderElement(e)).join('\n')}
+    </div>`;
   }
 
   /**
    * Default Layout: Auto-detects columns based on columnIndex
+   * Uses slot-header + slot-columns for proper positioning
    */
   private renderDefaultLayout(elements: SlideElement[]): string {
     const columnElements = elements.filter(e => e.columnIndex !== undefined);
     const nonColumnElements = elements.filter(e => e.columnIndex === undefined);
 
-    // If no column elements, render as single column
+    // Separate headings/kickers from body content
+    const headerElements = nonColumnElements.filter(e => e.type === 'heading' || e.type === 'kicker');
+    const bodyElements = nonColumnElements.filter(e => e.type !== 'heading' && e.type !== 'kicker');
+
+    // If no column elements, render all body content in a single column
     if (columnElements.length === 0) {
-      return elements.map(e => this.renderElement(e)).join('\n');
+      return `
+        <div class="slot-header">
+          ${headerElements.map(e => this.renderElement(e)).join('\n')}
+        </div>
+        <div class="slot-columns columns-1">
+          <div class="column" data-column="1">
+            ${bodyElements.map(e => this.renderElement(e)).join('\n')}
+          </div>
+        </div>`;
     }
 
     // Auto-detect column count
@@ -587,6 +604,7 @@ export class SlideRenderer {
 
   /**
    * Column Layout: Explicit column control
+   * Uses slot-header + slot-columns for consistent positioning
    * @param elements All visible elements
    * @param columnCount Number of visual columns (1, 2, or 3)
    * @param ratio Column ratio: 'equal', 'narrow-wide' (1/3+2/3), 'wide-narrow' (2/3+1/3)
@@ -598,6 +616,10 @@ export class SlideRenderer {
   ): string {
     const columnElements = elements.filter(e => e.columnIndex !== undefined);
     const nonColumnElements = elements.filter(e => e.columnIndex === undefined);
+
+    // Separate headings/kickers from body content
+    const headerElements = nonColumnElements.filter(e => e.type === 'heading' || e.type === 'kicker');
+    const bodyElements = nonColumnElements.filter(e => e.type !== 'heading' && e.type !== 'kicker');
 
     // Find how many data columns exist
     const maxDataColumn = columnElements.reduce((max, e) =>
@@ -614,41 +636,32 @@ export class SlideRenderer {
       columns[Math.min(targetCol, columnCount - 1)].push(e);
     });
 
-    // If no column elements, distribute non-column body elements
+    // If no column elements, distribute body elements into first column
     if (columnElements.length === 0) {
-      const bodyElements = nonColumnElements.filter(e =>
-        e.type !== 'heading' && e.type !== 'kicker');
-      const headerElements = nonColumnElements.filter(e =>
-        e.type === 'heading' || e.type === 'kicker');
-
       return `
-        <div class="slide-content column-content">
-          <div class="slot-header">
-            ${headerElements.map(e => this.renderElement(e)).join('\n')}
+        <div class="slot-header">
+          ${headerElements.map(e => this.renderElement(e)).join('\n')}
+        </div>
+        <div class="slot-columns columns-${columnCount} ratio-${ratio}">
+          <div class="column" data-column="1">
+            ${bodyElements.map(e => this.renderElement(e)).join('\n')}
           </div>
-          <div class="slot-columns columns-${columnCount} ratio-${ratio}">
-            <div class="column" data-column="1">
-              ${bodyElements.map(e => this.renderElement(e)).join('\n')}
-            </div>
-            ${Array.from({ length: columnCount - 1 }, (_, i) => `
-              <div class="column" data-column="${i + 2}"></div>
-            `).join('\n')}
-          </div>
+          ${Array.from({ length: columnCount - 1 }, (_, i) => `
+            <div class="column" data-column="${i + 2}"></div>
+          `).join('\n')}
         </div>`;
     }
 
     return `
-      <div class="slide-content column-content">
-        <div class="slot-header">
-          ${nonColumnElements.map(e => this.renderElement(e)).join('\n')}
-        </div>
-        <div class="slot-columns columns-${columnCount} ratio-${ratio}">
-          ${columns.map((col, i) => `
-            <div class="column" data-column="${i + 1}">
-              ${col.map(e => this.renderElement(e)).join('\n')}
-            </div>
-          `).join('\n')}
-        </div>
+      <div class="slot-header">
+        ${headerElements.map(e => this.renderElement(e)).join('\n')}
+      </div>
+      <div class="slot-columns columns-${columnCount} ratio-${ratio}">
+        ${columns.map((col, i) => `
+          <div class="column" data-column="${i + 1}">
+            ${col.map(e => this.renderElement(e)).join('\n')}
+          </div>
+        `).join('\n')}
       </div>`;
   }
 
@@ -892,6 +905,35 @@ export class SlideRenderer {
   // OVERLAY
   // ============================================
 
+  /**
+   * Render per-slide background image
+   * This sits between the background color/gradient and the overlay
+   */
+  private renderSlideBackground(slide: Slide): string {
+    if (!slide.metadata.background) {
+      return '';
+    }
+
+    const opacity = slide.metadata.backgroundOpacity ?? 1;
+    let imagePath = slide.metadata.background;
+
+    // Resolve image path if resolver available
+    // Treat as wiki-link style (just filename) so Obsidian can find it in the vault
+    if (this.resolveImagePath) {
+      const isUrl = imagePath.startsWith('http://') || imagePath.startsWith('https://');
+      const isAbsolute = imagePath.startsWith('/') || imagePath.startsWith('file://');
+      if (!isUrl && !isAbsolute) {
+        imagePath = this.resolveImagePath(imagePath, true);
+      }
+    }
+
+    return `<div class="slide-background" style="background-image: url('${this.escapeHtml(imagePath)}'); opacity: ${opacity};"></div>`;
+  }
+
+  /**
+   * Render presentation-wide overlay image
+   * This sits above slide backgrounds but below content
+   */
   private renderOverlay(frontmatter: PresentationFrontmatter): string {
     if (!frontmatter.imageOverlay) {
       return '';
@@ -901,8 +943,14 @@ export class SlideRenderer {
     let imagePath = frontmatter.imageOverlay;
 
     // Resolve image path if resolver available
+    // Treat as wiki-link style (just filename) so Obsidian can find it in the vault
     if (this.resolveImagePath) {
-      imagePath = this.resolveImagePath(imagePath, false);
+      // Check if it's a URL (http/https) or absolute path - don't resolve those
+      const isUrl = imagePath.startsWith('http://') || imagePath.startsWith('https://');
+      const isAbsolute = imagePath.startsWith('/') || imagePath.startsWith('file://');
+      if (!isUrl && !isAbsolute) {
+        imagePath = this.resolveImagePath(imagePath, true);
+      }
     }
 
     return `<div class="slide-overlay" style="background-image: url('${this.escapeHtml(imagePath)}'); opacity: ${opacity};"></div>`;
@@ -959,46 +1007,26 @@ export class SlideRenderer {
     return `:root { --font-scale: ${clampedScale}; --content-top-offset: ${clampedContentOffset}%; }`;
   }
 
-  private getBaseStyles(context: 'thumbnail' | 'preview' | 'presentation' = 'thumbnail'): string {
-    // Different scaling for thumbnails vs preview
-    let slideUnit: string;
-    let containerClass: string;
-
-    if (context === 'thumbnail') {
-      // For thumbnails: use the same viewport-based calculation as preview
-      // This ensures proportional scaling relative to slide size
-      slideUnit = 'min(1vh, 1.778vw)';
-      containerClass = 'perspecta-thumbnail';
-    } else {
-      // For preview: use viewport-based units for proper slide scaling
-      slideUnit = 'min(1vh, 1.778vw)';
-      containerClass = 'perspecta-preview';
-    }
-
+  /**
+   * Generate unified slide CSS that works for all contexts (thumbnail, preview, presentation).
+   * Uses --slide-unit for ALL measurements so everything scales uniformly.
+   * Uses absolute positioning for layout regions so each margin is independent from the slide edge.
+   */
+  private getSlideCSS(): string {
     return `
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      :root {
-        /* Context-dependent slide unit */
-        --slide-unit: ${slideUnit};
-      }
-      html, body { 
-        width: 100%; height: 100%; 
-        font-family: var(--body-font, system-ui, -apple-system, sans-serif);
+      /* ============================================
+         SLIDE BASE - Uses absolute positioning
+         All margins are independent distances from slide edges
+         ============================================ */
+      
+      .slide { 
+        width: 100%; 
+        height: 100%; 
+        position: relative;
         overflow: hidden;
       }
-      .${containerClass} { 
-        background: var(--light-background);
-        width: 100%;
-        height: 100%;
-      }
       
-      /* Slide Base */
-      .slide { 
-        width: 100%; height: 100%; 
-        display: flex; flex-direction: column;
-        padding: 5%;
-        position: relative;
-      }
+      /* Color modes */
       .slide.light { background: var(--light-background); color: var(--light-body-text); }
       .slide.light h1 { color: var(--light-h1-color, var(--light-title-text)); }
       .slide.light h2 { color: var(--light-h2-color, var(--light-title-text)); }
@@ -1031,17 +1059,20 @@ export class SlideRenderer {
         .slide.system-mode h1 { color: var(--dark-h1-color, var(--dark-title-text)); }
         .slide.system-mode h2 { color: var(--dark-h2-color, var(--dark-title-text)); }
         .slide.system-mode h3, .slide.system-mode h4,
-        .slide.system-mode h5, .slide.system-mode h6 {
-          color: var(--dark-title-text);
-        }
+        .slide.system-mode h5, .slide.system-mode h6 { color: var(--dark-title-text); }
       }
       
-      /* Background */
+      /* ============================================
+         BACKGROUND LAYERS
+         ============================================ */
       .slide-background, .slide-image-background {
         position: absolute;
         top: 0; left: 0; right: 0; bottom: 0;
         z-index: 0;
         overflow: hidden;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
       }
       .slide-image-background img {
         display: block;
@@ -1049,7 +1080,6 @@ export class SlideRenderer {
         height: 100%;
         object-fit: cover;
       }
-      /* Image overlay layer */
       .slide-overlay {
         position: absolute;
         top: 0; left: 0; right: 0; bottom: 0;
@@ -1060,10 +1090,10 @@ export class SlideRenderer {
         background-repeat: no-repeat;
       }
       
-      /* Dual image layout: responsive based on orientation */
+      /* Multi-image backgrounds */
       .slide-image-background.dual-image {
         display: flex;
-        flex-direction: row; /* Default: side-by-side for landscape */
+        flex-direction: row;
       }
       .slide-image-background.dual-image .image-panel {
         flex: 1;
@@ -1071,14 +1101,10 @@ export class SlideRenderer {
         min-width: 0;
         min-height: 0;
       }
-      /* Portrait orientation: stack vertically */
       @media (orientation: portrait), (max-aspect-ratio: 1/1) {
-        .slide-image-background.dual-image {
-          flex-direction: column;
-        }
+        .slide-image-background.dual-image { flex-direction: column; }
       }
       
-      /* Three images: side-by-side in thirds (landscape), stacked in portrait */
       .slide-image-background.multi-image.count-3 {
         display: flex;
         flex-direction: row;
@@ -1090,12 +1116,9 @@ export class SlideRenderer {
         min-height: 0;
       }
       @media (orientation: portrait), (max-aspect-ratio: 1/1) {
-        .slide-image-background.multi-image.count-3 {
-          flex-direction: column;
-        }
+        .slide-image-background.multi-image.count-3 { flex-direction: column; }
       }
       
-      /* Four images: 2x2 grid */
       .slide-image-background.multi-image.count-4 {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -1107,36 +1130,25 @@ export class SlideRenderer {
         min-height: 0;
       }
       
-      /* Five images: 2 on top, 3 on bottom */
       .slide-image-background.multi-image.count-5 {
         display: grid;
         grid-template-columns: repeat(6, 1fr);
         grid-template-rows: 1fr 1fr;
       }
-      .slide-image-background.multi-image.count-5 .image-panel {
-        overflow: hidden;
-        min-width: 0;
-        min-height: 0;
-      }
+      .slide-image-background.multi-image.count-5 .image-panel { overflow: hidden; min-width: 0; min-height: 0; }
       .slide-image-background.multi-image.count-5 .image-1 { grid-column: 1 / 4; grid-row: 1; }
       .slide-image-background.multi-image.count-5 .image-2 { grid-column: 4 / 7; grid-row: 1; }
       .slide-image-background.multi-image.count-5 .image-3 { grid-column: 1 / 3; grid-row: 2; }
       .slide-image-background.multi-image.count-5 .image-4 { grid-column: 3 / 5; grid-row: 2; }
       .slide-image-background.multi-image.count-5 .image-5 { grid-column: 5 / 7; grid-row: 2; }
       
-      /* Six images: 3x2 grid */
       .slide-image-background.multi-image.count-6 {
         display: grid;
         grid-template-columns: 1fr 1fr 1fr;
         grid-template-rows: 1fr 1fr;
       }
-      .slide-image-background.multi-image.count-6 .image-panel {
-        overflow: hidden;
-        min-width: 0;
-        min-height: 0;
-      }
+      .slide-image-background.multi-image.count-6 .image-panel { overflow: hidden; min-width: 0; min-height: 0; }
       
-      /* Seven+ images: flexible grid */
       .slide-image-background.multi-image:not(.count-3):not(.count-4):not(.count-5):not(.count-6) {
         display: flex;
         flex-wrap: wrap;
@@ -1148,35 +1160,168 @@ export class SlideRenderer {
         min-height: 0;
       }
       
-      .slide-body { flex: 1; display: flex; flex-direction: column; position: relative; z-index: 1; min-height: 0; }
-      .slide-content { flex: 1; display: flex; flex-direction: column; gap: calc(var(--slide-unit) * 1.5); }
+      /* ============================================
+         SLIDE BODY - Full bleed positioning context
+         ============================================ */
+      .slide-body { 
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+      }
       
-      /* Typography-scaled dynamically based on container and font-scale offset */
+      /* ============================================
+         HEADER / FOOTER - Absolutely positioned from edges
+         ============================================ */
+      .slide-header {
+        position: absolute;
+        top: calc(var(--header-top, 2.5) * var(--slide-unit));
+        left: calc(var(--content-width, 5) * var(--slide-unit));
+        right: calc(var(--content-width, 5) * var(--slide-unit));
+        z-index: 10;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        font-family: var(--header-font, var(--body-font, system-ui, -apple-system, sans-serif));
+        font-weight: var(--header-font-weight, var(--body-font-weight, 400));
+        font-size: calc(var(--slide-unit) * 1.8 * var(--header-font-scale, 1) * var(--font-scale, 1));
+      }
+      
+      .slide-footer {
+        position: absolute;
+        bottom: calc(var(--footer-bottom, 2.5) * var(--slide-unit));
+        left: calc(var(--content-width, 5) * var(--slide-unit));
+        right: calc(var(--content-width, 5) * var(--slide-unit));
+        z-index: 10;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        font-family: var(--footer-font, var(--body-font, system-ui, -apple-system, sans-serif));
+        font-weight: var(--footer-font-weight, var(--body-font-weight, 400));
+        font-size: calc(var(--slide-unit) * 1.8 * var(--footer-font-scale, 1) * var(--font-scale, 1));
+      }
+      
+      .slide-header > div, .slide-footer > div { flex: 1; display: flex; }
+      .header-left, .footer-left { justify-content: flex-start; }
+      .header-middle, .footer-middle { justify-content: center; }
+      .header-right, .footer-right { justify-content: flex-end; }
+      
+      /* Header/Footer in full-image layout: semi-transparent background */
+      .image-container .header-left > span,
+      .image-container .header-middle > span,
+      .image-container .header-right > span,
+      .image-container .footer-left > span,
+      .image-container .footer-middle > span,
+      .image-container .footer-right > span {
+        background: rgba(0, 0, 0, 0.5);
+        padding: calc(var(--slide-unit) * 0.5) calc(var(--slide-unit) * 1);
+        border-radius: calc(var(--slide-unit) * 0.5);
+        color: #fff;
+      }
+      
+      /* ============================================
+         SLIDE CONTENT AREA
+         ============================================ */
+      .slide-content { 
+        position: absolute;
+        left: calc(var(--content-width, 5) * var(--slide-unit));
+        right: calc(var(--content-width, 5) * var(--slide-unit));
+        top: 0;
+        bottom: 0;
+        display: flex; 
+        flex-direction: column; 
+        gap: calc(var(--slide-unit) * 1.5);
+        z-index: 5;
+      }
+      
+      /* ============================================
+         SLOT HEADER - Title area (absolute from top)
+         ============================================ */
+      .slot-header { 
+        position: absolute;
+        top: calc(var(--title-top, 5) * var(--slide-unit));
+        left: 0;
+        right: 0;
+      }
+      
+      /* ============================================
+         SLOT COLUMNS - Content area (absolute from top and bottom)
+         ============================================ */
+      .slot-columns { 
+        position: absolute;
+        top: calc(var(--content-top, 12) * var(--slide-unit));
+        left: 0;
+        right: 0;
+        bottom: calc(var(--footer-bottom, 2.5) * var(--slide-unit) + var(--slide-unit) * 4);
+        display: flex; 
+        flex-direction: row;
+        gap: calc(var(--slide-unit) * 3); 
+        align-items: stretch;
+        overflow: hidden;
+      }
+      
+      .slot-columns .column { 
+        flex: 1; 
+        display: flex; 
+        flex-direction: column; 
+        min-height: 0;
+        min-width: 0;
+        overflow: hidden;
+      }
+      .slot-columns.columns-1 { flex-direction: column; }
+      .slot-columns.columns-2, .slot-columns.columns-3 { flex-direction: row; }
+      .slot-columns.columns-3 { gap: calc(var(--slide-unit) * 5); }
+      .slot-columns.columns-3 .column { min-width: 0; }
+      .slot-columns.ratio-narrow-wide .column[data-column="1"] { flex: 1; }
+      .slot-columns.ratio-narrow-wide .column[data-column="2"] { flex: 2; }
+      .slot-columns.ratio-wide-narrow .column[data-column="1"] { flex: 2; }
+      .slot-columns.ratio-wide-narrow .column[data-column="2"] { flex: 1; }
+      
+      /* ============================================
+         TYPOGRAPHY - All sizes use --slide-unit
+         ============================================ */
       h1, h2, h3, h4, h5, h6 { 
         font-family: var(--title-font, system-ui, -apple-system, sans-serif);
-        font-weight: 700; line-height: 1.15;
-        margin-top: var(--headline-spacing-before, 0);
-        margin-bottom: var(--headline-spacing-after, 0.25em);
+        font-weight: var(--title-font-weight, 700); 
+        line-height: var(--line-height, 1.1);
+        margin-top: calc(var(--headline-spacing-before, 0) * var(--slide-unit));
+        margin-bottom: calc(var(--headline-spacing-after, 0.5) * var(--slide-unit));
       }
-      h1 { font-size: calc(var(--slide-unit) * 7 * var(--font-scale, 1)); }
-      h2 { font-size: calc(var(--slide-unit) * 5.5 * var(--font-scale, 1)); }
-      h3 { font-size: calc(var(--slide-unit) * 4.5 * var(--font-scale, 1)); }
-      h4 { font-size: calc(var(--slide-unit) * 3.5 * var(--font-scale, 1)); }
-      h5 { font-size: calc(var(--slide-unit) * 3 * var(--font-scale, 1)); }
-      h6 { font-size: calc(var(--slide-unit) * 2.5 * var(--font-scale, 1)); }
-      p { font-size: calc(var(--slide-unit) * 2.8 * var(--font-scale, 1)); line-height: 1.4; }
-      ul, ol { padding-left: 1.2em; font-size: calc(var(--slide-unit) * 2.8 * var(--font-scale, 1)); }
-li { margin-bottom: var(--list-item-spacing, 0); }
+      h1 { font-size: calc(var(--slide-unit) * 7 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      h2 { font-size: calc(var(--slide-unit) * 5.5 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      h3 { font-size: calc(var(--slide-unit) * 4.5 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      h4 { font-size: calc(var(--slide-unit) * 3.5 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      h5 { font-size: calc(var(--slide-unit) * 3 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      h6 { font-size: calc(var(--slide-unit) * 2.5 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
       
-      /* Kicker */
+      p { 
+        font-weight: var(--body-font-weight, 400);
+        font-size: calc(var(--slide-unit) * 2.8 * var(--body-font-scale, 1) * var(--font-scale, 1)); 
+        line-height: var(--line-height, 1.1); 
+      }
+      
+      ul, ol { 
+        font-weight: var(--body-font-weight, 400);
+        padding-left: calc(var(--slide-unit) * 2); 
+        font-size: calc(var(--slide-unit) * 2.8 * var(--body-font-scale, 1) * var(--font-scale, 1)); 
+        line-height: var(--line-height, 1.1);
+      }
+      li { margin-bottom: calc(var(--list-item-spacing, 1) * var(--slide-unit)); }
+      
       .kicker { 
-        font-size: calc(var(--slide-unit) * 1.8 * var(--font-scale, 1)); 
+        font-size: calc(var(--slide-unit) * 1.8 * var(--body-font-scale, 1) * var(--font-scale, 1)); 
         text-transform: uppercase; 
         letter-spacing: 0.08em; 
         opacity: 0.7; 
       }
       
-      /* Images in content areas (columns, default layout, etc.) */
+      /* ============================================
+         IMAGES
+         ============================================ */
       .image-figure {
         margin: 0;
         padding: 0;
@@ -1196,70 +1341,114 @@ li { margin-bottom: var(--list-item-spacing, 0); }
         top: 0;
         left: 0;
       }
-      /* When size: contain is used, center the image */
       .image-figure img[style*="contain"] {
         margin: 0 auto;
       }
       
-      /* Slots */
-      .slot-header { margin-bottom: calc(var(--slide-unit) * 1); }
-      .slot-columns { 
-        display: flex; 
-        flex-direction: row;
-        gap: calc(var(--slide-unit) * 2); 
-        flex: 1; 
-        align-items: stretch; 
-        width: 100%; 
-        min-height: 0;
-        overflow: hidden;
-        margin-top: var(--content-top-offset, 0);
+      /* ============================================
+         LAYOUT: COVER - Centered content
+         ============================================ */
+      .layout-cover {
+        display: flex;
+        justify-content: center;
+        align-items: center;
       }
-      .slot-columns .column { 
-        flex: 1; 
-        display: flex; 
-        flex-direction: column; 
-        min-height: 0;
-        min-width: 0;
-        overflow: hidden;
+      .cover-content {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        padding: calc(var(--slide-unit) * 5);
       }
-      .slot-columns.columns-1 { flex-direction: column; }
-      .slot-columns.columns-2, .slot-columns.columns-3 { flex-direction: row; }
-      .slot-columns.columns-3 { gap: calc(var(--slide-unit) * 5) !important; }
-      .slot-columns.columns-3 .column { min-width: 0; }
-      .slot-columns.ratio-narrow-wide .column[data-column="1"] { flex: 1; }
-      .slot-columns.ratio-narrow-wide .column[data-column="2"] { flex: 2; }
-      .slot-columns.ratio-wide-narrow .column[data-column="1"] { flex: 2; }
-      .slot-columns.ratio-wide-narrow .column[data-column="2"] { flex: 1; }
+      .cover-content h1 { font-size: calc(var(--slide-unit) * 9 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      .cover-content h2 { font-size: calc(var(--slide-unit) * 7 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
       
-      /* Layout: Cover */
-      .layout-cover { justify-content: center; align-items: center; text-align: center; }
-      .layout-cover h1 { font-size: calc(var(--slide-unit) * 9 * var(--font-scale, 1)); }
+      /* ============================================
+         LAYOUT: TITLE - Centered content
+         ============================================ */
+      .layout-title {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      .title-content {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        padding: calc(var(--slide-unit) * 5);
+      }
+      .title-content h1 { font-size: calc(var(--slide-unit) * 9 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      .title-content h2 { font-size: calc(var(--slide-unit) * 7 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
       
-      /* Layout: Title */
-      .layout-title { justify-content: center; align-items: center; text-align: center; }
-      .layout-title h1 { font-size: calc(var(--slide-unit) * 9 * var(--font-scale, 1)); }
-      .layout-title h2 { font-size: calc(var(--slide-unit) * 7 * var(--font-scale, 1)); }
-      
-      /* Layout: Section */
+      /* ============================================
+         LAYOUT: SECTION - Accent background, centered
+         ============================================ */
       .section-container .slide-body { 
-        background: var(--accent1, #1a1a2e); color: var(--light-body-text, #fff);
-        margin: -5%; padding: 5%;
+        background: var(--accent1, #1a1a2e); 
+        color: var(--light-body-text, #fff);
       }
-      .layout-section { justify-content: center; align-items: center; text-align: center; }
+      .layout-section {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      .section-content {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        padding: calc(var(--slide-unit) * 5);
+      }
+      .section-content h1,
+      .section-content h2,
+      .section-content h3 {
+        color: var(--light-body-text, #fff);
+      }
       
-      /* Layout: Default */
-      .layout-default { align-items: flex-start; }
+      /* ============================================
+         LAYOUT: DEFAULT & COLUMN LAYOUTS
+         Uses slot-header + slot-columns positioning
+         ============================================ */
+      .layout-default,
+      .layout-1-column,
+      .layout-2-columns,
+      .layout-3-columns,
+      .layout-2-columns-1\\+2,
+      .layout-2-columns-2\\+1 {
+        /* Container for slot-based layouts */
+      }
       
-      /* Layout: Image */
-      .layout-full-image { padding: 0; flex-direction: row; }
+      /* ============================================
+         LAYOUT: FULL-IMAGE
+         ============================================ */
+      .image-container .slide-content {
+        left: 0;
+        right: 0;
+        padding: calc(var(--content-width, 5) * var(--slide-unit));
+      }
+      .layout-full-image { 
+        padding: 0; 
+        flex-direction: row; 
+      }
       .layout-full-image .image-slot { flex: 1; height: 100%; }
       .layout-full-image .image-slot img { width: 100%; height: 100%; object-fit: cover; }
       
+      /* ============================================
+         LAYOUT: CAPTION
+         ============================================ */
       .layout-caption { padding: 0; }
-      .caption-container.slide { padding: 0; }
-      .caption-container .slide-body { margin: 0; }
+      .caption-container .slide-body { 
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        display: flex;
+        flex-direction: column;
+      }
       .layout-caption .slot-title-bar { 
-        height: calc(var(--slide-unit) * 4 * var(--font-scale, 1)); 
+        height: calc(var(--slide-unit) * 5); 
         padding: 0 calc(var(--slide-unit) * 2); 
         background: var(--light-background, #fff);
         display: flex;
@@ -1274,7 +1463,7 @@ li { margin-bottom: var(--list-item-spacing, 0); }
       .layout-caption .slot-title-bar h4,
       .layout-caption .slot-title-bar h5,
       .layout-caption .slot-title-bar h6 {
-        font-size: calc(var(--slide-unit) * 2.5 * var(--font-scale, 1));
+        font-size: calc(var(--slide-unit) * 2.5 * var(--title-font-scale, 1) * var(--font-scale, 1));
         margin: 0;
         line-height: 1.2;
       }
@@ -1287,10 +1476,7 @@ li { margin-bottom: var(--list-item-spacing, 0); }
       }
       .layout-caption .slot-image .image-slot {
         position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
+        top: 0; left: 0; right: 0; bottom: 0;
       }
       .layout-caption .slot-image img { 
         width: 100%; 
@@ -1301,117 +1487,83 @@ li { margin-bottom: var(--list-item-spacing, 0); }
       .layout-caption .slot-caption { 
         padding: calc(var(--slide-unit) * 1) calc(var(--slide-unit) * 2); 
         text-align: center; 
-        font-size: calc(var(--slide-unit) * 2 * var(--font-scale, 1)); 
+        font-size: calc(var(--slide-unit) * 2 * var(--body-font-scale, 1) * var(--font-scale, 1)); 
         background: var(--light-background, #fff);
         flex-shrink: 0;
       }
       
-      /* Hide standard header/footer in caption layout */
       .caption-container .slide-header,
       .caption-container .slide-footer {
         display: none;
       }
       
       /* ============================================
-         HALF-IMAGE LAYOUTS
-         Split slide into two halves:
-        -Image half: edge-to-edge full-bleed
-        -Content half: normal slide with header/footer/padding
+         LAYOUT: HALF-IMAGE (Vertical Split)
          ============================================ */
-      
-      /* Base split layout-remove default padding */
-      .split-container.slide,
-      .split-horizontal-container.slide {
-        padding: 0;
+      .split-container .slide-body,
+      .split-horizontal-container .slide-body {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
         display: flex;
         overflow: hidden;
       }
       
-      /* Vertical split (left/right) */
-      .split-container.slide.split-vertical {
+      .split-container .slide-body {
         flex-direction: row;
       }
-      .split-container.slide.split-vertical.image-right {
+      .split-container.image-right .slide-body {
         flex-direction: row-reverse;
       }
       
-      /* Horizontal split (top/bottom) */
-      .split-horizontal-container.slide.split-horizontal {
+      .split-horizontal-container .slide-body {
         flex-direction: column;
       }
-      .split-horizontal-container.slide.split-horizontal.image-bottom {
+      .split-horizontal-container.image-bottom .slide-body {
         flex-direction: column-reverse;
       }
       
-      /* Image panel-edge-to-edge, exactly 50% */
       .half-image-panel {
-        flex: 0 0 50%;
-        width: 50%;
-        height: 100%;
-        overflow: hidden;
-        display: flex;
-      }
-      .split-horizontal .half-image-panel {
-        width: 100%;
-        height: 50%;
-      }
-      .half-image-panel img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-      }
-      .half-image-panel .image-slot {
         flex: 1;
         min-width: 0;
         min-height: 0;
         overflow: hidden;
+        position: relative;
+      }
+      .half-image-panel img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
       }
       
-      /* Content panel-exactly 50% */
       .half-content-panel {
-        flex: 0 0 50%;
-        width: 50%;
-        height: 100%;
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
         display: flex;
         flex-direction: column;
-        padding: 5%;
+        padding: calc(var(--slide-unit) * 4);
         overflow: hidden;
+        position: relative;
       }
-      .split-horizontal .half-content-panel {
-        width: 100%;
-        height: 50%;
-      }
-      .half-content-panel.light {
-        background: var(--light-background);
-        color: var(--light-body-text);
-      }
-      .half-content-panel.dark {
-        background: var(--dark-background);
-        color: var(--dark-body-text);
-      }
-      
-      /* Content panel internal structure */
       .half-content-panel .slide-header {
-        margin-left: 0;
-        margin-right: 0;
-        margin-top: 0;
-        padding-left: 0;
-        padding-right: 0;
+        position: relative;
+        top: auto;
+        left: auto;
+        right: auto;
+        font-size: calc(var(--slide-unit) * 1.5 * var(--header-font-scale, 1) * var(--font-scale, 1));
+        margin-bottom: calc(var(--slide-unit) * 1);
       }
       .half-content-panel .slide-footer {
-        margin-left: 0;
-        margin-right: 0;
-        margin-bottom: 0;
-        padding-left: 0;
-        padding-right: 0;
+        position: relative;
+        bottom: auto;
+        left: auto;
+        right: auto;
+        font-size: calc(var(--slide-unit) * 1.5 * var(--footer-font-scale, 1) * var(--font-scale, 1));
+        margin-top: auto;
       }
       .half-content-panel .slide-body {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-      }
-      .half-content-panel .slide-content {
+        position: relative;
         flex: 1;
         display: flex;
         flex-direction: column;
@@ -1419,48 +1571,37 @@ li { margin-bottom: var(--list-item-spacing, 0); }
         gap: calc(var(--slide-unit) * 1);
       }
       
-      /* Header/Footer */
-      .slide-header, .slide-footer { 
-        display: flex; 
-        justify-content: space-between; 
-        position: relative;
-        z-index: 2;
-        margin-left: -2.5%;
-        margin-right: -2.5%;
-        padding-left: 2.5%;
-        padding-right: 2.5%;
+      /* Hide main slide header/footer in split layouts */
+      .split-container > .slide-header,
+      .split-container > .slide-footer,
+      .split-horizontal-container > .slide-header,
+      .split-horizontal-container > .slide-footer {
+        display: none;
       }
-      .slide-header { 
-        font-size: calc(var(--slide-unit) * 1.5 * var(--font-scale, 1) * var(--header-font-size, 1));
-        align-items: flex-start; 
-        margin-top: -2.5%;
-        padding-top: 1%;
-        margin-bottom: calc(var(--slide-unit) * 2);
+    `;
+  }
+
+  private getBaseStyles(context: 'thumbnail' | 'preview' | 'presentation' = 'thumbnail'): string {
+    const containerClass = context === 'thumbnail' ? 'perspecta-thumbnail' : 'perspecta-preview';
+
+    return `
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      :root {
+        --slide-unit: min(1vh, 1.778vw);
       }
-      .slide-footer { 
-        font-size: calc(var(--slide-unit) * 1.5 * var(--font-scale, 1) * var(--footer-font-size, 1));
-        align-items: flex-end; 
-        margin-bottom: -2.5%;
-        padding-bottom: 1%;
-        margin-top: 1.5em;
+      html, body { 
+        width: 100%; 
+        height: 100%; 
+        font-family: var(--body-font, system-ui, -apple-system, sans-serif);
+        overflow: hidden;
       }
-      .slide-header > div, .slide-footer > div { flex: 1; display: flex; }
-      .header-left, .footer-left { justify-content: flex-start; }
-      .header-middle, .footer-middle { justify-content: center; }
-      .header-right, .footer-right { justify-content: flex-end; }
+      .${containerClass} { 
+        background: var(--light-background);
+        width: 100%;
+        height: 100%;
+      }
       
-      /* Header/Footer in full-image layout: semi-transparent background */
-      .image-container .header-left > span,
-      .image-container .header-middle > span,
-      .image-container .header-right > span,
-      .image-container .footer-left > span,
-      .image-container .footer-middle > span,
-      .image-container .footer-right > span {
-        background: rgba(0, 0, 0, 0.5);
-        padding: calc(var(--slide-unit) * 0.5) calc(var(--slide-unit) * 1);
-        border-radius: 0.5em;
-        color: #fff;
-      }
+      ${this.getSlideCSS()}
     `;
   }
 
@@ -1475,8 +1616,6 @@ ${this.customFontCSS}
 ${themeCSS}
 :root {
 ${cssVars}
-  /* Dynamic base unit: uses the constraining dimension (height in landscape, width in portrait) */
-  /* For 16:9 slides: 1vh when height-constrained, ~1.778vw when width-constrained */
   --slide-unit: min(1vh, 1.778vw);
 }
 
@@ -1490,8 +1629,8 @@ html, body {
   width: 100%;
   height: 100%;
   font-family: var(--body-font, system-ui, -apple-system, sans-serif);
-  background: var(--background-color, var(--light-background, #000));
-  color: var(--body-text-color, var(--dark-body-text, #fff));
+  background: var(--light-background, #000);
+  color: var(--light-body-text, #fff);
 }
 
 .reveal {
@@ -1506,26 +1645,16 @@ html, body {
   position: relative;
 }
 
-/* Slide Base */
+${this.getSlideCSS()}
+
+/* Presentation-specific: slide transitions */
 .slide {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: 5%;
   position: absolute;
   top: 0;
   left: 0;
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.4s ease, transform 0.4s ease, visibility 0s 0.4s;
-  font-family: var(--body-font);
-}
-
-.slide h1, .slide h2, .slide h3, .slide h4, .slide h5, .slide h6 {
-  font-family: var(--title-font);
-  margin-top: var(--headline-spacing-before, 0);
-  margin-bottom: var(--headline-spacing-after, 0);
 }
 
 .slide.active {
@@ -1535,520 +1664,107 @@ html, body {
 }
 
 /* Transitions */
-.transition-none.slide { transition: none; }
-.transition-fade.slide { transform: none; }
-.transition-slide.slide { transform: translateX(100%); }
-.transition-slide.slide.active { transform: translateX(0); }
-.transition-slide.slide.prev { transform: translateX(-100%); }
-
-/* Color modes */
-.slide.light {
-  background: var(--light-background);
-  color: var(--light-body-text);
-}
-.slide.light h1, .slide.light h2, .slide.light h3,
-.slide.light h4, .slide.light h5, .slide.light h6 {
-  color: var(--light-title-text);
-}
-
-.slide.dark {
-  background: var(--dark-background);
-  color: var(--dark-body-text);
-}
-.slide.dark h1, .slide.dark h2, .slide.dark h3,
-.slide.dark h4, .slide.dark h5, .slide.dark h6 {
-  color: var(--dark-title-text);
-}
-
-/* System mode: follows OS preference */
-.slide.system-mode {
-  background: var(--light-background);
-  color: var(--light-body-text);
-}
-.slide.system-mode h1, .slide.system-mode h2, .slide.system-mode h3,
-.slide.system-mode h4, .slide.system-mode h5, .slide.system-mode h6 {
-  color: var(--light-title-text);
-}
-@media (prefers-color-scheme: dark) {
-  .slide.system-mode {
-    background: var(--dark-background);
-    color: var(--dark-body-text);
-  }
-  .slide.system-mode h1, .slide.system-mode h2, .slide.system-mode h3,
-  .slide.system-mode h4, .slide.system-mode h5, .slide.system-mode h6 {
-    color: var(--dark-title-text);
-  }
-}
-
-/* Slide structure */
-.slide-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.slide-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: calc(var(--slide-unit) * 2);
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* Header and Footer */
-.slide-header, .slide-footer {
-  display: flex;
-  justify-content: space-between;
-  position: relative;
-  z-index: 2;
-  margin-left: -2.5%;
-  margin-right: -2.5%;
-  padding-left: 2.5%;
-  padding-right: 2.5%;
-}
-.slide-header {
-  font-size: calc(var(--slide-unit) * 1.8 * var(--header-font-size, 1));
-  align-items: flex-start;
-  margin-top: -2.5%;
-  padding-top: 1%;
-}
-.slide-footer {
-  font-size: calc(var(--slide-unit) * 1.8 * var(--footer-font-size, 1));
-  align-items: flex-end;
-  margin-bottom: -2.5%;
-  padding-bottom: 1%;
-  margin-top: 1.5em;
-}
-.slide-header > div, .slide-footer > div { flex: 1; display: flex; }
-.header-left, .footer-left { justify-content: flex-start; }
-.header-middle, .footer-middle { justify-content: center; }
-.header-right, .footer-right { justify-content: flex-end; }
-
-/* Header/Footer in full-image layout: semi-transparent background */
-.image-container.header-left > span,
-.image-container.header-middle > span,
-.image-container.header-right > span,
-.image-container.footer-left > span,
-.image-container.footer-middle > span,
-.image-container.footer-right > span {
-  background: rgba(0, 0, 0, 0.5);
-  padding: calc(var(--slide-unit) * 0.5) calc(var(--slide-unit) * 1);
-  border-radius: 0.5em;
-  color: #fff;
-}
-
-/* Typography-scaled dynamically based on viewport */
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--title-font, system-ui, -apple-system, sans-serif);
-  font-weight: 700;
-  line-height: 1.15;
-  margin-top: var(--headline-spacing-before, 0);
-  margin-bottom: var(--headline-spacing-after, 0.4em);
-}
-
-h1 { font-size: calc(var(--slide-unit) * 7); }
-h2 { font-size: calc(var(--slide-unit) * 5.5); }
-h3 { font-size: calc(var(--slide-unit) * 4.5); }
-h4 { font-size: calc(var(--slide-unit) * 3.5); }
-h5 { font-size: calc(var(--slide-unit) * 3); }
-h6 { font-size: calc(var(--slide-unit) * 2.5); }
-
-p {
-  font-size: calc(var(--slide-unit) * 2.8);
-  line-height: 1.5;
-  margin-bottom: 0.8em;
-}
-
-.kicker {
-  font-size: calc(var(--slide-unit) * 1.8);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  opacity: 0.7;
-  margin-bottom: 0.5rem;
-}
-
-ul, ol {
-  font-size: calc(var(--slide-unit) * 2.8);
-  line-height: 1.6;
-  padding-left: 1.5em;
-}
-
-li { margin-bottom: var(--list-item-spacing, 0); }
-
-blockquote {
-  font-size: calc(var(--slide-unit) * 3.2);
-  font-style: italic;
-  border-left: 4px solid var(--accent1, currentColor);
-  padding-left: calc(var(--slide-unit) * 2);
-  margin: calc(var(--slide-unit) * 1.5) 0;
-}
-
-img { max-width: 100%; max-height: 100%; object-fit: contain; }
-
-figure { display: flex; flex-direction: column; align-items: center; gap: calc(var(--slide-unit) * 1); }
-
-pre, code {
-  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
-  background: rgba(0, 0, 0, 0.05);
-  border-radius: 4px;
-}
-
-code { padding: 0.2em 0.4em; font-size: 0.9em; }
-
-pre {
-  padding: calc(var(--slide-unit) * 1.5);
-  overflow-x: auto;
-  font-size: calc(var(--slide-unit) * 2);
-}
-
-pre code { background: none; padding: 0; }
-
-table { border-collapse: collapse; width: 100%; font-size: calc(var(--slide-unit) * 2.5); }
-th, td { border: 1px solid rgba(0, 0, 0, 0.2); padding: calc(var(--slide-unit) * 1) calc(var(--slide-unit) * 1.5); text-align: left; }
-th { background: rgba(0, 0, 0, 0.05); font-weight: 600; }
-
-mark { background: var(--accent3, #f9c74f); padding: 0.1em 0.2em; }
-
-/* ========================
-   LAYOUT: SLOTS
-   ======================== */
-
-.slot-header {
-  margin-bottom: calc(var(--slide-unit) * 2);
-}
-
-.slot-columns {
-  display: flex;
-  flex-direction: row;
-  gap: calc(var(--slide-unit) * 4);
-  flex: 1;
-  align-items: stretch;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.slot-columns.column {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
-}
-
-/* Column counts */
-.slot-columns.columns-1 { flex-direction: column; }
-.slot-columns.columns-1 .column { width: 100%; }
-.slot-columns.columns-2, .slot-columns.columns-3 { flex-direction: row; }
-
-/* Auto-detected columns: better widths for 3 columns */
-.slot-columns.columns-3 {
-  gap: calc(var(--slide-unit) * 5) !important; /* More gap for 3 columns */
-}
-.slot-columns.columns-3 .column {
-  flex: 1;
-  min-width: 0; /* Allow columns to shrink */
-}
-
-/* Column ratios (for 2-column layouts) */
-.slot-columns.ratio-narrow-wide.column[data-column="1"] { flex: 1; }
-.slot-columns.ratio-narrow-wide.column[data-column="2"] { flex: 2; }
-
-.slot-columns.ratio-wide-narrow.column[data-column="1"] { flex: 2; }
-.slot-columns.ratio-wide-narrow.column[data-column="2"] { flex: 1; }
-
-/* ========================
-   LAYOUT: COVER
-   ======================== */
-
-.layout-cover.slide-content {
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-}
-
-.layout-cover h1 { font-size: calc(var(--slide-unit) * 9); }
-.layout-cover h2 { font-size: calc(var(--slide-unit) * 7); }
-
-/* ========================
-   LAYOUT: TITLE
-   ======================== */
-
-.layout-title.slide-content {
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-}
-
-.layout-title h1 { font-size: calc(var(--slide-unit) * 9); }
-.layout-title h2 { font-size: calc(var(--slide-unit) * 7); }
-
-/* ========================
-   LAYOUT: SECTION
-   ======================== */
-
-.layout-section.slide-body {
-  background: var(--accent1);
-  color: var(--light-body-text);
-  margin: -5%;
-  padding: 5%;
-}
-
-.layout-section.slide-content {
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-}
-
-/* ========================
-   LAYOUT: DEFAULT
-   ======================== */
-
-.layout -default .slide-content {
-  align-items: flex-start;
-}
-
-/* ========================
-   LAYOUT: TEXT COLUMNS
-   ======================== */
-
-.layout-1-column.slide-content,
-.layout-2-columns.slide-content,
-.layout-3-columns.slide-content,
-.layout-2-columns-1\\+2 .slide-content,
-.layout-2-columns-2\\+1 .slide-content {
-  align-items: flex-start;
-}
-
-/* ========================
-   LAYOUT: FULL IMAGE
-   ======================== */
-
-.layout-full-image {
-  padding: 0!important;
-}
-
-.layout-full-image.slide-body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.layout-full-image.slide-content {
-  padding: 0;
-  margin: 0;
-  width: 100%;
-  height: 100%;
-}
-
-/* Single image-absolute positioning to fill entire slide */
-.layout-full-image.full-image-content.single-image {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-}
-
-.layout-full-image.full-image-content.single-image.image-slot {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.layout-full-image.full-image-content.single-image.image-slot img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-/* Multiple images-flexbox layout */
-.layout-full-image.full-image-content.split-horizontal {
-  display: flex;
-  flex-direction: row;
-  width: 100%;
-  height: 100%;
-}
-
-.layout-full-image.full-image-content.split-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-auto-rows: 1fr;
-  width: 100%;
-  height: 100%;
-  gap: 0;
-}
-
-.layout-full-image.image-slot {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.layout-full-image.image-slot img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-/* ========================
-   LAYOUT: CAPTION
-   ======================== */
-
-.layout-caption {
-  padding: 0!important;
-}
-
-.layout-caption.slide-body {
-  margin: 0;
-}
-
-.layout-caption.slide-content {
-  padding: 0;
-}
-
-.layout-caption.slot-title-bar {
-  padding: calc(var(--slide-unit) * 2) 5%;
-  background: rgba(0, 0, 0, 0.03);
-}
-
-.layout-caption.slot-image {
-  flex: 1;
-  display: flex;
-  min-height: 0;
-}
-
-.layout-caption.slot-image.image-slot {
-  flex: 1;
-}
-
-.layout-caption.slot-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.layout-caption.slot-caption {
-  padding: calc(var(--slide-unit) * 1.5) 5%;
-  text-align: center;
-  font-size: calc(var(--slide-unit) * 2.5);
-}
-
-/* ========================
-   LAYOUT: HALF IMAGE
-   ======================== */
-
-.layout-half-image {
-  padding: 0!important;
-}
-
-.layout-half-image.slide-body {
-  margin: 0;
-}
-
-.layout-half-image.slide-content {
-  flex-direction: row;
-  padding: 0;
-}
-
-.layout-half-image.slot-image {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.layout-half-image.slot-image.image-slot {
-  flex: 1;
-  min-height: 0;
-}
-
-.layout-half-image.slot-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.layout-half-image.slot-text {
-  flex: 1;
-  padding: 5%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-/* Navigation */
-.nav-controls {
+.transition-none .slide { transition: none; }
+.transition-fade .slide { transform: none; }
+.transition-slide .slide { transform: translateX(100%); }
+.transition-slide .slide.active { transform: translateX(0); }
+.transition-slide .slide.prev { transform: translateX(-100%); }
+
+/* Progress bar */
+.progress-bar {
   position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  display: flex;
-  gap: 0.5rem;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: calc(var(--slide-unit) * 0.5);
+  background: rgba(0, 0, 0, 0.1);
   z-index: 100;
 }
 
-.nav-btn {
-  width: 40px;
-  height: 40px;
-  border: none;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.3);
-  color: white;
-  cursor: pointer;
-  font-size: 1.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent1, #007acc);
+  transition: width 0.3s ease;
 }
 
-.nav-btn:hover { background: rgba(0, 0, 0, 0.5); }
-
-  .progress-bar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    height: 3px;
-    background: var(--accent1, #000);
-    transition: width 0.3s ease;
-    z-index: 100;
-  }
-
-  /* Speaker notes */
-  .speaker-notes { display: none; }
-  .perspecta-thumbnail .speaker-notes { display: none !important; }
-
-  /* Print styles */
-  @media print {
-    .slide {
-      page-break-after: always;
-      display: flex !important;
-      position: relative;
-    }
-    .nav-controls, .progress-bar { display: none; }
-  }
+/* Slide numbers */
+.slide-number {
+  position: fixed;
+  bottom: calc(var(--slide-unit) * 2);
+  right: calc(var(--slide-unit) * 2);
+  font-size: calc(var(--slide-unit) * 1.5);
+  opacity: 0.5;
+  z-index: 100;
+}
 </style>`;
   }
 
   private generateCSSVariables(frontmatter: PresentationFrontmatter): string {
     const vars: string[] = [];
 
+    // Fonts
     if (frontmatter.titleFont) {
       vars.push(`  --title-font: '${frontmatter.titleFont}', sans-serif;`);
+    }
+    if (frontmatter.titleFontWeight !== undefined) {
+      vars.push(`  --title-font-weight: ${frontmatter.titleFontWeight};`);
     }
     if (frontmatter.bodyFont) {
       vars.push(`  --body-font: '${frontmatter.bodyFont}', sans-serif;`);
     }
-    if (frontmatter.listItemSpacing !== undefined) vars.push(`  --list-item-spacing: ${frontmatter.listItemSpacing}em;`);
-    if (frontmatter.headerFontSize !== undefined) vars.push(`  --header-font-size: ${frontmatter.headerFontSize};`);
-    if (frontmatter.footerFontSize !== undefined) vars.push(`  --footer-font-size: ${frontmatter.footerFontSize};`);
-    if (frontmatter.headlineSpacingBefore !== undefined) vars.push(`  --headline-spacing-before: ${frontmatter.headlineSpacingBefore}em;`);
-    if (frontmatter.headlineSpacingAfter !== undefined) vars.push(`  --headline-spacing-after: ${frontmatter.headlineSpacingAfter}em;`);
+    if (frontmatter.bodyFontWeight !== undefined) {
+      vars.push(`  --body-font-weight: ${frontmatter.bodyFontWeight};`);
+    }
+    if (frontmatter.headerFont) {
+      vars.push(`  --header-font: '${frontmatter.headerFont}', sans-serif;`);
+    }
+    if (frontmatter.headerFontWeight !== undefined) {
+      vars.push(`  --header-font-weight: ${frontmatter.headerFontWeight};`);
+    }
+    if (frontmatter.footerFont) {
+      vars.push(`  --footer-font: '${frontmatter.footerFont}', sans-serif;`);
+    }
+    if (frontmatter.footerFontWeight !== undefined) {
+      vars.push(`  --footer-font-weight: ${frontmatter.footerFontWeight};`);
+    }
+
+    // Font sizes (as scale factors, convert from % offset)
+    if (frontmatter.titleFontSize !== undefined) {
+      const scale = 1 + (frontmatter.titleFontSize / 100);
+      vars.push(`  --title-font-scale: ${scale};`);
+    }
+    if (frontmatter.bodyFontSize !== undefined) {
+      const scale = 1 + (frontmatter.bodyFontSize / 100);
+      vars.push(`  --body-font-scale: ${scale};`);
+    }
+    if (frontmatter.headerFontSize !== undefined) {
+      const scale = 1 + (frontmatter.headerFontSize / 100);
+      vars.push(`  --header-font-scale: ${scale};`);
+    }
+    if (frontmatter.footerFontSize !== undefined) {
+      const scale = 1 + (frontmatter.footerFontSize / 100);
+      vars.push(`  --footer-font-scale: ${scale};`);
+    }
+
+    // Legacy font size offset (affects all text)
+    if (frontmatter.fontSizeOffset !== undefined) {
+      const scale = 1 + (frontmatter.fontSizeOffset / 100);
+      vars.push(`  --font-scale: ${scale};`);
+    }
+
+    // Spacing (unitless, will be multiplied by --slide-unit in CSS)
+    if (frontmatter.headlineSpacingBefore !== undefined) vars.push(`  --headline-spacing-before: ${frontmatter.headlineSpacingBefore};`);
+    if (frontmatter.headlineSpacingAfter !== undefined) vars.push(`  --headline-spacing-after: ${frontmatter.headlineSpacingAfter};`);
+    if (frontmatter.listItemSpacing !== undefined) vars.push(`  --list-item-spacing: ${frontmatter.listItemSpacing};`);
+    if (frontmatter.lineHeight !== undefined) vars.push(`  --line-height: ${frontmatter.lineHeight};`);
+
+    // Margins (unitless, absolute distance from slide edge in slide units)
+    // These will be multiplied by --slide-unit in CSS for proper scaling
+    if (frontmatter.headerTop !== undefined) vars.push(`  --header-top: ${frontmatter.headerTop};`);
+    if (frontmatter.footerBottom !== undefined) vars.push(`  --footer-bottom: ${frontmatter.footerBottom};`);
+    if (frontmatter.titleTop !== undefined) vars.push(`  --title-top: ${frontmatter.titleTop};`);
+    if (frontmatter.contentTop !== undefined) vars.push(`  --content-top: ${frontmatter.contentTop};`);
+    if (frontmatter.contentWidth !== undefined) vars.push(`  --content-width: ${frontmatter.contentWidth};`);
 
     if (frontmatter.accent1) vars.push(`  --accent1: ${frontmatter.accent1};`);
     if (frontmatter.accent2) vars.push(`  --accent2: ${frontmatter.accent2};`);

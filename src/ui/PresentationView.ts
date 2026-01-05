@@ -3,6 +3,7 @@ import { Presentation, Slide, Theme, SlideElement } from '../types';
 import { SlideParser } from '../parser/SlideParser';
 import { SlideRenderer, ImagePathResolver } from '../renderer/SlideRenderer';
 import { getTheme } from '../themes';
+import { ThemeLoader } from '../themes/ThemeLoader';
 import { PresentationWindow } from './PresentationWindow';
 
 export const PRESENTATION_VIEW_TYPE = 'perspecta-presentation';
@@ -17,6 +18,7 @@ export class PresentationView extends ItemView {
   private imagePathResolver: ImagePathResolver | null = null;
   private presentationImagePathResolver: ImagePathResolver | null = null;
   private customFontCSS: string = '';
+  private themeLoader: ThemeLoader | null = null;
   
   private onSlideChange: ((index: number) => void) | null = null;
   private onReload: (() => void) | null = null;
@@ -49,6 +51,24 @@ export class PresentationView extends ItemView {
    */
   setCustomFontCSS(css: string): void {
     this.customFontCSS = css;
+  }
+
+  /**
+   * Set the theme loader for resolving custom themes
+   */
+  setThemeLoader(loader: ThemeLoader): void {
+    this.themeLoader = loader;
+  }
+
+  /**
+   * Get a theme by name, using themeLoader if available
+   */
+  private getThemeByName(name: string): Theme | undefined {
+    if (this.themeLoader) {
+      const theme = this.themeLoader.getTheme(name);
+      if (theme) return theme;
+    }
+    return getTheme(name);
   }
 
   /**
@@ -225,7 +245,7 @@ export class PresentationView extends ItemView {
       const iframe = this.containerEl.querySelector('.slide-wrapper .slide-iframe') as HTMLIFrameElement;
       if (!iframe) return false;
       
-      const theme = getTheme(this.presentation.frontmatter.theme || 'zurich');
+      const theme = this.getThemeByName(this.presentation.frontmatter.theme || 'zurich');
       const renderer = this.createRenderer(theme);
       
       const slideHTML = renderer.renderSingleSlideHTML(
@@ -413,7 +433,7 @@ More content here...`
   private renderSlides(container: HTMLElement) {
     if (!this.presentation) return;
     
-    const theme = getTheme(this.presentation.frontmatter.theme || 'zurich');
+    const theme = this.getThemeByName(this.presentation.frontmatter.theme || 'zurich');
     const themeClasses = theme?.template.CssClasses || '';
     
     // Create slide wrapper with aspect ratio
@@ -952,7 +972,7 @@ More content here...`
     }
     
     try {
-      const theme = getTheme(presentation.frontmatter.theme || 'zurich');
+      const theme = this.getThemeByName(presentation.frontmatter.theme || 'zurich');
       const presentationWindow = new PresentationWindow();
       // Use presentationImagePathResolver for file:// URLs in the external window
       if (this.presentationImagePathResolver) {
@@ -961,7 +981,7 @@ More content here...`
         // Fallback to regular resolver
         presentationWindow.setImagePathResolver(this.imagePathResolver);
       }
-      await presentationWindow.open(presentation, theme || null, file, this.app);
+      await presentationWindow.open(presentation, theme || null, file);
     } catch (error) {
       console.error('Failed to open presentation window:', error);
       new Notice(`Failed to start presentation: ${(error as Error).message}`);
@@ -1053,7 +1073,7 @@ More content here...`
   private async exportHTML() {
     if (!this.presentation || !this.file) return;
     
-    const theme = getTheme(this.presentation.frontmatter.theme || 'zurich');
+    const theme = this.getThemeByName(this.presentation.frontmatter.theme || 'zurich');
     const renderer = this.createRenderer(theme);
     const html = renderer.renderHTML();
     

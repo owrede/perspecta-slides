@@ -1,6 +1,8 @@
 import { ItemView, WorkspaceLeaf, Setting, TFile, setIcon, Modal, App } from 'obsidian';
 import { Presentation, Slide, SlideLayout, SlideMetadata, PresentationFrontmatter } from '../types';
 import { getThemeNames, getTheme } from '../themes';
+import { getBuiltInThemeNames } from '../themes/builtin';
+import { ThemeLoader } from '../themes/ThemeLoader';
 import { FontManager } from '../utils/FontManager';
 
 /**
@@ -55,19 +57,12 @@ class EditingHelpModal extends Modal {
       { syntax: '$$\\nequation\\n$$', description: 'Block LaTeX math' },
     ]);
 
-    // Columns section
-    this.createSection(contentEl, 'Column Layouts', [
-      { syntax: '|', description: 'Column separator (split content into columns)' },
-      { syntax: 'Content | Content', description: 'Two equal columns' },
-      { syntax: 'A | B | C', description: 'Three columns' },
-    ]);
-
-    // Slide Directives section
+    // Slide Directives section (placed at start of slide, after ---)
     this.createSection(contentEl, 'Slide Directives', [
-      { syntax: '<!-- layout: cover -->', description: 'Set slide layout' },
-      { syntax: '<!-- mode: dark -->', description: 'Dark mode slide' },
-      { syntax: '<!-- background: #color -->', description: 'Custom background' },
-      { syntax: '<!-- class: custom -->', description: 'Add CSS class to slide' },
+      { syntax: 'layout: cover', description: 'Set slide layout (cover, title, section, etc.)' },
+      { syntax: 'mode: dark', description: 'Dark mode slide' },
+      { syntax: 'background: image.jpg', description: 'Background image' },
+      { syntax: 'class: custom', description: 'Add CSS class to slide' },
     ]);
 
     // Close button
@@ -109,6 +104,7 @@ export class InspectorPanelView extends ItemView {
   private onSlideMetadataChange: ((slideIndex: number, metadata: Partial<SlideMetadata>) => void) | null = null;
   private onPresentationChange: ((frontmatter: Partial<PresentationFrontmatter>, persistent: boolean) => void) | null = null;
   private fontManager: FontManager | null = null;
+  private themeLoader: ThemeLoader | null = null;
   private themeAppearanceMode: 'light' | 'dark' = 'light';
 
   constructor(leaf: WorkspaceLeaf) {
@@ -117,6 +113,21 @@ export class InspectorPanelView extends ItemView {
 
   setFontManager(fontManager: FontManager) {
     this.fontManager = fontManager;
+  }
+
+  setThemeLoader(themeLoader: ThemeLoader) {
+    this.themeLoader = themeLoader;
+  }
+
+  /**
+   * Get a theme by name, using themeLoader if available
+   */
+  private getThemeByName(name: string): ReturnType<typeof getTheme> {
+    if (this.themeLoader) {
+      const theme = this.themeLoader.getTheme(name);
+      if (theme) return theme;
+    }
+    return getTheme(name);
   }
 
   getViewType(): string {
@@ -255,7 +266,7 @@ export class InspectorPanelView extends ItemView {
       .setName('Title')
       .addText(text => {
         text
-          .setPlaceholder('Presentation Title')
+          .setPlaceholder('')
           .setValue(fm.title || '');
         text.inputEl.addEventListener('blur', () => {
           this.updateFrontmatter({ title: text.getValue() });
@@ -301,7 +312,7 @@ export class InspectorPanelView extends ItemView {
       .setName('Header Left')
       .addText(text => {
         text
-          .setPlaceholder('Company Name')
+          .setPlaceholder('')
           .setValue(fm.headerLeft || '');
         text.inputEl.addEventListener('blur', () => {
           this.updateFrontmatter({ headerLeft: text.getValue() });
@@ -312,7 +323,7 @@ export class InspectorPanelView extends ItemView {
       .setName('Header Middle')
       .addText(text => {
         text
-          .setPlaceholder('Presentation Title')
+          .setPlaceholder('')
           .setValue(fm.headerMiddle || '');
         text.inputEl.addEventListener('blur', () => {
           this.updateFrontmatter({ headerMiddle: text.getValue() });
@@ -407,22 +418,55 @@ export class InspectorPanelView extends ItemView {
     const fm = this.presentation?.frontmatter;
     if (!fm) return;
 
-    const theme = getTheme(fm.theme || 'zurich');
-    const themePreset = theme?.presets[0];
-
-    // Section: FONTS
-    this.createSectionHeader(container, 'FONTS');
-
     const cachedFonts = this.fontManager?.getAllCachedFonts() || [];
     const cachedFontNames = new Set(cachedFonts.map(f => f.name));
+
+    // Helper to get weights for a font
+    const getFontWeights = (fontName: string | undefined): number[] => {
+      if (!fontName) return [];
+      const font = cachedFonts.find(f => f.name === fontName);
+      return font?.weights || [];
+    };
+
+    // Helper to render weight dropdown (only if multiple weights available)
+    const renderWeightDropdown = (
+      parentContainer: HTMLElement,
+      fontName: string | undefined,
+      currentWeight: number | undefined,
+      onWeightChange: (weight: number | undefined) => void
+    ) => {
+      const weights = getFontWeights(fontName);
+      if (weights.length <= 1) return; // Don't show if only one weight
+
+      new Setting(parentContainer)
+        .setName('Weight')
+        .setClass('weight-setting')
+        .addDropdown(dropdown => {
+          weights.forEach(w => {
+            const label = this.getWeightLabel(w);
+            dropdown.addOption(w.toString(), label);
+          });
+          dropdown.setValue((currentWeight || weights[0] || 400).toString());
+          dropdown.onChange(value => onWeightChange(parseInt(value)));
+        });
+    };
+
+    // ========== FONTS SECTION ==========
+    this.createSectionHeader(container, 'FONTS');
+
+    // Get theme's default fonts for display
+    const theme = this.getThemeByName(fm.theme || 'zurich');
+    const themeTitleFont = theme?.template.TitleFont || 'Helvetica';
+    const themeBodyFont = theme?.template.BodyFont || 'Helvetica';
 
     const titleFontMissing = fm.titleFont && !cachedFontNames.has(fm.titleFont);
     const bodyFontMissing = fm.bodyFont && !cachedFontNames.has(fm.bodyFont);
 
+    // Title Font
     new Setting(container)
       .setName('Title Font')
       .addDropdown(dropdown => {
-        dropdown.addOption('', 'Theme Default');
+        dropdown.addOption('', `Theme Default (${themeTitleFont})`);
         if (titleFontMissing && fm.titleFont) {
           dropdown.addOption(fm.titleFont, `${fm.titleFont} (missing)`);
         }
@@ -431,18 +475,27 @@ export class InspectorPanelView extends ItemView {
         });
         dropdown.setValue(fm.titleFont || '');
         dropdown.onChange(value => {
-          this.updateFrontmatter({ titleFont: value || undefined });
+          this.updateFrontmatter({ titleFont: value || undefined, titleFontWeight: undefined });
+          this.render(); // Re-render to show/hide weight dropdown
         });
       })
       .addExtraButton(btn => btn
         .setIcon('rotate-ccw')
         .setTooltip('Reset to theme default')
-        .onClick(() => this.updateFrontmatter({ titleFont: undefined })));
+        .onClick(() => {
+          this.updateFrontmatter({ titleFont: undefined, titleFontWeight: undefined });
+          this.render();
+        }));
 
+    // Title Font Weight (if applicable)
+    renderWeightDropdown(container, fm.titleFont, fm.titleFontWeight,
+      (weight) => this.updateFrontmatter({ titleFontWeight: weight }));
+
+    // Body Font
     new Setting(container)
       .setName('Body Font')
       .addDropdown(dropdown => {
-        dropdown.addOption('', 'Theme Default');
+        dropdown.addOption('', `Theme Default (${themeBodyFont})`);
         if (bodyFontMissing && fm.bodyFont) {
           dropdown.addOption(fm.bodyFont, `${fm.bodyFont} (missing)`);
         }
@@ -451,146 +504,358 @@ export class InspectorPanelView extends ItemView {
         });
         dropdown.setValue(fm.bodyFont || '');
         dropdown.onChange(value => {
-          this.updateFrontmatter({ bodyFont: value || undefined });
+          this.updateFrontmatter({ bodyFont: value || undefined, bodyFontWeight: undefined });
+          this.render();
         });
       })
       .addExtraButton(btn => btn
         .setIcon('rotate-ccw')
         .setTooltip('Reset to theme default')
-        .onClick(() => this.updateFrontmatter({ bodyFont: undefined })));
+        .onClick(() => {
+          this.updateFrontmatter({ bodyFont: undefined, bodyFontWeight: undefined });
+          this.render();
+        }));
+
+    // Body Font Weight (if applicable)
+    renderWeightDropdown(container, fm.bodyFont, fm.bodyFontWeight,
+      (weight) => this.updateFrontmatter({ bodyFontWeight: weight }));
+
+    // Header Font (inherits from Body by default)
+    const effectiveBodyFont = fm.bodyFont || themeBodyFont;
+    new Setting(container)
+      .setName('Header Font')
+      .addDropdown(dropdown => {
+        dropdown.addOption('', `Inherit from Body (${effectiveBodyFont})`);
+        cachedFonts.forEach(font => {
+          dropdown.addOption(font.name, font.displayName);
+        });
+        dropdown.setValue(fm.headerFont || '');
+        dropdown.onChange(value => {
+          this.updateFrontmatter({ headerFont: value || undefined, headerFontWeight: undefined });
+          this.render();
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to inherit from Body')
+        .onClick(() => {
+          this.updateFrontmatter({ headerFont: undefined, headerFontWeight: undefined });
+          this.render();
+        }));
+
+    // Header Font Weight (if applicable)
+    renderWeightDropdown(container, fm.headerFont, fm.headerFontWeight,
+      (weight) => this.updateFrontmatter({ headerFontWeight: weight }));
+
+    // Footer Font (inherits from Body by default)
+    new Setting(container)
+      .setName('Footer Font')
+      .addDropdown(dropdown => {
+        dropdown.addOption('', `Inherit from Body (${effectiveBodyFont})`);
+        cachedFonts.forEach(font => {
+          dropdown.addOption(font.name, font.displayName);
+        });
+        dropdown.setValue(fm.footerFont || '');
+        dropdown.onChange(value => {
+          this.updateFrontmatter({ footerFont: value || undefined, footerFontWeight: undefined });
+          this.render();
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to inherit from Body')
+        .onClick(() => {
+          this.updateFrontmatter({ footerFont: undefined, footerFontWeight: undefined });
+          this.render();
+        }));
+
+    // Footer Font Weight (if applicable)
+    renderWeightDropdown(container, fm.footerFont, fm.footerFontWeight,
+      (weight) => this.updateFrontmatter({ footerFontWeight: weight }));
 
     if (cachedFonts.length === 0 && !titleFontMissing && !bodyFontMissing) {
       const helpText = container.createDiv({ cls: 'setting-item-description perspecta-font-help' });
       helpText.setText('No custom fonts available. Add fonts in Settings → Fonts tab.');
     }
 
-    // Section: SIZES
+    // ========== SIZES SECTION ==========
     this.createSectionHeader(container, 'SIZES');
 
-    new Setting(container)
-      .setName('Font Size Offset')
-      .addSlider(slider => slider
-        .setLimits(-50, 50, 5)
-        .setValue(fm.fontSizeOffset ?? 0)
-        .setDynamicTooltip()
-        .onChange(value => this.updateFrontmatter({ fontSizeOffset: value })))
-      .addExtraButton(btn => btn
-        .setIcon('rotate-ccw')
-        .setTooltip('Reset to default')
-        .onClick(() => this.updateFrontmatter({ fontSizeOffset: undefined })));
+    // Description
+    container.createDiv({ cls: 'section-description', text: 'Changes in % from defaults' });
 
+    // Title Size
     new Setting(container)
-      .setName('Header Font Size')
+      .setName('Title')
       .addSlider(slider => {
         slider
-          .setLimits(0.5, 2, 0.05)
-          .setValue(fm.headerFontSize ?? 0.7)
+          .setLimits(-50, 50, 5)
+          .setValue(fm.titleFontSize ?? 0)
           .setDynamicTooltip()
-          .onChange(value => {
-            this.updateFrontmatter({ headerFontSize: value }, false);
-          });
+          .onChange(value => this.updateFrontmatter({ titleFontSize: value }, false));
+        slider.sliderEl.addEventListener('pointerup', () => {
+          this.updateFrontmatter({ titleFontSize: slider.getValue() }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to 0%')
+        .onClick(() => this.updateFrontmatter({ titleFontSize: undefined }, true)));
+
+    // Body Size
+    new Setting(container)
+      .setName('Body')
+      .addSlider(slider => {
+        slider
+          .setLimits(-50, 50, 5)
+          .setValue(fm.bodyFontSize ?? 0)
+          .setDynamicTooltip()
+          .onChange(value => this.updateFrontmatter({ bodyFontSize: value }, false));
+        slider.sliderEl.addEventListener('pointerup', () => {
+          this.updateFrontmatter({ bodyFontSize: slider.getValue() }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to 0%')
+        .onClick(() => this.updateFrontmatter({ bodyFontSize: undefined }, true)));
+
+    // Header Size
+    new Setting(container)
+      .setName('Header')
+      .addSlider(slider => {
+        slider
+          .setLimits(-50, 50, 5)
+          .setValue(fm.headerFontSize ?? 0)
+          .setDynamicTooltip()
+          .onChange(value => this.updateFrontmatter({ headerFontSize: value }, false));
         slider.sliderEl.addEventListener('pointerup', () => {
           this.updateFrontmatter({ headerFontSize: slider.getValue() }, true);
         });
       })
       .addExtraButton(btn => btn
         .setIcon('rotate-ccw')
-        .setTooltip('Reset to default (0.7em)')
+        .setTooltip('Reset to 0%')
         .onClick(() => this.updateFrontmatter({ headerFontSize: undefined }, true)));
 
+    // Footer Size
     new Setting(container)
-      .setName('Footer Font Size')
+      .setName('Footer')
       .addSlider(slider => {
         slider
-          .setLimits(0.5, 2, 0.05)
-          .setValue(fm.footerFontSize ?? 0.7)
+          .setLimits(-50, 50, 5)
+          .setValue(fm.footerFontSize ?? 0)
           .setDynamicTooltip()
-          .onChange(value => {
-            this.updateFrontmatter({ footerFontSize: value }, false);
-          });
+          .onChange(value => this.updateFrontmatter({ footerFontSize: value }, false));
         slider.sliderEl.addEventListener('pointerup', () => {
           this.updateFrontmatter({ footerFontSize: slider.getValue() }, true);
         });
       })
       .addExtraButton(btn => btn
         .setIcon('rotate-ccw')
-        .setTooltip('Reset to default (0.7em)')
+        .setTooltip('Reset to 0%')
         .onClick(() => this.updateFrontmatter({ footerFontSize: undefined }, true)));
 
-    // Section: SPACING
+    // ========== SPACING SECTION ==========
     this.createSectionHeader(container, 'SPACING');
 
-    new Setting(container)
-      .setName('List Item Spacing')
-      .addSlider(slider => {
-        slider
-          .setLimits(0, 2, 0.1)
-          .setValue(fm.listItemSpacing ?? 0)
-          .setDynamicTooltip()
-          .onChange(value => {
-            this.updateFrontmatter({ listItemSpacing: value }, false);
-          });
-        slider.sliderEl.addEventListener('pointerup', () => {
-          this.updateFrontmatter({ listItemSpacing: slider.getValue() }, true);
-        });
-      })
-      .addExtraButton(btn => btn
-        .setIcon('rotate-ccw')
-        .setTooltip('Reset to default (0em)')
-        .onClick(() => this.updateFrontmatter({ listItemSpacing: 0 }, true)));
+    // Description
+    container.createDiv({ cls: 'section-description', text: 'Values in em' });
 
+    // Headline (before)
     new Setting(container)
-      .setName('Headline Spacing Before')
+      .setName('Headline (before)')
       .addSlider(slider => {
         slider
           .setLimits(0, 3, 0.1)
           .setValue(fm.headlineSpacingBefore ?? 0)
           .setDynamicTooltip()
-          .onChange(value => {
-            this.updateFrontmatter({ headlineSpacingBefore: value }, false);
-          });
+          .onChange(value => this.updateFrontmatter({ headlineSpacingBefore: value }, false));
         slider.sliderEl.addEventListener('pointerup', () => {
-          this.updateFrontmatter({ headlineSpacingBefore: slider.getValue() }, true);
+          const val = slider.getValue();
+          this.updateFrontmatter({ headlineSpacingBefore: val === 0 ? undefined : val }, true);
         });
       })
       .addExtraButton(btn => btn
         .setIcon('rotate-ccw')
-        .setTooltip('Reset to default (0em)')
+        .setTooltip('Reset to 0em')
         .onClick(() => this.updateFrontmatter({ headlineSpacingBefore: undefined }, true)));
 
+    // Headline (after)
     new Setting(container)
-      .setName('Headline Spacing After')
+      .setName('Headline (after)')
       .addSlider(slider => {
         slider
           .setLimits(0, 3, 0.1)
-          .setValue(fm.headlineSpacingAfter ?? 0)
+          .setValue(fm.headlineSpacingAfter ?? 0.5)
           .setDynamicTooltip()
-          .onChange(value => {
-            this.updateFrontmatter({ headlineSpacingAfter: value }, false);
-          });
+          .onChange(value => this.updateFrontmatter({ headlineSpacingAfter: value }, false));
         slider.sliderEl.addEventListener('pointerup', () => {
-          this.updateFrontmatter({ headlineSpacingAfter: slider.getValue() }, true);
+          const val = slider.getValue();
+          this.updateFrontmatter({ headlineSpacingAfter: val === 0.5 ? undefined : val }, true);
         });
       })
       .addExtraButton(btn => btn
         .setIcon('rotate-ccw')
-        .setTooltip('Reset to default (0em)')
+        .setTooltip('Reset to 0.5em')
         .onClick(() => this.updateFrontmatter({ headlineSpacingAfter: undefined }, true)));
 
-    // Section: OFFSETS
-    this.createSectionHeader(container, 'OFFSETS');
-
+    // List Item (after)
     new Setting(container)
-      .setName('Content Top Offset')
-      .addSlider(slider => slider
-        .setLimits(0, 20, 0.25)
-        .setValue(fm.contentTopOffset ?? 0)
-        .setDynamicTooltip()
-        .onChange(value => this.updateFrontmatter({ contentTopOffset: value })))
+      .setName('List Item (after)')
+      .addSlider(slider => {
+        slider
+          .setLimits(0, 2, 0.1)
+          .setValue(fm.listItemSpacing ?? 1.0)
+          .setDynamicTooltip()
+          .onChange(value => this.updateFrontmatter({ listItemSpacing: value }, false));
+        slider.sliderEl.addEventListener('pointerup', () => {
+          const val = slider.getValue();
+          this.updateFrontmatter({ listItemSpacing: val === 1.0 ? undefined : val }, true);
+        });
+      })
       .addExtraButton(btn => btn
         .setIcon('rotate-ccw')
-        .setTooltip('Reset to default')
-        .onClick(() => this.updateFrontmatter({ contentTopOffset: undefined })));
+        .setTooltip('Reset to 1.0em')
+        .onClick(() => this.updateFrontmatter({ listItemSpacing: undefined }, true)));
+
+    // Line Height
+    new Setting(container)
+      .setName('Line Height')
+      .addSlider(slider => {
+        slider
+          .setLimits(0.5, 2.5, 0.05)
+          .setValue(fm.lineHeight ?? 1.1)
+          .setDynamicTooltip()
+          .onChange(value => this.updateFrontmatter({ lineHeight: value }, false));
+        slider.sliderEl.addEventListener('pointerup', () => {
+          const val = slider.getValue();
+          this.updateFrontmatter({ lineHeight: val === 1.1 ? undefined : val }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to 1.1')
+        .onClick(() => this.updateFrontmatter({ lineHeight: undefined }, true)));
+
+    // ========== MARGINS SECTION ==========
+    this.createSectionHeader(container, 'MARGINS');
+
+    // Description
+    container.createDiv({ cls: 'section-description', text: 'Values in em' });
+
+    // Header (top)
+    new Setting(container)
+      .setName('Header (top)')
+      .addSlider(slider => {
+        slider
+          .setLimits(0, 8, 0.2)
+          .setValue(fm.headerTop ?? 2.5)
+          .setDynamicTooltip()
+          .onChange(value => this.updateFrontmatter({ headerTop: value }, false));
+        slider.sliderEl.addEventListener('pointerup', () => {
+          const val = slider.getValue();
+          this.updateFrontmatter({ headerTop: val === 2.5 ? undefined : val }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to 2.5em')
+        .onClick(() => this.updateFrontmatter({ headerTop: undefined }, true)));
+
+    // Footer (bottom)
+    new Setting(container)
+      .setName('Footer (bottom)')
+      .addSlider(slider => {
+        slider
+          .setLimits(0, 8, 0.2)
+          .setValue(fm.footerBottom ?? 2.5)
+          .setDynamicTooltip()
+          .onChange(value => this.updateFrontmatter({ footerBottom: value }, false));
+        slider.sliderEl.addEventListener('pointerup', () => {
+          const val = slider.getValue();
+          this.updateFrontmatter({ footerBottom: val === 2.5 ? undefined : val }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to 2.5em')
+        .onClick(() => this.updateFrontmatter({ footerBottom: undefined }, true)));
+
+    // Title (top)
+    new Setting(container)
+      .setName('Title (top)')
+      .addSlider(slider => {
+        slider
+          .setLimits(0, 12, 0.2)
+          .setValue(fm.titleTop ?? 5)
+          .setDynamicTooltip()
+          .onChange(value => this.updateFrontmatter({ titleTop: value }, false));
+        slider.sliderEl.addEventListener('pointerup', () => {
+          const val = slider.getValue();
+          this.updateFrontmatter({ titleTop: val === 5 ? undefined : val }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to 5em')
+        .onClick(() => this.updateFrontmatter({ titleTop: undefined }, true)));
+
+    // Content (top)
+    new Setting(container)
+      .setName('Content (top)')
+      .addSlider(slider => {
+        slider
+          .setLimits(0, 24, 0.2)
+          .setValue(fm.contentTop ?? 12)
+          .setDynamicTooltip()
+          .onChange(value => this.updateFrontmatter({ contentTop: value }, false));
+        slider.sliderEl.addEventListener('pointerup', () => {
+          const val = slider.getValue();
+          this.updateFrontmatter({ contentTop: val === 12 ? undefined : val }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to 12em')
+        .onClick(() => this.updateFrontmatter({ contentTop: undefined }, true)));
+
+    // Content (left/right)
+    new Setting(container)
+      .setName('Content (left/right)')
+      .addSlider(slider => {
+        slider
+          .setLimits(0, 12, 0.2)
+          .setValue(fm.contentWidth ?? 5)
+          .setDynamicTooltip()
+          .onChange(value => this.updateFrontmatter({ contentWidth: value }, false));
+        slider.sliderEl.addEventListener('pointerup', () => {
+          const val = slider.getValue();
+          this.updateFrontmatter({ contentWidth: val === 5 ? undefined : val }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to 5em')
+        .onClick(() => this.updateFrontmatter({ contentWidth: undefined }, true)));
+  }
+
+  /**
+   * Get human-readable label for font weight
+   */
+  private getWeightLabel(weight: number): string {
+    const labels: Record<number, string> = {
+      100: '100 Thin',
+      200: '200 Extra Light',
+      300: '300 Light',
+      400: '400 Regular',
+      500: '500 Medium',
+      600: '600 Semi Bold',
+      700: '700 Bold',
+      800: '800 Extra Bold',
+      900: '900 Black',
+    };
+    return labels[weight] || `${weight}`;
   }
 
   /**
@@ -609,7 +874,7 @@ export class InspectorPanelView extends ItemView {
     const fm = this.presentation?.frontmatter;
     if (!fm) return;
 
-    const theme = getTheme(fm.theme || 'zurich');
+    const theme = this.getThemeByName(fm.theme || 'zurich');
     const themePreset = theme?.presets[0];
 
     // Section: THEME
@@ -618,9 +883,21 @@ export class InspectorPanelView extends ItemView {
     new Setting(container)
       .setName('Theme')
       .addDropdown(dropdown => {
-        getThemeNames().forEach(name => {
+        // Add built-in themes
+        getBuiltInThemeNames().forEach(name => {
           dropdown.addOption(name, name.charAt(0).toUpperCase() + name.slice(1));
         });
+        // Add custom themes from themeLoader
+        if (this.themeLoader) {
+          const customThemes = this.themeLoader.getCustomThemes();
+          if (customThemes.length > 0) {
+            customThemes.forEach(theme => {
+              const name = theme.template.Name.toLowerCase();
+              const displayName = theme.template.Name;
+              dropdown.addOption(name, `${displayName} ★`);
+            });
+          }
+        }
         dropdown.setValue(fm.theme || 'zurich');
         dropdown.onChange(async value => {
           await this.updateFrontmatter({ theme: value });
@@ -675,7 +952,7 @@ export class InspectorPanelView extends ItemView {
       const currentFm = this.presentation?.frontmatter;
       if (!currentFm) return;
 
-      const theme = getTheme(currentFm.theme || 'zurich');
+      const theme = this.getThemeByName(currentFm.theme || 'zurich');
       const themePreset = theme?.presets[0];
 
       const defaultTitleColor = mode === 'light' ? (themePreset?.LightTitleTextColor || '#000000') : (themePreset?.DarkTitleTextColor || '#ffffff');
@@ -910,7 +1187,7 @@ export class InspectorPanelView extends ItemView {
     const fm = this.presentation?.frontmatter;
     if (!fm) return;
 
-    const theme = getTheme(fm.theme || 'zurich');
+    const theme = this.getThemeByName(fm.theme || 'zurich');
     const themePreset = theme?.presets[0];
     const defaultTitleColor = mode === 'light' 
       ? (themePreset?.LightTitleTextColor || '#000000') 
@@ -1012,7 +1289,7 @@ export class InspectorPanelView extends ItemView {
     const fm = this.presentation?.frontmatter;
     if (!fm) return;
 
-    const theme = getTheme(fm.theme || 'zurich');
+    const theme = this.getThemeByName(fm.theme || 'zurich');
     const themePreset = theme?.presets[0];
 
     const layoutConfigs = [

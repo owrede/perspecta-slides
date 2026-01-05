@@ -48,7 +48,7 @@ transition: fade
 
 | Property | Values | Description |
 |----------|--------|-------------|
-| `theme` | `zurich`, `tokyo`, `berlin`, `minimal`, `helvetica`, `basel`, `copenhagen` | Visual theme |
+| `theme` | `zurich`, `kyoto`, `berlin`, `minimal`, `helvetica`, `basel`, `copenhagen` | Visual theme |
 | `contentMode` | `ia-presenter`, `advanced-slides` | How content vs notes are distinguished |
 | `fontSizeOffset` | -50 to 50 | Percentage to scale all fonts |
 | `contentTopOffset` | 0 to 20 | Push column content down (%) |
@@ -476,7 +476,7 @@ contact@acme.com
 | Theme | Style |
 |-------|-------|
 | `zurich` | Minimal Swiss design, clean typography |
-| `tokyo` | Dark theme with vibrant neon accents |
+| `kyoto` | Dynamic gradient theme with soft pastel colors |
 | `berlin` | Professional, deep blue tones |
 | `minimal` | Ultra-clean with generous whitespace |
 | `helvetica` | Classic typography focus |

@@ -103,7 +103,7 @@ my-theme/
 ### Built-in Themes
 
 - **Zurich** - Minimal Swiss design, fixed-size headings
-- **Tokyo** - Neon dark aesthetic, gradient headings
+- **Kyoto** - Dynamic gradient theme with soft pastel colors
 - **Berlin** - Professional blue tones
 - **Minimal** - Ultra-clean with generous whitespace
 

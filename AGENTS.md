@@ -21,5 +21,5 @@ After making changes, always:
 - `src/parser/` - Markdown to slide parsing
 - `src/renderer/` - Slide HTML rendering
 - `src/ui/` - Obsidian views (ThumbnailNavigator, InspectorPanel, PresentationView)
-- `src/themes/` - Built-in themes (zurich, tokyo, berlin, minimal)
+- `src/themes/` - Built-in themes (zurich, kyoto, berlin, minimal)
 - `src/types.ts` - TypeScript interfaces

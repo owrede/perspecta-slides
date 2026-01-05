@@ -213,7 +213,7 @@ Renders as `linear-gradient(135deg, #D3E9F8, #E4DBEA)`.
   ]
 }
 ```
-Dynamic backgrounds cycle through the color palette based on slide index, creating visual variety while maintaining theme coherence. Used prominently in themes like **Tokyo**.
+Dynamic backgrounds cycle through the color palette based on slide index, creating visual variety while maintaining theme coherence. Used prominently in themes like **Kyoto**.
 
 ### Accents Array
 
@@ -346,7 +346,7 @@ The CSS file provides theme-specific styling. Use the generated CSS variables fo
 
 ### Advanced CSS: Gradient Text
 
-For gradient text effects (like Tokyo theme):
+For gradient text effects (like Kyoto theme):
 
 ```css
 .slide h1, .slide h2 {
@@ -460,7 +460,7 @@ Perspecta Slides includes 14 built-in themes:
 | Theme | Style | Fonts | Special Features |
 |-------|-------|-------|------------------|
 | **Zurich** | Minimal Swiss | Helvetica | Fixed-size headings |
-| **Tokyo** | Neon/Dynamic | System UI | Dynamic gradient backgrounds, gradient text |
+| **Kyoto** | Dynamic/Pastel | System UI | Dynamic gradient backgrounds, gradient text |
 | **Berlin** | Professional | Source Sans Pro | Deep blue tones, gradient cover |
 | **Minimal** | Ultra-clean | Inter | Maximum whitespace |
 | **Helvetica** | Classic | Helvetica | Traditional corporate |

@@ -1,10 +1,8 @@
 import { TFile, Notice } from 'obsidian';
 import { Presentation, Theme } from '../types';
 import { SlideRenderer, ImagePathResolver } from '../renderer/SlideRenderer';
-import { SlideParser } from '../parser/SlideParser';
 import {
   PresentationCache,
-  SlideDiff,
   buildPresentationCache,
   diffPresentations,
   requiresFullRender
@@ -25,20 +23,15 @@ declare const require: NodeRequire;
  */
 export class PresentationWindow {
   private win: any = null; // Electron.BrowserWindow
-  private parser: SlideParser;
   private currentSlideIndex: number = 0;
-  private mouseIdleTimeout: ReturnType<typeof setTimeout> | null = null;
   private presentationCache: PresentationCache | null = null;
   private currentTheme: Theme | null = null;
   private imagePathResolver: ImagePathResolver | null = null;
   private presentation: Presentation | null = null;
+  private customFontCSS: string = '';
 
   public getPresentation(): Presentation | null {
     return this.presentation;
-  }
-
-  constructor() {
-    this.parser = new SlideParser();
   }
 
   /**
@@ -49,24 +42,36 @@ export class PresentationWindow {
   }
 
   /**
-   * Create a SlideRenderer with the image path resolver
+   * Set custom font CSS (e.g., @font-face rules for cached Google Fonts)
+   */
+  setCustomFontCSS(css: string): void {
+    this.customFontCSS = css;
+  }
+
+  /**
+   * Create a SlideRenderer with the image path resolver and custom font CSS
    */
   private createRenderer(presentation: Presentation, theme: Theme | null): SlideRenderer {
-    return new SlideRenderer(
+    const renderer = new SlideRenderer(
       presentation,
       theme || undefined,
       this.imagePathResolver || undefined
     );
+    if (this.customFontCSS) {
+      renderer.setCustomFontCSS(this.customFontCSS);
+    }
+    return renderer;
   }
 
   /**
    * Open a new presentation window
    */
-  async open(presentation: Presentation, theme: Theme | null, sourceFile?: TFile, app?: any, startSlide: number = 0): Promise<void> {
+  async open(presentation: Presentation, theme: Theme | null, sourceFile?: TFile, startSlide: number = 0): Promise<void> {
     this.presentation = presentation;
     this.currentSlideIndex = startSlide;
     this.currentTheme = theme;
     this.presentationCache = buildPresentationCache(presentation);
+    
     // In Obsidian, we need to access Electron's remote module
     const electron = require('electron');
     const remote = electron.remote || (require as any)('@electron/remote');
@@ -99,27 +104,33 @@ export class PresentationWindow {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        // Allow loading file:// URLs from data: URL content (needed for local images)
         webSecurity: false,
       },
-      show: false, // Don't show until ready
+      show: false,
     });
-
-    // Store reference for ESC key handling
-    const win = this.win;
 
     // Render the presentation HTML
     const renderer = this.createRenderer(presentation, theme);
     const html = this.generatePresentationHTML(presentation, renderer, theme, startSlide);
 
-    // Load the HTML content
-    this.win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    // Load HTML via temp file to avoid data URL length limits
+    await this.loadHTMLContent(html);
 
     // Show window when ready
     this.win.once('ready-to-show', () => {
+      console.log('ready-to-show event fired');
       this.win.show();
       this.win.focus();
     });
+    
+    // Fallback: show window after a short delay if ready-to-show doesn't fire
+    setTimeout(() => {
+      if (this.win && !this.win.isDestroyed() && !this.win.isVisible()) {
+        console.log('Fallback: showing window after timeout');
+        this.win.show();
+        this.win.focus();
+      }
+    }, 1000);
 
     // Handle window close
     this.win.on('closed', () => {
@@ -139,8 +150,35 @@ export class PresentationWindow {
         }
       }
     });
+  }
 
-    // Live updates are now handled by the main plugin via updateContent()
+  /**
+   * Load HTML content into the window using document.write() to avoid data URL length limits
+   * This is faster than writing temp files and has no size limit
+   */
+  private async loadHTMLContent(html: string): Promise<void> {
+    if (!this.win) {
+      console.error('Cannot load HTML: win is null');
+      return;
+    }
+
+    try {
+      // Load a blank page first, then inject the HTML via JavaScript
+      // This avoids both file I/O and data URL length limits
+      await this.win.loadURL('about:blank');
+      
+      // Inject the HTML content using document.write()
+      // We need to escape the HTML for use in a JavaScript string
+      const escapedHtml = JSON.stringify(html);
+      await this.win.webContents.executeJavaScript(`
+        document.open();
+        document.write(${escapedHtml});
+        document.close();
+      `);
+    } catch (error) {
+      console.error('Failed to load HTML content:', error);
+      new Notice('Failed to open presentation window.');
+    }
   }
 
   /**
@@ -617,7 +655,8 @@ export class PresentationWindow {
     const renderer = this.createRenderer(presentation, theme);
     const html = this.generatePresentationHTML(presentation, renderer, theme, currentSlide);
 
-    this.win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    // Use temp file approach to avoid data URL length limits
+    await this.loadHTMLContent(html);
 
     // Update cache
     this.presentationCache = buildPresentationCache(presentation);

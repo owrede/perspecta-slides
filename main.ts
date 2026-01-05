@@ -26,6 +26,9 @@ import {
   requiresFullRender
 } from './src/utils/SlideHasher';
 import { FontManager, FontCache } from './src/utils/FontManager';
+import { ThemeExporter, SaveThemeModal } from './src/utils/ThemeExporter';
+import { ThemeLoader } from './src/themes/ThemeLoader';
+import { getBuiltInThemeNames } from './src/themes/builtin';
 
 const SLIDES_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
 
@@ -33,6 +36,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
   settings: PerspecaSlidesSettings = DEFAULT_SETTINGS;
   parser: SlideParser = new SlideParser();
   fontManager: FontManager | null = null;
+  themeLoader: ThemeLoader | null = null;
   private presentationWindow: PresentationWindow | null = null;
   private currentPresentationFile: TFile | null = null;
   private presentationCache: PresentationCache | null = null;
@@ -51,16 +55,25 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     // For wiki-links, resolve through Obsidian's system
     try {
+      // Decode any URL-encoded characters in the path (e.g., %20 for space)
+      const decodedPath = decodeURIComponent(path);
+      
       // Get the current file for context
       const activeFile = this.app.workspace.getActiveFile();
       const sourcePath = activeFile?.path || '';
 
       // Resolve the link to a file
-      const linkedFile = this.app.metadataCache.getFirstLinkpathDest(path, sourcePath);
+      const linkedFile = this.app.metadataCache.getFirstLinkpathDest(decodedPath, sourcePath);
 
       if (linkedFile) {
         // Get the resource path for the file
         return this.app.vault.getResourcePath(linkedFile);
+      }
+      
+      // Try with original path as fallback
+      const linkedFileOriginal = this.app.metadataCache.getFirstLinkpathDest(path, sourcePath);
+      if (linkedFileOriginal) {
+        return this.app.vault.getResourcePath(linkedFileOriginal);
       }
     } catch (e) {
       console.warn('Failed to resolve image path:', path, e);
@@ -83,12 +96,18 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     // For wiki-links, resolve to file:// URL
     try {
+      // Decode any URL-encoded characters in the path (e.g., %20 for space)
+      const decodedPath = decodeURIComponent(path);
+      
       // Get the current file for context
       const activeFile = this.app.workspace.getActiveFile();
       const sourcePath = activeFile?.path || '';
 
-      // Resolve the link to a file
-      const linkedFile = this.app.metadataCache.getFirstLinkpathDest(path, sourcePath);
+      // Resolve the link to a file (try decoded first, then original)
+      let linkedFile = this.app.metadataCache.getFirstLinkpathDest(decodedPath, sourcePath);
+      if (!linkedFile) {
+        linkedFile = this.app.metadataCache.getFirstLinkpathDest(path, sourcePath);
+      }
 
       if (linkedFile) {
         // Get the vault's base path
@@ -121,6 +140,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
       }
     );
     this.fontManager.setDebugMode(this.settings.debugFontLoading);
+
+    // Initialize theme loader
+    this.themeLoader = new ThemeLoader(this.app, this.settings.customThemesFolder);
+    await this.themeLoader.loadThemes();
 
     addIcon('presentation', SLIDES_ICON);
 
@@ -207,6 +230,21 @@ export default class PerspectaSlidesPlugin extends Plugin {
         const cursor = editor.getCursor();
         editor.replaceRange('\n---\n\n', cursor);
         editor.setCursor({ line: cursor.line + 3, ch: 0 });
+      }
+    });
+
+    this.addCommand({
+      id: 'save-as-custom-theme',
+      name: 'Save as custom theme',
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        if (file && file.extension === 'md') {
+          if (!checking) {
+            this.saveAsCustomTheme(file);
+          }
+          return true;
+        }
+        return false;
       }
     });
 
@@ -525,7 +563,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       }
     }
 
-    const theme = getTheme(presentation.frontmatter.theme || this.settings.defaultTheme);
+    const theme = this.getThemeByName(presentation.frontmatter.theme || this.settings.defaultTheme);
 
     // Handle based on diff type
     if (diff && diff.type === 'content-only') {
@@ -674,7 +712,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
   private async updateSidebars(file: TFile) {
     const content = await this.app.vault.read(file);
     const presentation = this.parser.parse(content);
-    const theme = getTheme(presentation.frontmatter.theme || this.settings.defaultTheme);
+    const theme = this.getThemeByName(presentation.frontmatter.theme || this.settings.defaultTheme);
     const currentSlideIndex = Math.max(0, Math.min(
       this.lastCursorSlideIndex >= 0 ? this.lastCursorSlideIndex : 0,
       presentation.slides.length - 1
@@ -720,6 +758,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       if (this.fontManager) {
         view.setFontManager(this.fontManager);
       }
+      if (this.themeLoader) {
+        view.setThemeLoader(this.themeLoader);
+      }
       view.setPresentation(presentation, file);
       if (presentation.slides.length > 0 && presentation.slides[currentSlideIndex]) {
         view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
@@ -742,6 +783,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       view.setImagePathResolver(this.imagePathResolver);
       view.setPresentationImagePathResolver(this.presentationImagePathResolver);
       view.setCustomFontCSS(customFontCSS);
+      if (this.themeLoader) {
+        view.setThemeLoader(this.themeLoader);
+      }
       view.setPresentation(presentation, theme);
       // Wire up slide change callback for navigation controls (prev/next buttons)
       view.setOnSlideChange((index) => {
@@ -984,7 +1028,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
   private async exportToHTML(file: TFile) {
     const content = await this.app.vault.read(file);
     const presentation = this.parser.parse(content);
-    const theme = getTheme(presentation.frontmatter.theme || this.settings.defaultTheme);
+    const theme = this.getThemeByName(presentation.frontmatter.theme || this.settings.defaultTheme);
     const renderer = new SlideRenderer(presentation, theme);
     
     // Generate custom font CSS for cached fonts (uses base64 data URLs)
@@ -1013,18 +1057,22 @@ export default class PerspectaSlidesPlugin extends Plugin {
     try {
       const content = await this.app.vault.read(file);
       const presentation = this.parser.parse(content);
-      const theme = getTheme(presentation.frontmatter.theme || this.settings.defaultTheme);
+      const theme = this.getThemeByName(presentation.frontmatter.theme || this.settings.defaultTheme);
 
       // Close existing presentation window if open
       if (this.presentationWindow && this.presentationWindow.isOpen()) {
         this.presentationWindow.close();
       }
 
+      // Generate custom font CSS for cached fonts
+      const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
+
       // Create new presentation window
       // Use presentationImagePathResolver which returns file:// URLs for the external window
       this.presentationWindow = new PresentationWindow();
       this.presentationWindow.setImagePathResolver(this.presentationImagePathResolver);
-      await this.presentationWindow.open(presentation, theme || null, file, this.app, slideIndex);
+      this.presentationWindow.setCustomFontCSS(customFontCSS);
+      await this.presentationWindow.open(presentation, theme || null, file, slideIndex);
 
       this.currentPresentationFile = file;
     } catch (e) {
@@ -1071,7 +1119,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     // Update the presentation window with new content
     const presentation = this.parser.parse(content);
-    const theme = getTheme(presentation.frontmatter.theme || this.settings.defaultTheme);
+    const theme = this.getThemeByName(presentation.frontmatter.theme || this.settings.defaultTheme);
     this.presentationWindow.updateContent(presentation, theme || null);
   }
 
@@ -1382,18 +1430,79 @@ export default class PerspectaSlidesPlugin extends Plugin {
    * Uses base64 data URLs for iframe compatibility
    */
   async getCustomFontCSS(frontmatter: PresentationFrontmatter): Promise<string> {
-    if (!this.fontManager) return '';
-
     const cssRules: string[] = [];
-    const fontsToCheck = [frontmatter.titleFont, frontmatter.bodyFont].filter(Boolean) as string[];
 
-    for (const fontName of fontsToCheck) {
-      if (this.fontManager.isCached(fontName)) {
-        const css = await this.fontManager.generateFontFaceCSS(fontName);
-        if (css) cssRules.push(css);
+    // First, check if using a custom theme with bundled fonts
+    const themeName = frontmatter.theme || this.settings.defaultTheme;
+    const theme = this.getThemeByName(themeName);
+    
+    if (theme && !theme.isBuiltIn && this.themeLoader) {
+      // Load fonts from the custom theme's fonts/ folder
+      const themeFontCSS = await this.themeLoader.generateThemeFontCSS(theme);
+      if (themeFontCSS) {
+        cssRules.push(themeFontCSS);
+      }
+    }
+
+    // Also check for any additional fonts from the global font cache
+    // (e.g., if frontmatter overrides the theme's fonts with other cached fonts)
+    if (this.fontManager) {
+      const fontsToCheck = [frontmatter.titleFont, frontmatter.bodyFont].filter(Boolean) as string[];
+
+      for (const fontName of fontsToCheck) {
+        if (this.fontManager.isCached(fontName)) {
+          const css = await this.fontManager.generateFontFaceCSS(fontName);
+          if (css) cssRules.push(css);
+        }
       }
     }
 
     return cssRules.join('\n');
+  }
+
+  /**
+   * Get a theme by name, checking both built-in and custom themes
+   * This should be used instead of getTheme() to support custom themes
+   */
+  getThemeByName(name: string): Theme | undefined {
+    // First try the theme loader (includes both built-in and custom)
+    if (this.themeLoader) {
+      const theme = this.themeLoader.getTheme(name);
+      if (theme) return theme;
+    }
+    // Fallback to built-in themes only
+    return getTheme(name);
+  }
+
+  /**
+   * Save current presentation settings as a custom theme
+   */
+  async saveAsCustomTheme(file: TFile): Promise<void> {
+    const content = await this.app.vault.read(file);
+    const presentation = this.parser.parse(content);
+    const frontmatter = presentation.frontmatter;
+
+    // Get list of existing theme names (built-in + custom)
+    const builtInNames = getBuiltInThemeNames();
+    
+    const modal = new SaveThemeModal(
+      this.app,
+      builtInNames,
+      async (themeName: string) => {
+        const exporter = new ThemeExporter(
+          this.app,
+          this.fontManager,
+          this.settings.customThemesFolder
+        );
+        
+        await exporter.exportTheme(
+          themeName,
+          frontmatter,
+          frontmatter.theme
+        );
+      }
+    );
+    
+    modal.open();
   }
 }

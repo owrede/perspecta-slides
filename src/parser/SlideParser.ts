@@ -108,12 +108,44 @@ export class SlideParser {
         'theme': 'theme',
         'title-font': 'titleFont',
         'titleFont': 'titleFont',
+        'title-font-weight': 'titleFontWeight',
+        'titleFontWeight': 'titleFontWeight',
         'body-font': 'bodyFont',
         'bodyFont': 'bodyFont',
+        'body-font-weight': 'bodyFontWeight',
+        'bodyFontWeight': 'bodyFontWeight',
+        'header-font': 'headerFont',
+        'headerFont': 'headerFont',
+        'header-font-weight': 'headerFontWeight',
+        'headerFontWeight': 'headerFontWeight',
+        'footer-font': 'footerFont',
+        'footerFont': 'footerFont',
+        'footer-font-weight': 'footerFontWeight',
+        'footerFontWeight': 'footerFontWeight',
+        'title-font-size': 'titleFontSize',
+        'titleFontSize': 'titleFontSize',
+        'body-font-size': 'bodyFontSize',
+        'bodyFontSize': 'bodyFontSize',
         'font-size-offset': 'fontSizeOffset',
         'fontSizeOffset': 'fontSizeOffset',
+        'header-top': 'headerTop',
+        'headerTop': 'headerTop',
+        'footer-bottom': 'footerBottom',
+        'footerBottom': 'footerBottom',
+        'title-top': 'titleTop',
+        'titleTop': 'titleTop',
+        'content-top': 'contentTop',
+        'contentTop': 'contentTop',
+        'content-width': 'contentWidth',
+        'contentWidth': 'contentWidth',
         'content-top-offset': 'contentTopOffset',
         'contentTopOffset': 'contentTopOffset',
+        'header-to-edge': 'headerToEdge',
+        'headerToEdge': 'headerToEdge',
+        'footer-to-edge': 'footerToEdge',
+        'footerToEdge': 'footerToEdge',
+        'line-height': 'lineHeight',
+        'lineHeight': 'lineHeight',
         'accent1': 'accent1',
         'accent2': 'accent2',
         'accent3': 'accent3',
@@ -172,6 +204,10 @@ export class SlideParser {
         'headlineSpacingBefore': 'headlineSpacingBefore',
         'headline-spacing-after': 'headlineSpacingAfter',
         'headlineSpacingAfter': 'headlineSpacingAfter',
+        'image-overlay': 'imageOverlay',
+        'imageOverlay': 'imageOverlay',
+        'image-overlay-opacity': 'imageOverlayOpacity',
+        'imageOverlayOpacity': 'imageOverlayOpacity',
       };
 
       const mappedKey = keyMap[key];
@@ -181,7 +217,19 @@ export class SlideParser {
           (frontmatter as any)[mappedKey] = true;
         } else if (value === 'false') {
           (frontmatter as any)[mappedKey] = false;
-        } else if (mappedKey === 'fontSizeOffset' || mappedKey === 'contentTopOffset' || mappedKey === 'listItemSpacing' || mappedKey === 'headerFontSize' || mappedKey === 'footerFontSize' || mappedKey === 'headlineSpacingBefore' || mappedKey === 'headlineSpacingAfter') {
+        } else if (
+          mappedKey === 'fontSizeOffset' || mappedKey === 'contentTopOffset' ||
+          mappedKey === 'listItemSpacing' || mappedKey === 'headerFontSize' ||
+          mappedKey === 'footerFontSize' || mappedKey === 'headlineSpacingBefore' ||
+          mappedKey === 'headlineSpacingAfter' || mappedKey === 'titleFontWeight' ||
+          mappedKey === 'bodyFontWeight' || mappedKey === 'headerFontWeight' ||
+          mappedKey === 'footerFontWeight' || mappedKey === 'titleFontSize' ||
+          mappedKey === 'bodyFontSize' || mappedKey === 'titleTop' ||
+          mappedKey === 'contentTop' || mappedKey === 'contentWidth' ||
+          mappedKey === 'headerToEdge' || mappedKey === 'footerToEdge' ||
+          mappedKey === 'headerTop' || mappedKey === 'footerBottom' ||
+          mappedKey === 'lineHeight' || mappedKey === 'imageOverlayOpacity'
+        ) {
           // Parse as number for numeric properties
           const num = parseFloat(value);
           if (!isNaN(num)) {

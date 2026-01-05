@@ -106,5 +106,5 @@ th {
 
 /* Column spacing */
 .slot-columns {
-    gap: 3rem;
+    gap: calc(var(--slide-unit) * 3.5);
 }

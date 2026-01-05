@@ -1,6 +1,6 @@
-/* Tokyo Theme - Neon Dark */
+/* Kyoto Theme - Dynamic Gradient */
 
-/* Override light mode to use dark styling (Tokyo is always dark) */
+/* Light mode styling */
 .slide.light {
   background: var(--light-background);
   color: var(--light-body-text);
@@ -167,7 +167,7 @@ mark {
 
 /* Column styling */
 .slot-columns {
-  gap: 2.5rem;
+  gap: calc(var(--slide-unit) * 3);
 }
 
 /* Image slides */

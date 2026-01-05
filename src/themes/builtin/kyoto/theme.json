@@ -1,8 +1,8 @@
 {
-  "name": "Tokyo",
+  "name": "Kyoto",
   "version": "2.0.0",
   "author": "Perspecta",
-  "description": "Dynamic gradient theme inspired by iA Presenter Tokyo",
+  "description": "Dynamic gradient theme with soft pastel colors",
   "fonts": {
     "title": {
       "name": "System",
@@ -37,45 +37,40 @@
         "general": {
           "type": "dynamic",
           "colors": [
-            "#D3E9F8",
-            "#CFDEED",
-            "#E4DBEA",
-            "#E9CDD7",
-            "#F1DEDD",
-            "#F8E6DE",
-            "#F5E8E5",
-            "#F2E9DA",
-            "#F1F0D8",
-            "#E6F1E5",
-            "#E2EDEB"
+            "#F2C7CF",
+            "#F6C8A8",
+            "#F3EFE4",
+            "#CFE2B3",
+            "#B8D8C8",
+            "#BFD2E6"
           ]
         },
         "cover": {
           "type": "gradient",
           "colors": [
-            "#D3E9F8",
-            "#E4DBEA"
+            "#F2C7CF",
+            "#B8D8C8"
           ]
         },
         "title": {
           "type": "gradient",
           "colors": [
-            "#E4DBEA",
-            "#E9CDD7"
+            "#BFD2E6",
+            "#F2C7CF"
           ]
         },
         "section": {
           "type": "solid",
-          "color": "#E2EDEB"
+          "color": "#F3EFE4"
         }
       },
       "accents": [
-        "#f94144",
-        "#43aa8b",
-        "#f9c74f",
-        "#90be6d",
-        "#f8961e",
-        "#577590"
+        "#8F2C24",
+        "#2F6F5E",
+        "#A88F2D",
+        "#4F6B3A",
+        "#C24A2A",
+        "#1F3B5C"
       ]
     },
     "dark": {
@@ -100,45 +95,40 @@
         "general": {
           "type": "dynamic",
           "colors": [
-            "#4EA9E2",
-            "#3271B6",
-            "#9977B3",
-            "#D22E6B",
-            "#CB3026",
-            "#B25B30",
-            "#E07B63",
-            "#E6A63A",
-            "#BCB540",
-            "#599F51",
-            "#4EA998"
+            "#8F2C24",
+            "#C24A2A",
+            "#A88F2D",
+            "#4F6B3A",
+            "#2F6F5E",
+            "#1F3B5C"
           ]
         },
         "cover": {
           "type": "gradient",
           "colors": [
-            "#4EA9E2",
-            "#9977B3"
+            "#8F2C24",
+            "#1F3B5C"
           ]
         },
         "title": {
           "type": "gradient",
           "colors": [
-            "#9977B3",
-            "#D22E6B"
+            "#2F6F5E",
+            "#8F2C24"
           ]
         },
         "section": {
           "type": "solid",
-          "color": "#4EA998"
+          "color": "#1F3B5C"
         }
       },
       "accents": [
-        "#f94144",
-        "#43aa8b",
-        "#f9c74f",
-        "#90be6d",
-        "#f8961e",
-        "#577590"
+        "#F2C7CF",
+        "#B8D8C8",
+        "#F6C8A8",
+        "#CFE2B3",
+        "#F3EFE4",
+        "#BFD2E6"
       ]
     }
   }

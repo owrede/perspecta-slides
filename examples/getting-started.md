@@ -155,7 +155,7 @@ The Zurich theme gives you clean, minimal Swiss design.
 ### Available Themes
 
 	- **zurich** - Minimal Swiss design
-	- **tokyo** - Dark neon aesthetic
+	- **kyoto** - Dynamic gradients with soft pastels
 	- **berlin** - Professional blue tones
 	- **minimal** - Ultra-clean with whitespace
 

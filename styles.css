@@ -283,6 +283,24 @@
   line-height: 1.4;
 }
 
+/* Section description (smaller italic text below section header) */
+.perspecta-inspector .section-description {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  margin-top: -4px;
+}
+
+/* Weight setting - smaller/indented */
+.perspecta-inspector .weight-setting {
+  padding-left: 16px;
+}
+.perspecta-inspector .weight-setting .setting-item-name {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .perspecta-inspector .format-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -1294,4 +1312,105 @@
 .perspecta-font-help {
   margin-top: 8px;
   font-style: italic;
+}
+
+/* ================================
+   Save Theme Modal
+   ================================ */
+
+.perspecta-save-theme-modal {
+  max-width: 450px;
+}
+
+.perspecta-save-theme-modal h2 {
+  margin: 0 0 8px 0;
+  font-size: 1.4em;
+  font-weight: 600;
+}
+
+.perspecta-save-theme-modal .modal-description {
+  margin: 0 0 20px 0;
+  color: var(--text-muted);
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+.perspecta-save-theme-modal .setting-item {
+  border: none;
+  padding: 0;
+  margin-bottom: 16px;
+}
+
+.perspecta-save-theme-modal .setting-item-info {
+  margin-bottom: 8px;
+}
+
+.perspecta-save-theme-modal .setting-item-control {
+  width: 100%;
+}
+
+.perspecta-save-theme-modal .setting-item-control input[type="text"] {
+  width: 100%;
+}
+
+.perspecta-save-theme-modal .modal-button-container {
+  margin-top: 24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.perspecta-save-theme-modal .modal-button-container button {
+  padding: 8px 16px;
+}
+
+.perspecta-save-theme-modal .modal-button-container button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ================================
+   Theme List in Settings
+   ================================ */
+
+.perspecta-theme-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.perspecta-theme-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.perspecta-theme-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.perspecta-theme-info {
+  flex: 1;
+}
+
+.perspecta-theme-name {
+  font-weight: 600;
+  font-size: 1em;
+  color: var(--text-normal);
+  margin-bottom: 4px;
+}
+
+.perspecta-theme-meta {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.perspecta-theme-actions {
+  display: flex;
+  gap: 8px;
 }

@@ -229,5 +229,5 @@ code {
 
 /* Column styling - generous gaps */
 .slot-columns {
-  gap: 4rem;
+  gap: calc(var(--slide-unit) * 4.5);
 }

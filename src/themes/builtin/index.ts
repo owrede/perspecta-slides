@@ -12,7 +12,7 @@ import { ThemeJsonFile, ThemeModePreset } from '../ThemeSchema';
 
 // Import theme JSON files
 import zurichJson from './zurich/theme.json';
-import tokyoJson from './tokyo/theme.json';
+import kyotoJson from './kyoto/theme.json';
 import berlinJson from './berlin/theme.json';
 import minimalJson from './minimal/theme.json';
 import helveticaJson from './helvetica/theme.json';
@@ -28,7 +28,7 @@ import vancouverJson from './vancouver/theme.json';
 
 // Import theme CSS files
 import zurichCss from './zurich/theme.css';
-import tokyoCss from './tokyo/theme.css';
+import kyotoCss from './kyoto/theme.css';
 import berlinCss from './berlin/theme.css';
 import minimalCss from './minimal/theme.css';
 import helveticaCss from './helvetica/theme.css';
@@ -143,7 +143,7 @@ function createThemeFromJson(json: ThemeJsonFile, css: string): Theme {
 // Create themes from JSON/CSS files
 export const builtInThemes: Record<string, Theme> = {
   zurich: createThemeFromJson(zurichJson as ThemeJsonFile, zurichCss),
-  tokyo: createThemeFromJson(tokyoJson as ThemeJsonFile, tokyoCss),
+  kyoto: createThemeFromJson(kyotoJson as ThemeJsonFile, kyotoCss),
   berlin: createThemeFromJson(berlinJson as ThemeJsonFile, berlinCss),
   minimal: createThemeFromJson(minimalJson as ThemeJsonFile, minimalCss),
   helvetica: createThemeFromJson(helveticaJson as ThemeJsonFile, helveticaCss),
@@ -172,7 +172,7 @@ export function getBuiltInThemeNames(): string[] {
 export function getThemeJson(name: string): ThemeJsonFile | undefined {
   const themeJsons: Record<string, ThemeJsonFile> = {
     zurich: zurichJson as ThemeJsonFile,
-    tokyo: tokyoJson as ThemeJsonFile,
+    kyoto: kyotoJson as ThemeJsonFile,
     berlin: berlinJson as ThemeJsonFile,
     minimal: minimalJson as ThemeJsonFile,
     helvetica: helveticaJson as ThemeJsonFile,

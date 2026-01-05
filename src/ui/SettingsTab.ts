@@ -11,14 +11,15 @@
  * @module ui/SettingsTab
  */
 
-import { App, PluginSettingTab, Setting, Notice, setIcon } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice, setIcon, TFolder } from 'obsidian';
 import type PerspectaSlidesPlugin from '../../main';
 import { renderChangelogToContainer } from '../changelog';
 import { getThemeNames } from '../themes';
-import { ContentMode } from '../types';
+import { getBuiltInThemeNames } from '../themes/builtin';
+import { ContentMode, Theme } from '../types';
 import { FontManager, CachedFont } from '../utils/FontManager';
 
-type SettingsTabId = 'changelog' | 'presentation' | 'fonts' | 'content' | 'export' | 'debug';
+type SettingsTabId = 'changelog' | 'presentation' | 'themes' | 'fonts' | 'content' | 'export' | 'debug';
 
 export class PerspectaSlidesSettingTab extends PluginSettingTab {
 	plugin: PerspectaSlidesPlugin;
@@ -48,6 +49,7 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 		const tabs: { id: SettingsTabId; label: string }[] = [
 			{ id: 'changelog', label: 'Changelog' },
 			{ id: 'presentation', label: 'Presentation' },
+			{ id: 'themes', label: 'Themes' },
 			{ id: 'fonts', label: 'Fonts' },
 			{ id: 'content', label: 'Content' },
 			{ id: 'export', label: 'Export' },
@@ -75,6 +77,9 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 			case 'presentation':
 				this.displayPresentationSettings(content);
 				break;
+			case 'themes':
+				this.displayThemesSettings(content);
+				break;
 			case 'fonts':
 				this.displayFontsSettings(content);
 				break;
@@ -101,9 +106,21 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 			.setName('Default theme')
 			.setDesc('The theme to use when no theme is specified in the presentation frontmatter.')
 			.addDropdown(dropdown => {
-				getThemeNames().forEach(name => {
+				// Add built-in themes
+				getBuiltInThemeNames().forEach(name => {
 					dropdown.addOption(name, name.charAt(0).toUpperCase() + name.slice(1));
 				});
+				// Add custom themes
+				if (this.plugin.themeLoader) {
+					const customThemes = this.plugin.themeLoader.getCustomThemes();
+					if (customThemes.length > 0) {
+						customThemes.forEach(theme => {
+							const name = theme.template.Name.toLowerCase();
+							const displayName = theme.template.Name;
+							dropdown.addOption(name, `${displayName} ★`);
+						});
+					}
+				}
 				dropdown.setValue(this.plugin.settings.defaultTheme);
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.defaultTheme = value;
@@ -147,6 +164,105 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 					this.plugin.settings.showInspector = value;
 					await this.plugin.saveSettings();
 				}));
+	}
+
+	private displayThemesSettings(containerEl: HTMLElement): void {
+		containerEl.createEl('h2', { text: 'Custom Themes Folder' });
+
+		new Setting(containerEl)
+			.setName('Storage folder')
+			.setDesc('Folder in your vault where custom themes are stored. Each theme is a subfolder with theme.json and theme.css.')
+			.addText(text => text
+				.setPlaceholder('perspecta-themes')
+				.setValue(this.plugin.settings.customThemesFolder)
+				.onChange(async (value) => {
+					this.plugin.settings.customThemesFolder = value.trim() || 'perspecta-themes';
+					if (this.plugin.themeLoader) {
+						this.plugin.themeLoader.setCustomThemesFolder(this.plugin.settings.customThemesFolder);
+						await this.plugin.themeLoader.loadThemes();
+					}
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Reload themes')
+			.setDesc('Reload custom themes from the storage folder.')
+			.addButton(button => button
+				.setButtonText('Reload')
+				.onClick(async () => {
+					if (this.plugin.themeLoader) {
+						await this.plugin.themeLoader.loadThemes();
+						new Notice('Custom themes reloaded');
+						this.display();
+					}
+				}));
+
+		containerEl.createEl('h2', { text: 'Custom Themes' });
+
+		const themeLoader = this.plugin.themeLoader;
+		if (!themeLoader) {
+			containerEl.createEl('p', { text: 'Theme loader not initialized.' });
+			return;
+		}
+
+		const customThemes = themeLoader.getCustomThemes();
+
+		if (customThemes.length === 0) {
+			const emptyState = containerEl.createDiv({ cls: 'perspecta-slides-info-box' });
+			emptyState.createEl('p', { 
+				text: 'No custom themes found. Use "Perspecta Slides: Save as custom theme" command to create one from your current presentation settings.' 
+			});
+		} else {
+			const themeList = containerEl.createDiv({ cls: 'perspecta-theme-list' });
+
+			for (const theme of customThemes) {
+				const themeItem = themeList.createDiv({ cls: 'perspecta-theme-item' });
+
+				const themeInfo = themeItem.createDiv({ cls: 'perspecta-theme-info' });
+				themeInfo.createEl('div', { cls: 'perspecta-theme-name', text: theme.template.Name });
+				
+				const themeMeta = themeInfo.createDiv({ cls: 'perspecta-theme-meta' });
+				themeMeta.createEl('span', { text: `Fonts: ${theme.template.TitleFont} / ${theme.template.BodyFont}` });
+				if (theme.template.Author) {
+					themeMeta.createEl('span', { text: ` • By: ${theme.template.Author}` });
+				}
+
+				const themeActions = themeItem.createDiv({ cls: 'perspecta-theme-actions' });
+
+				const deleteBtn = themeActions.createEl('button', { cls: 'perspecta-font-btn perspecta-font-btn-danger' });
+				setIcon(deleteBtn, 'trash-2');
+				deleteBtn.setAttribute('aria-label', 'Delete theme');
+				deleteBtn.addEventListener('click', async () => {
+					if (confirm(`Delete theme "${theme.template.Name}"? This will remove the theme folder and all its files.`)) {
+						await this.deleteCustomTheme(theme.basePath);
+						new Notice(`Theme "${theme.template.Name}" deleted`);
+						if (this.plugin.themeLoader) {
+							await this.plugin.themeLoader.loadThemes();
+						}
+						this.display();
+					}
+				});
+			}
+		}
+
+		// Info about creating themes
+		const infoBox = containerEl.createDiv({ cls: 'perspecta-slides-info-box' });
+		infoBox.createEl('h4', { text: 'Creating Custom Themes' });
+		infoBox.createEl('p', { 
+			text: 'To create a custom theme, open a presentation markdown file, adjust settings in the Inspector (fonts, colors, typography, margins), then run "Perspecta Slides: Save as custom theme" from the command palette.' 
+		});
+	}
+
+	private async deleteCustomTheme(themePath: string): Promise<void> {
+		const folder = this.app.vault.getAbstractFileByPath(themePath);
+		if (folder instanceof TFolder) {
+			// Delete all files in the folder first
+			for (const child of [...folder.children]) {
+				await this.app.vault.delete(child);
+			}
+			// Then delete the folder
+			await this.app.vault.delete(folder);
+		}
 	}
 
 	private displayFontsSettings(containerEl: HTMLElement): void {
@@ -318,19 +434,6 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 		advancedList.createEl('li', { text: 'All content appears on slide by default' });
 		advancedList.createEl('li', { text: 'Lines starting with "note:" become speaker notes' });
 		advancedList.createEl('li', { text: 'Supports more advanced markdown features' });
-
-		containerEl.createEl('h2', { text: 'Custom Themes' });
-
-		new Setting(containerEl)
-			.setName('Custom themes folder')
-			.setDesc('Folder in your vault for custom themes. Each theme is a subfolder with template.json, presets.json, and CSS.')
-			.addText(text => text
-				.setPlaceholder('perspecta-themes')
-				.setValue(this.plugin.settings.customThemesFolder)
-				.onChange(async (value) => {
-					this.plugin.settings.customThemesFolder = value.trim() || 'perspecta-themes';
-					await this.plugin.saveSettings();
-				}));
 	}
 
 	private displayExportSettings(containerEl: HTMLElement): void {

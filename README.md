@@ -7,7 +7,9 @@ An Obsidian plugin for creating presentations from Markdown, inspired by [iA Pre
 - **iA Presenter-style syntax**: Write presentations using familiar Markdown with the same conventions as iA Presenter
 - **Thumbnail navigator**: See all your slides at a glance in the left sidebar with drag-and-drop reordering
 - **Inspector panel**: Edit slide properties, layouts, and design settings in the right sidebar
-- **Multiple themes**: Built-in themes (Zurich, Tokyo, Berlin, Minimal, Helvetica, Basel, Copenhagen) with customizable colors and fonts
+- **Multiple themes**: 12 built-in themes with customizable colors and fonts
+- **Custom themes**: Save your design settings as reusable custom themes
+- **Google Fonts**: Download and cache fonts locally for offline presentations
 - **HTML export**: Export your presentations as standalone HTML files
 - **Speaker notes**: Regular paragraphs become speaker notes visible only to you
 - **Presentation mode**: Present directly from Obsidian in a frameless window
@@ -148,23 +150,45 @@ With a background image
 
 ## Themes
 
-Perspecta Slides includes seven built-in themes:
+Perspecta Slides includes twelve built-in themes:
 
 - **zurich** - Minimal Swiss design with clean typography
-- **tokyo** - Dark theme with vibrant neon accents
+- **kyoto** - Dynamic gradient theme with soft pastel colors
 - **berlin** - Professional theme with deep blue tones
 - **minimal** - Ultra-clean minimal design with generous whitespace
 - **helvetica** - Classic typography focus with professional design
 - **basel** - Swiss serif typography with Noto Serif font
 - **copenhagen** - Nordic elegance with Albert Sans font
+- **garamond** - Classic serif elegance
+- **la** - Modern California style
+- **milano** - Italian sophistication
+- **newyork** - Bold metropolitan design
+- **paris** - Elegant French typography
 
 Set your theme in the frontmatter:
 
 ```yaml
 ---
-theme: tokyo
+theme: kyoto
 ---
 ```
+
+### Custom Themes
+
+Create your own reusable themes from your current presentation settings:
+
+1. Customize your presentation using the Inspector (fonts, colors, typography, margins)
+2. Run **"Perspecta Slides: Save as custom theme"** from the command palette
+3. Enter a name for your theme
+4. Your theme is saved to the custom themes folder (default: `perspecta-themes/`)
+
+Custom themes include:
+- Font selections and weights (including cached Google Fonts)
+- All color settings (light/dark mode, accents, per-heading colors)
+- Typography settings (sizes, spacing, line height)
+- Margin settings (header, footer, title, content positions)
+
+Custom themes appear in theme dropdowns with a ★ marker. Manage your custom themes in **Settings → Themes**.
 
 ## Transitions
 
@@ -188,6 +212,7 @@ transition: slide
 - **Export presentation to HTML**: Export as standalone HTML
 - **Start presentation**: Open presentation in a new window (fullscreen)
 - **Insert slide separator**: Insert `---` at cursor
+- **Save as custom theme**: Save current presentation settings as a reusable theme
 
 ## Presenter View
 

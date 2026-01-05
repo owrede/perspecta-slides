@@ -11,26 +11,43 @@ export interface PresentationFrontmatter {
   // Content mode: how to distinguish slide content from speaker notes
   contentMode?: ContentMode;
 
-  // Typography (overrides theme)
+  // Typography - Fonts (overrides theme)
   titleFont?: string;
+  titleFontWeight?: number;
   bodyFont?: string;
+  bodyFontWeight?: number;
+  headerFont?: string;  // Specific font for header (default: inherits body)
+  headerFontWeight?: number;
+  footerFont?: string;  // Specific font for footer (default: inherits body)
+  footerFontWeight?: number;
 
-  // Font size offset as percentage (-50 to +50, e.g., -20 makes text 20% smaller)
+  // Typography - Sizes (as percentage offset from defaults)
+  titleFontSize?: number;   // % offset for all title/heading fonts (-50 to +50)
+  bodyFontSize?: number;    // % offset for body text (-50 to +50)
+  headerFontSize?: number;  // % offset for header text (-50 to +50)
+  footerFontSize?: number;  // % offset for footer text (-50 to +50)
+
+  // Legacy: fontSizeOffset affects all text (deprecated, use titleFontSize/bodyFontSize)
   fontSizeOffset?: number;
 
-  // Content top offset - pushes column content down (0 to 50, as percentage of slide height)
-  contentTopOffset?: number;
-
-  // List item spacing (margin-bottom in em)
-  listItemSpacing?: number;
-
-  // Header/Footer font sizes (in em)
-  headerFontSize?: number;
-  footerFontSize?: number;
-
-  // Headline spacing (in em)
+  // Typography - Spacing (in em)
   headlineSpacingBefore?: number;
   headlineSpacingAfter?: number;
+  listItemSpacing?: number;
+  lineHeight?: number;      // Line height multiplier (default: 1.1)
+
+  // Typography - Margins (in em, absolute distance from slide edge)
+  headerTop?: number;       // Distance of header from top edge (default: 2.5em)
+  footerBottom?: number;    // Distance of footer from bottom edge (default: 2.5em)
+  titleTop?: number;        // Distance of title from top edge (default: 5em)
+  contentTop?: number;      // Distance of content from top edge (default: 12em)
+  contentWidth?: number;    // Left/right margin for all content including header/footer (default: 5em)
+
+  // Legacy: contentTopOffset as percentage (deprecated)
+  contentTopOffset?: number;
+  // Legacy: headerToEdge/footerToEdge (deprecated, use headerTop/footerBottom)
+  headerToEdge?: number;
+  footerToEdge?: number;
 
   // Colors (overrides theme presets)
   accent1?: string;
@@ -285,6 +302,29 @@ export interface ThemePresetsFile {
 }
 
 /**
+ * Theme mode preset for per-heading colors and layout backgrounds
+ * (Used by custom themes loaded from theme.json)
+ */
+export interface ThemeModePreset {
+  text: {
+    h1: string[];
+    h2: string[];
+    h3: string[];
+    h4: string[];
+    body: string;
+    header: string;
+    footer: string;
+  };
+  backgrounds: {
+    general: { type: 'solid' | 'gradient' | 'dynamic'; color?: string; colors?: string[] };
+    cover: { type: 'solid' | 'gradient' | 'dynamic'; color?: string; colors?: string[] };
+    title: { type: 'solid' | 'gradient' | 'dynamic'; color?: string; colors?: string[] };
+    section: { type: 'solid' | 'gradient' | 'dynamic'; color?: string; colors?: string[] };
+  };
+  accents: string[];
+}
+
+/**
  * Loaded theme with all resources
  */
 export interface Theme {
@@ -294,6 +334,13 @@ export interface Theme {
   basePath: string;
   thumbnail?: string;
   isBuiltIn: boolean;
+  /** Parsed theme.json data for custom themes (supports per-heading colors, etc.) */
+  themeJsonData?: {
+    presets: {
+      light: ThemeModePreset;
+      dark: ThemeModePreset;
+    };
+  };
 }
 
 // ============================================

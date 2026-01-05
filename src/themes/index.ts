@@ -34,7 +34,9 @@ export function generateThemeCSS(theme: Theme, context: 'thumbnail' | 'preview' 
   }
 
   // Try to get enhanced theme.json data for new features
-  const themeJson = getThemeJson(theme.template.Name.toLowerCase());
+  // For custom themes, use themeJsonData stored on the Theme object
+  // For built-in themes, use getThemeJson
+  const themeJson = theme.themeJsonData || getThemeJson(theme.template.Name.toLowerCase());
 
   // Basic CSS variables from legacy preset
   let cssVars = `

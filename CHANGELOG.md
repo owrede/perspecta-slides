@@ -2,6 +2,31 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.0] - 2026-01-05
+
+### Custom Themes
+
+- **New**: Save current presentation settings as a reusable custom theme via command palette
+- **New**: Custom themes saved to configurable folder (default: `perspecta-themes/`) with `theme.json` and `theme.css`
+- **New**: Custom themes include all settings: fonts, colors, typography, margins, and spacing
+- **New**: Bundled fonts - custom themes automatically include cached Google Fonts in a `fonts/` subfolder
+- **New**: Themes tab in Settings for managing storage folder and deleting custom themes
+- **New**: Custom themes appear in all theme dropdowns with ★ marker
+
+### Inspector Improvements
+
+- **Improved**: Font dropdowns now show theme default font name (e.g., "Theme Default (Barlow)")
+- **Improved**: Header/Footer font dropdowns show inherited font (e.g., "Inherit from Body (Helvetica)")
+- **Improved**: Theme color and typography settings from custom themes now apply correctly to slides
+
+### Technical
+
+- **New**: ThemeLoader supports loading from new `theme.json` format (Perspecta custom themes)
+- **New**: Custom theme fonts loaded from theme's `fonts/` folder (not just global cache)
+- **New**: Theme presets data preserved for per-heading colors and layout-specific backgrounds
+- **Fix**: Theme resolution unified across all components (main, Inspector, PresentationView)
+- **Fix**: Custom themes with same name as built-in themes get "(custom)" suffix
+
 ## [0.1.9] - 2026-01-04
 
 - **New**: Google Fonts integration - download and cache fonts locally for offline use
@@ -79,12 +104,12 @@ All notable changes to Perspecta Slides will be documented in this file.
 - **New**: Copenhagen theme - Nordic elegance with Albert Sans font and weight hierarchy
 - **New**: Added 2 additional iA Presenter theme translations
 - **Fix**: Fixed Berlin theme heading colors for proper light/dark mode compatibility
-- **Fix**: Fixed Tokyo theme dark mode color contrast (white text on dark background)
+- **Fix**: Fixed Kyoto theme dark mode color contrast (white text on dark background)
 - **Fix**: Fixed Zurich theme light/dark mode color definitions
 - **Fix**: Corrected color variable bugs in multiple themes
 - **Improved**: All built-in themes now have proper light/dark mode support
 - **Improved**: Enhanced theme translation process from iA Presenter format
-- **Themes**: Now includes 7 built-in themes (Zurich, Tokyo, Berlin, Minimal, Helvetica, Basel, Copenhagen)
+- **Themes**: Now includes 7 built-in themes (Zurich, Kyoto, Berlin, Minimal, Helvetica, Basel, Copenhagen)
 
 ## [0.1.2] - 2026-01-02
 
@@ -98,11 +123,11 @@ All notable changes to Perspecta Slides will be documented in this file.
 - **Fix**: Speaker notes hidden from thumbnails and preview contexts
 - **Fix**: Font sizes now proportional between thumbnails and preview
 - **Fix**: Corrected color variable bugs in light/dark modes
-- **Fix**: Tokyo theme gradient headings now display correctly
+- **Fix**: Kyoto theme gradient headings now display correctly
 - **Fix**: Helvetica theme colors now work properly in both modes
 - **Fix**: Removed conflicting slide-specific CSS from global styles
 - **Improved**: Thumbnail text scaling now matches preview proportions
-- **Improved**: All themes (Zurich, Tokyo, Berlin, Minimal, Helvetica) render consistently
+- **Improved**: All themes (Zurich, Kyoto, Berlin, Minimal, Helvetica) render consistently
 - **Improved**: Better performance with iframe-based rendering
 - **Technical**: Refactored SlideRenderer for context-dependent rendering
 - **Technical**: Enhanced theme system with proper CSS cascade management
@@ -133,7 +158,7 @@ All notable changes to Perspecta Slides will be documented in this file.
 - HTML export with standalone presentations
 - Present mode with fullscreen browser presentation
 - Presenter View with speaker notes
-- Built-in themes: Zurich, Tokyo, Berlin, Minimal
+- Built-in themes: Zurich, Kyoto, Berlin, Minimal
 - Custom theme support from vault folder
 - Multiple layout types: cover, title, section, columns, image layouts
 - Keyboard navigation in presentation view

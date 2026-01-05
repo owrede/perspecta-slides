@@ -480,8 +480,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
       existing[0].detach();
     } else {
       await this.ensureThumbnailNavigator();
+      // Wait for the view to be fully initialized before updating
+      await this.waitForView(THUMBNAIL_VIEW_TYPE);
       const file = this.app.workspace.getActiveFile();
-      if (file) {
+      if (file && file.extension === 'md') {
         this.updateSidebars(file);
       }
     }
@@ -494,11 +496,27 @@ export default class PerspectaSlidesPlugin extends Plugin {
       existing[0].detach();
     } else {
       await this.ensureInspector();
+      // Wait for the view to be fully initialized before updating
+      await this.waitForView(INSPECTOR_VIEW_TYPE);
       const file = this.app.workspace.getActiveFile();
-      if (file) {
+      if (file && file.extension === 'md') {
         this.updateSidebars(file);
       }
     }
+  }
+
+  /**
+   * Wait for a view type to be available and ready
+   */
+  private async waitForView(viewType: string, maxAttempts: number = 10): Promise<boolean> {
+    for (let i = 0; i < maxAttempts; i++) {
+      const leaves = this.app.workspace.getLeavesOfType(viewType);
+      if (leaves.length > 0 && leaves[0].view) {
+        return true;
+      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    return false;
   }
 
   private async ensureThumbnailNavigator() {

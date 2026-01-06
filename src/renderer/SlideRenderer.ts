@@ -20,11 +20,41 @@ export class SlideRenderer {
   private resolveImagePath: ImagePathResolver | null = null;
   private customFontCSS: string = '';
   private systemColorScheme: 'light' | 'dark' = 'light';
+  private fontWeightsCache: Map<string, number[]> = new Map(); // Cache of font name -> available weights
 
   constructor(presentation: Presentation, theme?: Theme, resolveImagePath?: ImagePathResolver) {
     this.presentation = presentation;
     this.theme = theme || null;
     this.resolveImagePath = resolveImagePath || null;
+  }
+
+  /**
+   * Set font weights metadata for validation
+   * Called by the plugin to provide available weights for each cached font
+   */
+  setFontWeightsCache(fontWeights: Map<string, number[]>): void {
+    this.fontWeightsCache = fontWeights;
+  }
+
+  /**
+   * Validate and sanitize a font weight against available weights for a font
+   * Returns the weight if valid, or the closest valid weight, or undefined
+   */
+  private validateFontWeight(fontName: string | undefined, weight: number | undefined): number | undefined {
+    if (!weight || !fontName) return undefined;
+
+    const availableWeights = this.fontWeightsCache.get(fontName);
+    if (!availableWeights || availableWeights.length === 0) return undefined;
+
+    // If weight is available, use it
+    if (availableWeights.includes(weight)) return weight;
+
+    // Find closest available weight (prefer heavier weights)
+    const sorted = availableWeights.sort((a, b) => a - b);
+    const closest = sorted.reduce((prev, curr) =>
+      Math.abs(curr - weight) < Math.abs(prev - weight) ? curr : prev
+    );
+    return closest;
   }
 
   /**
@@ -1740,28 +1770,45 @@ export class SlideRenderer {
         display: flex;
         flex-direction: column;
         z-index: 2;
+        padding: 0;
+      }
+      .caption-container .slide-content {
+        position: static !important;
+        left: auto !important;
+        right: auto !important;
+        top: auto !important;
+        bottom: auto !important;
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
       }
       .layout-caption { 
-        padding: 0;
-        flex: 1;
+        position: static !important;
+        left: auto !important;
+        right: auto !important;
+        top: auto !important;
+        bottom: auto !important;
+        padding: 0 !important;
+        flex: 1 1 auto;
         display: flex;
         flex-direction: column;
+        min-height: 0;
       }
       .layout-caption .caption-content {
-        flex: 1;
+        flex: 1 1 auto;
         display: flex;
         flex-direction: column;
-        position: relative;
+        min-height: 0;
       }
       .layout-caption .slot-title-bar { 
-        position: absolute;
-        top: calc(var(--slide-unit) * 4);
-        left: calc(var(--slide-unit) * 5);
-        right: calc(var(--slide-unit) * 5);
-        z-index: 3;
+        flex: 0 0 auto;
+        padding: 0 calc(var(--slide-unit) * 2);
+        background: transparent;
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: flex-start;
+        height: calc(var(--slide-unit) * 6);
       }
       .layout-caption .slot-title-bar h1,
       .layout-caption .slot-title-bar h2,
@@ -1769,20 +1816,26 @@ export class SlideRenderer {
       .layout-caption .slot-title-bar h4,
       .layout-caption .slot-title-bar h5,
       .layout-caption .slot-title-bar h6 {
-        font-size: calc(var(--slide-unit) * 5 * var(--title-font-scale, 1) * var(--font-scale, 1));
+        font-family: var(--title-font, system-ui, -apple-system, sans-serif) !important;
+        font-weight: var(--title-font-weight, 700) !important;
+        font-size: calc(var(--slide-unit) * 3.5 * var(--title-font-scale, 1) * var(--font-scale, 1));
         margin: 0;
-        line-height: 1.2;
-        text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        line-height: 1.0;
+        padding: 0;
+        display: block;
       }
       .layout-caption .slot-image { 
-        position: absolute;
-        top: 0; left: 0; right: 0; bottom: 0;
-        z-index: 1;
+        flex: 1 1 auto;
+        display: flex;
+        min-height: 0;
+        max-height: 100%;
         overflow: hidden;
+        width: 100%;
       }
       .layout-caption .slot-image .image-slot {
-        position: absolute;
-        top: 0; left: 0; right: 0; bottom: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
       }
       .layout-caption .slot-image img { 
         width: 100%; 
@@ -1791,14 +1844,21 @@ export class SlideRenderer {
         display: block;
       }
       .layout-caption .slot-caption { 
-        position: absolute;
-        bottom: calc(var(--slide-unit) * 4);
-        left: calc(var(--slide-unit) * 5);
-        right: calc(var(--slide-unit) * 5);
-        z-index: 3;
+        flex: 0 0 auto;
+        padding: 0 calc(var(--slide-unit) * 2);
+        background: transparent;
         text-align: left;
-        font-size: calc(var(--slide-unit) * 2.5 * var(--body-font-scale, 1) * var(--font-scale, 1));
-        text-shadow: 0 1px 4px rgba(0,0,0,0.3);
+        font-size: calc(var(--slide-unit) * 2 * var(--body-font-scale, 1) * var(--font-scale, 1));
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        height: calc(var(--slide-unit) * 6);
+      }
+      .layout-caption .slot-caption p {
+        margin: 0;
+        padding: 0;
+        line-height: 1.0;
+        display: block;
       }
       
       /* ============================================
@@ -2034,30 +2094,36 @@ ${this.getSlideCSS()}
   private generateCSSVariables(frontmatter: PresentationFrontmatter): string {
     const vars: string[] = [];
 
+    // Validate font weights against available weights for each font
+    const validTitleWeight = this.validateFontWeight(frontmatter.titleFont, frontmatter.titleFontWeight);
+    const validBodyWeight = this.validateFontWeight(frontmatter.bodyFont, frontmatter.bodyFontWeight);
+    const validHeaderWeight = this.validateFontWeight(frontmatter.headerFont, frontmatter.headerFontWeight);
+    const validFooterWeight = this.validateFontWeight(frontmatter.footerFont, frontmatter.footerFontWeight);
+
     // Fonts
     if (frontmatter.titleFont) {
       vars.push(`  --title-font: '${frontmatter.titleFont}', sans-serif;`);
     }
-    if (frontmatter.titleFontWeight !== undefined) {
-      vars.push(`  --title-font-weight: ${frontmatter.titleFontWeight};`);
+    if (validTitleWeight !== undefined) {
+      vars.push(`  --title-font-weight: ${validTitleWeight};`);
     }
     if (frontmatter.bodyFont) {
       vars.push(`  --body-font: '${frontmatter.bodyFont}', sans-serif;`);
     }
-    if (frontmatter.bodyFontWeight !== undefined) {
-      vars.push(`  --body-font-weight: ${frontmatter.bodyFontWeight};`);
+    if (validBodyWeight !== undefined) {
+      vars.push(`  --body-font-weight: ${validBodyWeight};`);
     }
     if (frontmatter.headerFont) {
       vars.push(`  --header-font: '${frontmatter.headerFont}', sans-serif;`);
     }
-    if (frontmatter.headerFontWeight !== undefined) {
-      vars.push(`  --header-font-weight: ${frontmatter.headerFontWeight};`);
+    if (validHeaderWeight !== undefined) {
+      vars.push(`  --header-font-weight: ${validHeaderWeight};`);
     }
     if (frontmatter.footerFont) {
       vars.push(`  --footer-font: '${frontmatter.footerFont}', sans-serif;`);
     }
-    if (frontmatter.footerFontWeight !== undefined) {
-      vars.push(`  --footer-font-weight: ${frontmatter.footerFontWeight};`);
+    if (validFooterWeight !== undefined) {
+      vars.push(`  --footer-font-weight: ${validFooterWeight};`);
     }
 
     // Font sizes (as scale factors, convert from % offset)

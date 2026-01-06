@@ -25,6 +25,7 @@ export class PresentationView extends ItemView {
   private onReload: (() => void) | null = null;
   private onGetFontCSS: ((frontmatter: any) => Promise<string>) | null = null;
   private onStartPresentation: ((file: TFile, slideIndex: number) => void) | null = null;
+  private fontWeightsCache: Map<string, number[]> = new Map();
   
   // Live update related properties
   private sourceFile: TFile | null = null;
@@ -64,6 +65,13 @@ export class PresentationView extends ItemView {
   }
 
   /**
+   * Set the font weights cache for validating font weights
+   */
+  setFontWeightsCache(cache: Map<string, number[]>): void {
+    this.fontWeightsCache = cache;
+  }
+
+  /**
    * Get a theme by name, using themeLoader if available
    */
   private getThemeByName(name: string): Theme | undefined {
@@ -86,6 +94,8 @@ export class PresentationView extends ItemView {
     if (this.customFontCSS) {
       renderer.setCustomFontCSS(this.customFontCSS);
     }
+    // Set font weights cache for validation
+    renderer.setFontWeightsCache(this.fontWeightsCache);
     // Set system color scheme so 'system' mode resolves correctly
     renderer.setSystemColorScheme(this.getSystemColorScheme());
     return renderer;

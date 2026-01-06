@@ -554,7 +554,9 @@ export class InspectorPanelView extends ItemView {
             const label = this.getWeightLabel(w);
             dropdown.addOption(w.toString(), label);
           });
-          dropdown.setValue((currentWeight || weights[0] || 400).toString());
+          // Only use currentWeight if it's valid for this font, otherwise use first available weight
+          const validWeight = (currentWeight && weights.includes(currentWeight)) ? currentWeight : weights[0] || 400;
+          dropdown.setValue(validWeight.toString());
           dropdown.onChange(value => onWeightChange(parseInt(value)));
         });
     };

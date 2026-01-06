@@ -847,26 +847,46 @@
 
 .perspecta-presentation-view .layout-caption {
   padding: 0 !important;
+  display: flex;
+  flex-direction: column;
 }
 
 .perspecta-presentation-view .caption-content {
+  display: flex;
+  flex-direction: column;
   padding: 0;
   gap: 0;
+  flex: 1;
+  min-height: 0;
 }
 
 .perspecta-presentation-view .caption-content .slot-title-bar {
-  padding: calc(var(--slide-base, 1px) * 24) 5%;
-  background: rgba(0, 0, 0, 0.03);
+  flex: 0 0 auto;
+  padding: calc(var(--slide-base, 1px) * 24) calc(var(--slide-base, 1px) * 32);
+  background: var(--slide-background, #ffffff);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.perspecta-presentation-view .caption-content .slot-title-bar h1,
+.perspecta-presentation-view .caption-content .slot-title-bar h2,
+.perspecta-presentation-view .caption-content .slot-title-bar h3 {
+  margin: 0;
 }
 
 .perspecta-presentation-view .caption-content .slot-image {
   flex: 1;
   display: flex;
   min-height: 0;
+  overflow: hidden;
+  width: 100%;
 }
 
 .perspecta-presentation-view .caption-content .slot-image .image-slot {
   flex: 1;
+  width: 100%;
+  height: 100%;
 }
 
 .perspecta-presentation-view .caption-content .slot-image img {
@@ -876,7 +896,9 @@
 }
 
 .perspecta-presentation-view .caption-content .slot-caption {
-  padding: calc(var(--slide-base, 1px) * 16) 5%;
+  flex: 0 0 auto;
+  padding: calc(var(--slide-base, 1px) * 16) calc(var(--slide-base, 1px) * 32);
+  background: var(--slide-background, #ffffff);
   text-align: center;
 }
 

@@ -1,4 +1,5 @@
 import { App, TFile, TFolder, requestUrl } from 'obsidian';
+import { getDebugService } from './DebugService';
 
 /**
  * Cached font metadata
@@ -559,22 +560,32 @@ export class FontManager {
    * For variable fonts, generates a single @font-face with weight range
    */
   async generateFontFaceCSSForExport(fontName: string): Promise<string> {
+    const debug = getDebugService();
     const font = this.getCachedFont(fontName);
+    
     if (!font) {
+      debug.warn('font-loading', `Font "${fontName}" not found in cache for CSS generation`);
       return '';
     }
+
+    debug.log('font-loading', `Generating @font-face CSS for "${fontName}" with ${font.files.length} files`);
 
     const rules: string[] = [];
     const processedFiles = new Set<string>();
 
     for (const file of font.files) {
+      // Normalize the path - remove double slashes that might have been introduced during caching
+      const normalizedPath = file.localPath.replace(/\/+/g, '/');
+      
       // Skip if we've already processed this file (for variable fonts with one file)
-      if (processedFiles.has(file.localPath)) continue;
-      processedFiles.add(file.localPath);
+      if (processedFiles.has(normalizedPath)) continue;
+      processedFiles.add(normalizedPath);
 
-      const fontFile = this.app.vault.getAbstractFileByPath(file.localPath);
+      debug.log('font-loading', `Processing font file: ${normalizedPath} (weight: ${file.weight}, style: ${file.style})`);
+
+      const fontFile = this.app.vault.getAbstractFileByPath(normalizedPath);
       if (!(fontFile instanceof TFile)) {
-        this.log('Font file not found:', file.localPath);
+        debug.warn('font-loading', `Font file not found in vault: ${normalizedPath}`);
         continue;
       }
 
@@ -599,20 +610,24 @@ export class FontManager {
         const formatString = formatStrings[file.format] || file.format;
 
         // Each file has its own weight (non-variable fonts have separate files per weight)
-        rules.push(`
+        const rule = `
 @font-face {
   font-family: '${font.name}';
   font-style: ${file.style};
   font-weight: ${file.weight};
   font-display: swap;
   src: url('data:${mimeType};base64,${base64}') format('${formatString}');
-}`);
+}`;
+        rules.push(rule);
+        debug.log('font-loading', `Generated @font-face for ${font.name} weight ${file.weight} (${base64.length} bytes base64)`);
       } catch (e) {
-        this.log('Failed to read font file for export:', file.localPath);
+        debug.error('font-loading', `Failed to read font file: ${normalizedPath}, Error: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
-    return rules.join('\n');
+    const result = rules.join('\n');
+    debug.log('font-loading', `Generated ${rules.length} @font-face rules for "${fontName}" (${result.length} bytes total)`);
+    return result;
   }
 
   /**

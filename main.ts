@@ -791,11 +791,14 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
     // Generate custom font CSS for cached fonts
     const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
+    // Build font weights cache for validation
+    const fontWeightsCache = this.buildFontWeightsCache();
 
     for (const leaf of thumbnailLeaves) {
       const view = leaf.view as ThumbnailNavigatorView;
       view.setImagePathResolver(this.imagePathResolver);
       view.setCustomFontCSS(customFontCSS);
+      view.setFontWeightsCache(fontWeightsCache);
       view.setPresentation(presentation, file, theme);
       view.setOnSlideSelect((index) => {
         this.navigateToSlide(index, presentation, file);
@@ -841,6 +844,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       view.setImagePathResolver(this.imagePathResolver);
       view.setPresentationImagePathResolver(this.presentationImagePathResolver);
       view.setCustomFontCSS(customFontCSS);
+      view.setFontWeightsCache(fontWeightsCache);
       if (this.themeLoader) {
         view.setThemeLoader(this.themeLoader);
       }
@@ -913,7 +917,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     if (markdownView && markdownView.file) {
       const content = await this.app.vault.cachedRead(markdownView.file);
-      const lineNumber = this.getLineNumberForSlide(content, index);
+      // Use the slide's original index (accounting for filtered-out empty slides)
+      const slideOriginalIndex = presentation.slides[index]?.index ?? index;
+      const lineNumber = this.getLineNumberForSlide(content, slideOriginalIndex);
       const editor = markdownView.editor;
 
       // Update lastCursorSlideIndex to prevent feedback loop
@@ -1101,6 +1107,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Generate custom font CSS for cached fonts (uses base64 data URLs)
     const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
     renderer.setCustomFontCSS(customFontCSS);
+    
+    // Set font weights cache for validation
+    renderer.setFontWeightsCache(this.buildFontWeightsCache());
     
     // Set system color scheme so 'system' mode resolves correctly
     renderer.setSystemColorScheme(getSystemColorScheme());
@@ -1534,6 +1543,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
    */
   async getCustomFontCSS(frontmatter: PresentationFrontmatter): Promise<string> {
     const cssRules: string[] = [];
+    const debug = this.debugService;
 
     // First, check if using a custom theme with bundled fonts
     const themeName = frontmatter.theme || this.settings.defaultTheme;
@@ -1543,24 +1553,63 @@ export default class PerspectaSlidesPlugin extends Plugin {
       // Load fonts from the custom theme's fonts/ folder
       const themeFontCSS = await this.themeLoader.generateThemeFontCSS(theme);
       if (themeFontCSS) {
+        debug.log('font-loading', `Added theme font CSS (${themeName})`);
         cssRules.push(themeFontCSS);
       }
     }
 
-    // Also check for any additional fonts from the global font cache
+    // Check for any fonts from the global font cache
     // (e.g., if frontmatter overrides the theme's fonts with other cached fonts)
     if (this.fontManager) {
-      const fontsToCheck = [frontmatter.titleFont, frontmatter.bodyFont].filter(Boolean) as string[];
+      const fontsToCheck = [
+        frontmatter.titleFont,
+        frontmatter.bodyFont,
+        frontmatter.headerFont,
+        frontmatter.footerFont
+      ].filter(Boolean) as string[];
+
+      debug.log('font-loading', `Checking fonts for CSS generation: ${fontsToCheck.join(', ')}`);
 
       for (const fontName of fontsToCheck) {
-        if (this.fontManager.isCached(fontName)) {
+        const isCached = this.fontManager.isCached(fontName);
+        debug.log('font-loading', `Font "${fontName}" cached: ${isCached}`);
+        
+        if (isCached) {
           const css = await this.fontManager.generateFontFaceCSS(fontName);
-          if (css) cssRules.push(css);
+          if (css) {
+            debug.log('font-loading', `Generated @font-face CSS for "${fontName}" (${css.length} bytes)`);
+            cssRules.push(css);
+          } else {
+            debug.warn('font-loading', `Failed to generate CSS for cached font "${fontName}"`);
+          }
+        } else {
+          debug.warn('font-loading', `Font "${fontName}" not found in cache`);
         }
+      }
+    } else {
+      debug.warn('font-loading', 'FontManager not initialized');
+    }
+
+    const result = cssRules.join('\n');
+    debug.log('font-loading', `Total custom font CSS: ${result.length} bytes, ${cssRules.length} rules`);
+    return result;
+  }
+
+  /**
+   * Build a map of font names to their available weights
+   * Used by SlideRenderer to validate and sanitize font weights
+   */
+  private buildFontWeightsCache(): Map<string, number[]> {
+    const cache = new Map<string, number[]>();
+
+    if (this.fontManager) {
+      const cachedFonts = this.fontManager.getAllCachedFonts();
+      for (const font of cachedFonts) {
+        cache.set(font.name, font.weights || []);
       }
     }
 
-    return cssRules.join('\n');
+    return cache;
   }
 
   /**

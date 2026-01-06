@@ -15,6 +15,7 @@ export class ThumbnailNavigatorView extends ItemView {
   private currentFile: TFile | null = null;
   private imagePathResolver: ImagePathResolver | null = null;
   private customFontCSS: string = '';
+  private fontWeightsCache: Map<string, number[]> = new Map();
 
   public getPresentation(): Presentation | null {
     return this.presentation;
@@ -39,6 +40,13 @@ export class ThumbnailNavigatorView extends ItemView {
   }
 
   /**
+   * Set the font weights cache for validating font weights
+   */
+  setFontWeightsCache(cache: Map<string, number[]>): void {
+    this.fontWeightsCache = cache;
+  }
+
+  /**
    * Create a SlideRenderer with the image path resolver
    */
   private createRenderer(): SlideRenderer {
@@ -48,6 +56,8 @@ export class ThumbnailNavigatorView extends ItemView {
     if (this.customFontCSS) {
       renderer.setCustomFontCSS(this.customFontCSS);
     }
+    // Set font weights cache for validation
+    renderer.setFontWeightsCache(this.fontWeightsCache);
     // Set system color scheme so 'system' mode resolves correctly
     renderer.setSystemColorScheme(this.getSystemColorScheme());
     return renderer;

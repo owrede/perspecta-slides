@@ -4,23 +4,15 @@ All notable changes to Perspecta Slides will be documented in this file.
 
 ## [0.2.1] - 2026-01-06
 
-### Local Font Support Fixes
-
-- **Fix**: Resolved font cache path issues where trailing slashes in `fontCacheFolder` caused double slashes in file paths (e.g., `perspecta-fonts//Clan/`)
-- **Fix**: Font caching now properly normalizes paths by removing trailing slashes in FontManager constructor and setter methods
-- **Fix**: Fixed "File already exists" errors when re-adding local fonts - now uses `modifyBinary()` for existing files instead of `createBinary()`
-- **Fix**: Font metadata is now properly registered even when some files fail to copy during re-add operations
-
-### Nested List Rendering
-
-- **New**: Proper nested list support with `<ul>` elements inside `<li>` elements
-- **New**: Visual hierarchy for nested lists with different bullet styles per level:
-  - Level 0: Filled bullet (•)
-  - Level 1: Open circle (◦)
-  - Level 2: Filled square (▪)
-  - Level 3+: Open square (▫)
-- **Improved**: Indentation detection now counts tabs as full units for consistent nesting
-- **Improved**: Data-level attributes on list items for CSS styling and depth tracking
+- Fix: Caption layout header and footer text now properly vertically centered
+- Fix: Font weight dropdown now validates available weights when switching fonts
+- Fix: Font weight dropdown defaults to first available weight if selection is invalid
+- Fix: SlideRenderer validates font weights before applying CSS, uses closest valid weight
+- Fix: Font file paths now normalized to remove double slashes from caching
+- New: Comprehensive debug logging for font loading pipeline (Settings → Debug → Font Loading)
+- Fix: Font cache path normalization in FontManager constructor and setter methods
+- Fix: "File already exists" errors when re-adding fonts - uses modifyBinary() for existing files
+- New: Proper nested list support with visual hierarchy (different bullet styles per level)
 
 ## [0.2.0] - 2026-01-06
 

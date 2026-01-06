@@ -11,6 +11,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.2.1',
+		date: '2026-01-06',
+		changes: [
+			'Fix: Caption layout header and footer text now properly vertically centered',
+			'Fix: Font weight dropdown now validates available weights when switching fonts',
+			'Fix: Font weight dropdown defaults to first available weight if selection is invalid',
+			'Fix: SlideRenderer validates font weights before applying CSS, uses closest valid weight',
+			'Fix: Font file paths now normalized to remove double slashes from caching',
+			'New: Comprehensive debug logging for font loading pipeline (Settings → Debug → Font Loading)',
+			'Fix: Font cache path normalization in FontManager constructor and setter methods',
+			'Fix: "File already exists" errors when re-adding fonts - uses modifyBinary() for existing files',
+			'New: Proper nested list support with visual hierarchy (different bullet styles per level)',
+		],
+	},
+	{
 		version: '0.1.8',
 		date: '2026-01-03',
 		changes: [

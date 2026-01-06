@@ -120,6 +120,7 @@ export interface PresentationFrontmatter {
 
   // Presentation settings
   aspectRatio?: '16:9' | '4:3' | '16:10' | 'auto';
+  lockAspectRatio?: boolean;        // When true, maintain aspect ratio with letterbox/pillarbox
   showProgress?: boolean;
   showSlideNumbers?: boolean;
   transition?: 'none' | 'fade' | 'slide';
@@ -380,14 +381,14 @@ export interface PerspecaSlidesSettings {
   customThemesFolder: string;
   fontCacheFolder: string;
   debugSlideRendering: boolean;
-  debugFontLoading: boolean;
+  debugFontHandling: boolean;
   fontCache?: FontCacheData;
   // Debug topics (topic-specific debug logging)
   debugTopics?: {
     'presentation-view'?: boolean;
     'presentation-window'?: boolean;
     'slide-parsing'?: boolean;
-    'font-loading'?: boolean;
+    'font-handling'?: boolean;
     'renderer'?: boolean;
     'inspector'?: boolean;
     'thumbnail-navigator'?: boolean;
@@ -421,13 +422,13 @@ export const DEFAULT_SETTINGS: PerspecaSlidesSettings = {
   customThemesFolder: 'perspecta-themes',
   fontCacheFolder: 'perspecta-fonts',
   debugSlideRendering: false,
-  debugFontLoading: false,
+  debugFontHandling: false,
   fontCache: { fonts: {} },
   debugTopics: {
     'presentation-view': false,
     'presentation-window': false,
     'slide-parsing': false,
-    'font-loading': false,
+    'font-handling': false,
     'renderer': false,
     'inspector': false,
     'thumbnail-navigator': false,

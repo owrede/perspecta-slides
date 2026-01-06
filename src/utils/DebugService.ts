@@ -9,7 +9,7 @@ export type DebugTopic =
   | 'presentation-view'
   | 'presentation-window'
   | 'slide-parsing'
-  | 'font-loading'
+  | 'font-handling'
   | 'renderer'
   | 'inspector'
   | 'thumbnail-navigator';
@@ -103,7 +103,7 @@ export class DebugService {
       'presentation-view',
       'presentation-window',
       'slide-parsing',
-      'font-loading',
+      'font-handling',
       'renderer',
       'inspector',
       'thumbnail-navigator',

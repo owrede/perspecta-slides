@@ -2,6 +2,25 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.2] - 2026-01-07
+
+### Bug Fixes
+
+- **Fix**: Unsafe type assertions on view casts - added `instanceof` checks throughout codebase to prevent "is not a function" errors
+- **Fix**: Image path resolution in presentation window - plain filenames and wiki-link style paths now properly resolve to vault files
+- **Fix**: PresentationWindow type guard checks for ThumbnailNavigatorView, PresentationView, and InspectorPanelView
+- **Fix**: handleCursorPositionChange, updateSidebarsWithPresentation, applyContentUpdate, and applyStructuralUpdate now use proper type guards
+
+### New Features
+
+- **New**: Lock Aspect Ratio toggle in Inspector Presentation tab - maintains slideshow aspect ratio with letterbox/pillarbox black bars
+- **New**: Aspect ratio locking respects 16:9, 4:3, and 16:10 formats while filling window with centered slides
+
+### Technical Improvements
+
+- **Improved**: All view.getLeavesOfType() loops now check instance type before calling methods
+- **Improved**: Background image paths now resolve through same system as wiki-link images
+
 ## [0.2.1] - 2026-01-06
 
 - Fix: Caption layout header and footer text now properly vertically centered

@@ -3,6 +3,7 @@ import { Presentation, Slide, SlideLayout, SlideMetadata, PresentationFrontmatte
 import { getThemeNames, getTheme } from '../themes';
 import { ThemeLoader } from '../themes/ThemeLoader';
 import { FontManager } from '../utils/FontManager';
+import { SlideParser } from '../parser/SlideParser';
 
 /**
  * Modal dialog showing Markdown editing help for slide creation
@@ -215,8 +216,11 @@ export class InspectorPanelView extends ItemView {
   private themeLoader: ThemeLoader | null = null;
   private themeAppearanceMode: 'light' | 'dark' = 'light';
 
+  private parser: SlideParser;
+
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
+    this.parser = new SlideParser();
   }
 
   setFontManager(fontManager: FontManager) {
@@ -255,7 +259,20 @@ export class InspectorPanelView extends ItemView {
     container.empty();
     container.addClass('perspecta-inspector');
 
-    this.renderEmptyState(container as HTMLElement);
+    // Try to load the presentation from the active file
+    const activeFile = this.app.workspace.getActiveFile();
+    if (activeFile && activeFile.extension === 'md' && !this.presentation) {
+      try {
+        const content = await this.app.vault.read(activeFile);
+        const presentation = this.parser.parse(content);
+        this.setPresentation(presentation, activeFile);
+      } catch (e) {
+        // If parsing fails, just show the empty state
+        this.renderEmptyState(container as HTMLElement);
+      }
+    } else {
+      this.renderEmptyState(container as HTMLElement);
+    }
   }
 
   async onClose() {
@@ -413,6 +430,13 @@ export class InspectorPanelView extends ItemView {
         dropdown.onChange(value => this.updateFrontmatter({ aspectRatio: value as any }));
       });
 
+    new Setting(container)
+      .setName('Lock Aspect Ratio')
+      .setDesc('Maintain aspect ratio in presentation window with letterbox/pillarbox borders')
+      .addToggle(toggle => toggle
+        .setValue(fm.lockAspectRatio || false)
+        .onChange(value => this.updateFrontmatter({ lockAspectRatio: value })));
+
     // Section: HEADER AND FOOTER
     this.createSectionHeader(container, 'HEADER AND FOOTER');
 
@@ -534,6 +558,13 @@ export class InspectorPanelView extends ItemView {
       if (!fontName) return [];
       const font = cachedFonts.find(f => f.name === fontName);
       return font?.weights || [];
+    };
+
+    // Helper to get styles for a font
+    const getFontStyles = (fontName: string | undefined): string[] => {
+      if (!fontName) return [];
+      const font = cachedFonts.find(f => f.name === fontName);
+      return font?.styles || [];
     };
 
     // Helper to render weight dropdown (only if multiple weights available)
@@ -1064,6 +1095,8 @@ export class InspectorPanelView extends ItemView {
       const defaultTitleColor = mode === 'light' ? (themePreset?.LightTitleTextColor || '#000000') : (themePreset?.DarkTitleTextColor || '#ffffff');
       const defaultBodyColor = mode === 'light' ? (themePreset?.LightBodyTextColor || '#333333') : (themePreset?.DarkBodyTextColor || '#e0e0e0');
       const defaultBgColor = mode === 'light' ? (themePreset?.LightBackgroundColor || '#ffffff') : (themePreset?.DarkBackgroundColor || '#1a1a2e');
+      const defaultHeaderColor = mode === 'light' ? '#666666' : '#999999';
+      const defaultFooterColor = mode === 'light' ? '#666666' : '#999999';
 
       // Titles color
       const titlesRow = colorPickersContainer.createDiv({ cls: 'color-row' });
@@ -1113,6 +1146,58 @@ export class InspectorPanelView extends ItemView {
               this.updateFrontmatter({ lightBodyText: undefined });
             } else {
               this.updateFrontmatter({ darkBodyText: undefined });
+            }
+            renderColorPickers(mode);
+          }));
+
+      // Header text color
+      const headerRow = colorPickersContainer.createDiv({ cls: 'color-row' });
+      headerRow.createEl('span', { text: 'Header', cls: 'color-label' });
+      const headerPickerContainer = headerRow.createDiv({ cls: 'color-picker-wrapper' });
+      new Setting(headerPickerContainer)
+        .addColorPicker(picker => picker
+          .setValue((mode === 'light' ? currentFm.lightHeaderText : currentFm.darkHeaderText) || defaultHeaderColor)
+          .onChange(value => {
+            if (mode === 'light') {
+              this.updateFrontmatter({ lightHeaderText: value });
+            } else {
+              this.updateFrontmatter({ darkHeaderText: value });
+            }
+          }))
+        .addExtraButton(btn => btn
+          .setIcon('rotate-ccw')
+          .setTooltip('Reset to theme default')
+          .onClick(() => {
+            if (mode === 'light') {
+              this.updateFrontmatter({ lightHeaderText: undefined });
+            } else {
+              this.updateFrontmatter({ darkHeaderText: undefined });
+            }
+            renderColorPickers(mode);
+          }));
+
+      // Footer text color
+      const footerRow = colorPickersContainer.createDiv({ cls: 'color-row' });
+      footerRow.createEl('span', { text: 'Footer', cls: 'color-label' });
+      const footerPickerContainer = footerRow.createDiv({ cls: 'color-picker-wrapper' });
+      new Setting(footerPickerContainer)
+        .addColorPicker(picker => picker
+          .setValue((mode === 'light' ? currentFm.lightFooterText : currentFm.darkFooterText) || defaultFooterColor)
+          .onChange(value => {
+            if (mode === 'light') {
+              this.updateFrontmatter({ lightFooterText: value });
+            } else {
+              this.updateFrontmatter({ darkFooterText: value });
+            }
+          }))
+        .addExtraButton(btn => btn
+          .setIcon('rotate-ccw')
+          .setTooltip('Reset to theme default')
+          .onClick(() => {
+            if (mode === 'light') {
+              this.updateFrontmatter({ lightFooterText: undefined });
+            } else {
+              this.updateFrontmatter({ darkFooterText: undefined });
             }
             renderColorPickers(mode);
           }));

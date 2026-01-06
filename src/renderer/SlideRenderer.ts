@@ -38,7 +38,8 @@ export class SlideRenderer {
 
   /**
    * Validate and sanitize a font weight against available weights for a font
-   * Returns the weight if valid, or the closest valid weight, or undefined
+   * Returns the weight if valid, or the closest valid weight (with fallback warning), or undefined
+   * This implements the APPLY STAGE weight fallback from the font handling concept
    */
   private validateFontWeight(fontName: string | undefined, weight: number | undefined): number | undefined {
     if (!weight || !fontName) return undefined;
@@ -46,14 +47,22 @@ export class SlideRenderer {
     const availableWeights = this.fontWeightsCache.get(fontName);
     if (!availableWeights || availableWeights.length === 0) return undefined;
 
-    // If weight is available, use it
+    // If weight is available, use it directly
     if (availableWeights.includes(weight)) return weight;
 
-    // Find closest available weight (prefer heavier weights)
+    // Weight not available - use fallback logic:
+    // Find closest available weight, preferring heavier weights (e.g., if 600 not available, use 700)
     const sorted = availableWeights.sort((a, b) => a - b);
-    const closest = sorted.reduce((prev, curr) =>
+    
+    // Try to find weight >= requested weight first, then fallback to closest
+    const heavier = sorted.find(w => w >= weight);
+    const closest = heavier || sorted.reduce((prev, curr) =>
       Math.abs(curr - weight) < Math.abs(prev - weight) ? curr : prev
     );
+    
+    // Log warning about weight fallback
+    console.warn(`[font-handling] Font weight ${weight} not available for "${fontName}", using ${closest}`);
+    
     return closest;
   }
 
@@ -140,23 +149,28 @@ export class SlideRenderer {
     const bodyClass = context === 'thumbnail' ? 'perspecta-thumbnail' : 'perspecta-preview';
     const fontScaleCSS = this.getFontScaleCSS(frontmatter);
     // Include frontmatter CSS variable overrides so Inspector color changes apply
+    // IMPORTANT: Generate frontmatter variables BEFORE theme CSS so theme can be overridden
+    // AND generate AFTER theme fallback rules for heading colors
     const frontmatterVars = this.generateCSSVariables(frontmatter);
     const frontmatterCSS = frontmatterVars ? `:root {\n${frontmatterVars}\n}` : '';
+    // Generate override rules for theme heading colors when custom title text is set
+    const headingOverrideCSS = this.generateHeadingColorOverrides(frontmatter);
 
     return `<!DOCTYPE html>
-<html>
-<head>
+  <html>
+  <head>
   <meta charset="utf-8" />
   <style>${this.customFontCSS}</style>
   <style>${this.getBaseStyles(context)}</style>
   <style>${themeCSS}</style>
   <style>${frontmatterCSS}</style>
+  <style>${headingOverrideCSS}</style>
   <style>${fontScaleCSS}</style>
-</head>
-<body class="${bodyClass} ${themeClasses}">
+  </head>
+  <body class="${bodyClass} ${themeClasses}">
   ${this.renderSlide(slide, index, frontmatter, false)}
-</body>
-</html>`;
+  </body>
+  </html>`;
   }
 
   /**
@@ -1996,6 +2010,7 @@ export class SlideRenderer {
   private renderStyles(frontmatter: PresentationFrontmatter): string {
     const cssVars = this.generateCSSVariables(frontmatter);
     const themeCSS = this.theme ? generateThemeCSS(this.theme, 'export') : '';
+    const headingOverrideCSS = this.generateHeadingColorOverrides(frontmatter);
 
     return `<style>
 /* Custom Fonts */
@@ -2006,6 +2021,8 @@ ${themeCSS}
 ${cssVars}
   --slide-unit: min(1vh, 1.778vw);
 }
+
+${headingOverrideCSS}
 
 * {
   margin: 0;
@@ -2089,6 +2106,64 @@ ${this.getSlideCSS()}
   z-index: 100;
 }
 </style>`;
+  }
+
+  /**
+   * Generate CSS rules to override theme heading colors when custom title/body text is set
+   * This ensures that inspector color changes take precedence over theme-defined heading colors
+   * 
+   * Priority order:
+   * 1. Explicit heading color from frontmatter (lightH1Color, darkH1Color, etc.)
+   * 2. General title/body text color from frontmatter (lightTitleText, darkTitleText, etc.)
+   * 3. Theme heading color (--light-h1-color, --dark-h1-color, etc.)
+   * 4. Theme general color (--light-title-text, --dark-title-text, etc.)
+   */
+  private generateHeadingColorOverrides(frontmatter: PresentationFrontmatter): string {
+    const rules: string[] = [];
+
+    // Light mode heading color overrides
+    if (frontmatter.lightTitleText) {
+      // Only override h1/h2 if not explicitly set in frontmatter
+      if (!frontmatter.lightH1Color?.length) {
+        rules.push(`.slide.light h1 { color: ${frontmatter.lightTitleText} !important; }`);
+      }
+      if (!frontmatter.lightH2Color?.length) {
+        rules.push(`.slide.light h2 { color: ${frontmatter.lightTitleText} !important; }`);
+      }
+    }
+
+    if (frontmatter.lightBodyText) {
+      // Only override h3/h4 if not explicitly set in frontmatter
+      if (!frontmatter.lightH3Color?.length) {
+        rules.push(`.slide.light h3 { color: ${frontmatter.lightBodyText} !important; }`);
+      }
+      if (!frontmatter.lightH4Color?.length) {
+        rules.push(`.slide.light h4 { color: ${frontmatter.lightBodyText} !important; }`);
+      }
+    }
+
+    // Dark mode heading color overrides
+    if (frontmatter.darkTitleText) {
+      // Only override h1/h2 if not explicitly set in frontmatter
+      if (!frontmatter.darkH1Color?.length) {
+        rules.push(`.slide.dark h1 { color: ${frontmatter.darkTitleText} !important; }`);
+      }
+      if (!frontmatter.darkH2Color?.length) {
+        rules.push(`.slide.dark h2 { color: ${frontmatter.darkTitleText} !important; }`);
+      }
+    }
+
+    if (frontmatter.darkBodyText) {
+      // Only override h3/h4 if not explicitly set in frontmatter
+      if (!frontmatter.darkH3Color?.length) {
+        rules.push(`.slide.dark h3 { color: ${frontmatter.darkBodyText} !important; }`);
+      }
+      if (!frontmatter.darkH4Color?.length) {
+        rules.push(`.slide.dark h4 { color: ${frontmatter.darkBodyText} !important; }`);
+      }
+    }
+
+    return rules.length > 0 ? rules.join('\n') : '';
   }
 
   private generateCSSVariables(frontmatter: PresentationFrontmatter): string {

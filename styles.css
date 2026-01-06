@@ -861,18 +861,25 @@
 }
 
 .perspecta-presentation-view .caption-content .slot-title-bar {
-  flex: 0 0 auto;
-  padding: calc(var(--slide-base, 1px) * 24) calc(var(--slide-base, 1px) * 32);
+  flex: 0 1 auto;
+  min-height: 60px;
+  padding: calc(var(--slide-base, 1px) * 16) calc(var(--slide-base, 1px) * 32);
   background: var(--slide-background, #ffffff);
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
+  gap: 0;
 }
 
 .perspecta-presentation-view .caption-content .slot-title-bar h1,
 .perspecta-presentation-view .caption-content .slot-title-bar h2,
 .perspecta-presentation-view .caption-content .slot-title-bar h3 {
-  margin: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+  height: auto;
+  display: flex;
+  align-items: center;
 }
 
 .perspecta-presentation-view .caption-content .slot-image {
@@ -896,10 +903,20 @@
 }
 
 .perspecta-presentation-view .caption-content .slot-caption {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-height: 50px;
   padding: calc(var(--slide-base, 1px) * 16) calc(var(--slide-base, 1px) * 32);
   background: var(--slide-background, #ffffff);
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0;
+}
+
+.perspecta-presentation-view .caption-content .slot-caption p {
+  margin: 0;
+  padding: 0;
 }
 
 /* ================================

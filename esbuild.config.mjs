@@ -14,7 +14,7 @@ const context = await esbuild.context({
   banner: {
     js: banner,
   },
-  entryPoints: ["main.ts"],
+  entryPoints: ["main.ts", "preload.ts"],
   bundle: true,
   external: [
     "obsidian",
@@ -35,7 +35,8 @@ const context = await esbuild.context({
   logLevel: "info",
   sourcemap: prod ? false : "inline",
   treeShaking: true,
-  outfile: "main.js",
+  outbase: ".",
+  outdir: ".",
   loader: {
     ".css": "text",  // Load CSS files as text strings
   },

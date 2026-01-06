@@ -1,6 +1,6 @@
 import { TFile, Notice } from 'obsidian';
 import { getDebugService } from '../utils/DebugService';
-import { Presentation, Theme } from '../types';
+import { Presentation, Theme, PresentationFrontmatter } from '../types';
 import { SlideRenderer, ImagePathResolver } from '../renderer/SlideRenderer';
 import {
   PresentationCache,
@@ -16,10 +16,9 @@ declare const require: NodeRequire;
  * PresentationWindow - Opens a frameless Electron window for fullscreen presentation
  * 
  * Features:
- * - Frameless window (no title bar)
- * - Traffic light buttons appear on hover (macOS) with auto-hide after 3s
- * - Window draggable by clicking non-interactive areas
- * - Keyboard navigation (arrow keys, escape to close)
+ * - Frameless window with draggable titlebar
+ * - Keyboard navigation (arrow keys, space, escape to close)
+ * - Link clicking works
  * - Live updates when source file changes
  */
 export class PresentationWindow {
@@ -30,28 +29,24 @@ export class PresentationWindow {
   private imagePathResolver: ImagePathResolver | null = null;
   private presentation: Presentation | null = null;
   private customFontCSS: string = '';
+  private fontWeightsCache: Map<string, number[]> = new Map();
 
   public getPresentation(): Presentation | null {
     return this.presentation;
   }
 
-  /**
-   * Set the image path resolver for wiki-link images
-   */
   setImagePathResolver(resolver: ImagePathResolver): void {
     this.imagePathResolver = resolver;
   }
 
-  /**
-   * Set custom font CSS (e.g., @font-face rules for cached Google Fonts)
-   */
   setCustomFontCSS(css: string): void {
     this.customFontCSS = css;
   }
 
-  /**
-   * Create a SlideRenderer with the image path resolver and custom font CSS
-   */
+  setFontWeightsCache(cache: Map<string, number[]>): void {
+    this.fontWeightsCache = cache;
+  }
+
   private createRenderer(presentation: Presentation, theme: Theme | null): SlideRenderer {
     const renderer = new SlideRenderer(
       presentation,
@@ -61,14 +56,13 @@ export class PresentationWindow {
     if (this.customFontCSS) {
       renderer.setCustomFontCSS(this.customFontCSS);
     }
-    // Set system color scheme so 'system' mode resolves correctly
+    if (this.fontWeightsCache.size > 0) {
+      renderer.setFontWeightsCache(this.fontWeightsCache);
+    }
     renderer.setSystemColorScheme(this.getSystemColorScheme());
     return renderer;
   }
 
-  /**
-   * Detect the system color scheme (light or dark)
-   */
   private getSystemColorScheme(): 'light' | 'dark' {
     if (typeof window !== 'undefined' && window.matchMedia) {
       return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -76,25 +70,19 @@ export class PresentationWindow {
     return 'light';
   }
 
-  /**
-   * Open a new presentation window
-   */
   async open(presentation: Presentation, theme: Theme | null, sourceFile?: TFile, startSlide: number = 0): Promise<void> {
     this.presentation = presentation;
     this.currentSlideIndex = startSlide;
     this.currentTheme = theme;
     this.presentationCache = buildPresentationCache(presentation);
     
-    // In Obsidian, we need to access Electron's remote module
     const electron = require('electron');
     const remote = electron.remote || (require as any)('@electron/remote');
     const { BrowserWindow, screen } = remote;
 
-    // Get screen dimensions for optimal window size
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
-    // Calculate 16:9 window size that fits the screen
     const aspectRatio = 16 / 9;
     let windowWidth = Math.min(screenWidth * 0.9, 1920);
     let windowHeight = windowWidth / aspectRatio;
@@ -104,7 +92,6 @@ export class PresentationWindow {
       windowWidth = windowHeight * aspectRatio;
     }
 
-    // Create the frameless window
     this.win = new BrowserWindow({
       width: Math.round(windowWidth),
       height: Math.round(windowHeight),
@@ -122,22 +109,18 @@ export class PresentationWindow {
       show: false,
     });
 
-    // Render the presentation HTML
     const renderer = this.createRenderer(presentation, theme);
     const html = this.generatePresentationHTML(presentation, renderer, theme, startSlide);
-
-    // Load HTML via temp file to avoid data URL length limits
     await this.loadHTMLContent(html);
 
-    // Show window when ready
     const debug = getDebugService();
+    
     this.win.once('ready-to-show', () => {
       debug.log('presentation-window', 'ready-to-show event fired');
       this.win.show();
       this.win.focus();
     });
     
-    // Fallback: show window after a short delay if ready-to-show doesn't fire
     setTimeout(() => {
       if (this.win && !this.win.isDestroyed() && !this.win.isVisible()) {
         debug.log('presentation-window', 'Fallback: showing window after timeout');
@@ -146,37 +129,75 @@ export class PresentationWindow {
       }
     }, 1000);
 
-    // Handle window close
     this.win.on('closed', () => {
       this.win = null;
     });
 
-    // Handle ESC key at the window level (before-input-event)
+    // Track pressed keys to handle each keypress independently
+    const pressedKeys = new Set<string>();
+
     this.win.webContents.on('before-input-event', (event: any, input: any) => {
-      if (input.key === 'Escape' && input.type === 'keyDown') {
-        event.preventDefault();
-        if (this.win.isFullScreen()) {
-          this.win.setFullScreen(false);
-        } else if (this.win.isMaximized()) {
-          this.win.unmaximize();
-        } else {
-          this.win.close();
+      const key = input.key.toLowerCase();
+
+      if (input.type === 'keyDown') {
+        // Ignore auto-repeat events (held keys) - only respond to initial keydown
+        if (input.isAutoRepeat) {
+          return;
         }
+
+        // Only process if this key wasn't already pressed
+        if (pressedKeys.has(key)) {
+          return;
+        }
+
+        pressedKeys.add(key);
+
+        switch (key) {
+          case 'arrowright':
+          case 'arrowdown':
+          case ' ':
+          case 'pagedown':
+            event.preventDefault();
+            this.nextSlide();
+            break;
+          case 'arrowleft':
+          case 'arrowup':
+          case 'pageup':
+            event.preventDefault();
+            this.previousSlide();
+            break;
+          case 'home':
+            event.preventDefault();
+            this.goToSlide(0);
+            break;
+          case 'end':
+            event.preventDefault();
+            this.goToSlide(this.presentation?.slides.length ? this.presentation.slides.length - 1 : 0);
+            break;
+          case 'escape':
+            event.preventDefault();
+            if (this.win.isFullScreen()) {
+              this.win.setFullScreen(false);
+            } else {
+              this.win.close();
+            }
+            break;
+        }
+      } else if (input.type === 'keyUp') {
+        // Remove key from pressed set when released
+        pressedKeys.delete(key);
       }
     });
 
     // Handle link clicks - open external URLs in system browser
     const { shell } = electron;
     this.win.webContents.on('will-navigate', (event: any, url: string) => {
-      // Prevent navigation within the presentation window
       event.preventDefault();
-      // Open external URLs in system browser
       if (url.startsWith('http://') || url.startsWith('https://')) {
         shell.openExternal(url);
       }
     });
 
-    // Also handle new-window events (for target="_blank" links)
     this.win.webContents.setWindowOpenHandler(({ url }: { url: string }) => {
       if (url.startsWith('http://') || url.startsWith('https://')) {
         shell.openExternal(url);
@@ -185,10 +206,28 @@ export class PresentationWindow {
     });
   }
 
-  /**
-   * Load HTML content into the window using document.write() to avoid data URL length limits
-   * This is faster than writing temp files and has no size limit
-   */
+  private nextSlide(): void {
+    if (!this.presentation) return;
+    this.goToSlide(this.currentSlideIndex + 1);
+  }
+
+  private previousSlide(): void {
+    if (!this.presentation) return;
+    this.goToSlide(this.currentSlideIndex - 1);
+  }
+
+  private goToSlide(index: number): void {
+    if (!this.presentation) return;
+    if (index < 0) index = 0;
+    if (index >= this.presentation.slides.length) index = this.presentation.slides.length - 1;
+    
+    this.currentSlideIndex = index;
+    
+    if (this.win && !this.win.isDestroyed()) {
+      this.win.webContents.executeJavaScript(`showSlide(${index})`).catch(() => {});
+    }
+  }
+
   private async loadHTMLContent(html: string): Promise<void> {
     const debug = getDebugService();
     if (!this.win) {
@@ -197,33 +236,30 @@ export class PresentationWindow {
     }
 
     try {
-      // Load a blank page first, then inject the HTML via JavaScript
-      // This avoids both file I/O and data URL length limits
       await this.win.loadURL('about:blank');
-      
-      // Inject the HTML content using document.write()
-      // We need to escape the HTML for use in a JavaScript string
       const escapedHtml = JSON.stringify(html);
+      
       await this.win.webContents.executeJavaScript(`
-        document.open();
-        document.write(${escapedHtml});
-        document.close();
+        (function() {
+          document.open();
+          document.write(${escapedHtml});
+          document.close();
+          return 'loaded';
+        })();
       `);
     } catch (error) {
-      debug.error('presentation-window', `Failed to load HTML content: ${error}`);
+      debug.error('presentation-window', 'Failed to load HTML content:', error);
       new Notice('Failed to open presentation window.');
     }
   }
 
-  /**
-   * Generate the complete HTML for the presentation window
-   */
   private generatePresentationHTML(presentation: Presentation, renderer: SlideRenderer, theme: Theme | null, startSlide: number = 0): string {
     const slidesHTML = presentation.slides.map((slide, index) => {
       return renderer.renderPresentationSlideHTML(slide, index);
     });
     
     const themeCSS = theme ? this.generateThemeVariables(theme) : '';
+    const lockedAspectRatioCSS = this.getLockedAspectRatioCSS(presentation.frontmatter);
 
     return `<!DOCTYPE html>
 <html>
@@ -234,10 +270,12 @@ export class PresentationWindow {
   <style>
     ${this.getPresentationWindowStyles()}
     ${themeCSS}
+    ${lockedAspectRatioCSS}
   </style>
 </head>
 <body>
-  <div class="presentation-window">
+  <div class="titlebar"></div>
+  <div class="presentation-container">
     <div class="slides-container" id="slidesContainer">
       ${presentation.slides.map((slide, index) => `
         <div class="slide-frame ${index === startSlide ? 'active' : ''}" data-index="${index}">
@@ -249,8 +287,6 @@ export class PresentationWindow {
         </div>
       `).join('')}
     </div>
-    <!-- Drag overlay: handles window dragging, hides on double-click for text selection -->
-    <div class="drag-overlay" id="dragOverlay"></div>
     <div class="slide-counter" id="slideCounter">
       <span id="currentSlide">${startSlide + 1}</span> / <span id="totalSlides">${presentation.slides.length}</span>
     </div>
@@ -262,9 +298,6 @@ export class PresentationWindow {
 </html>`;
   }
 
-  /**
-   * Styles for the presentation window
-   */
   private getPresentationWindowStyles(): string {
     return `
       * {
@@ -279,9 +312,30 @@ export class PresentationWindow {
         overflow: hidden;
         background: #000;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        user-select: none;
+        -webkit-user-select: none;
       }
       
-      .presentation-window {
+      /* Draggable titlebar at top - overlay, doesn't affect layout */
+      .titlebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 30px;
+        background-color: rgba(255, 255, 255, 0);
+        -webkit-app-region: drag;
+        z-index: 10000;
+        pointer-events: none;
+        transition: background-color 0.3s ease;
+      }
+      
+      .titlebar.visible {
+        background-color: rgba(255, 255, 255, 0.35);
+        pointer-events: auto;
+      }
+      
+      .presentation-container {
         width: 100%;
         height: 100%;
         display: flex;
@@ -291,9 +345,9 @@ export class PresentationWindow {
       }
       
       .slides-container {
+        position: relative;
         width: 100%;
         height: 100%;
-        position: relative;
       }
       
       .slide-frame {
@@ -303,13 +357,15 @@ export class PresentationWindow {
         width: 100%;
         height: 100%;
         opacity: 0;
-        pointer-events: none;
+        pointer-events: none !important;
         transition: opacity 0.3s ease;
+        z-index: -1;
       }
       
       .slide-frame.active {
         opacity: 1;
-        pointer-events: auto;
+        pointer-events: auto !important;
+        z-index: 1;
       }
       
       .slide-frame iframe {
@@ -317,36 +373,8 @@ export class PresentationWindow {
         height: 100%;
         border: none;
         background: transparent;
-        pointer-events: none; /* Disabled by default, enabled when drag overlay hidden */
       }
       
-      /* Drag overlay - transparent layer for window dragging */
-      .drag-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 100;
-        -webkit-app-region: drag;
-        cursor: grab;
-      }
-      
-      .drag-overlay:active {
-        cursor: grabbing;
-      }
-      
-      .drag-overlay.hidden {
-        display: none;
-      }
-      
-      /* When overlay is hidden, enable iframe interaction */
-      .drag-overlay.hidden ~ .slides-container .slide-frame.active iframe,
-      body.selection-mode .slide-frame.active iframe {
-        pointer-events: auto;
-      }
-      
-      /* Slide counter - appears on mouse movement */
       .slide-counter {
         position: fixed;
         bottom: 20px;
@@ -356,213 +384,85 @@ export class PresentationWindow {
         padding: 8px 16px;
         border-radius: 8px;
         font-size: 14px;
-        opacity: 0;
-        transition: opacity 0.3s ease;
-        z-index: 1000;
-        -webkit-app-region: no-drag;
-      }
-      
-      body.show-ui .slide-counter {
-        opacity: 1;
-      }
-      
-      /* Traffic light area padding for macOS */
-      @supports (-webkit-app-region: drag) {
-        .presentation-window::before {
-          content: '';
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 80px;
-          height: 40px;
-          z-index: 9999;
-          -webkit-app-region: no-drag;
-        }
+        z-index: 100;
       }
     `;
   }
 
-  /**
-   * JavaScript for the presentation window
-   */
   private getPresentationWindowScript(totalSlides: number, startSlide: number = 0): string {
     return `
-      (function() {
-        // Expose to window for external access (live updates)
-        window.currentSlide = ${startSlide};
-        window.totalSlides = ${totalSlides};
-        let mouseIdleTimeout = null;
+      window.currentSlide = ${startSlide};
+      window.totalSlides = ${totalSlides};
+      
+      function showSlide(index) {
+        if (index < 0) index = 0;
+        if (index >= window.totalSlides) index = window.totalSlides - 1;
         
-        // Getter for local use
-        function getCurrentSlide() { return window.currentSlide; }
-        function setCurrentSlide(idx) { window.currentSlide = idx; }
+        const frames = document.querySelectorAll('.slide-frame');
+        frames.forEach((frame, i) => {
+          frame.classList.toggle('active', i === index);
+        });
         
-        function showSlide(index) {
-          if (index < 0) index = 0;
-          if (index >= window.totalSlides) index = window.totalSlides - 1;
-          
-          const frames = document.querySelectorAll('.slide-frame');
-          frames.forEach((frame, i) => {
-            frame.classList.toggle('active', i === index);
-          });
-          
-          window.currentSlide = index;
-          document.getElementById('currentSlide').textContent = window.currentSlide + 1;
-        }
-        
-        function nextSlide() {
-          showSlide(window.currentSlide + 1);
-        }
-        
-        function previousSlide() {
-          showSlide(window.currentSlide - 1);
-        }
-        
-        function showUI() {
-          document.body.classList.add('show-ui');
-          
-          if (mouseIdleTimeout) {
-            clearTimeout(mouseIdleTimeout);
-          }
-          
-          mouseIdleTimeout = setTimeout(() => {
-            document.body.classList.remove('show-ui');
-          }, 3000);
-        }
-        
-        // Keyboard navigation
-        document.addEventListener('keydown', (e) => {
-          switch (e.key) {
-            case 'ArrowRight':
-            case 'ArrowDown':
-            case ' ':
-            case 'PageDown':
-              e.preventDefault();
-              nextSlide();
-              showUI();
-              break;
-            case 'ArrowLeft':
-            case 'ArrowUp':
-            case 'PageUp':
-              e.preventDefault();
-              previousSlide();
-              showUI();
-              break;
-            case 'Home':
-              e.preventDefault();
-              showSlide(0);
-              showUI();
-              break;
-            case 'End':
-              e.preventDefault();
-              showSlide(window.totalSlides - 1);
-              showUI();
-              break;
-            // ESC is handled at window level via before-input-event
+        window.currentSlide = index;
+        document.getElementById('currentSlide').textContent = window.currentSlide + 1;
+      }
+      
+      // Show/hide drag zone based on mouse position and activity
+      let titlebarHideTimeout;
+      const titlebar = document.querySelector('.titlebar');
+      const windowHeightQuarter = window.innerHeight / 4;
+      
+      if (titlebar) {
+        document.addEventListener('mousemove', (e) => {
+          // Show titlebar if mouse is in upper quarter
+          if (e.clientY < windowHeightQuarter) {
+            if (!titlebar.classList.contains('visible')) {
+              titlebar.classList.add('visible');
+            }
+            
+            // Clear existing hide timeout
+            if (titlebarHideTimeout) {
+              clearTimeout(titlebarHideTimeout);
+            }
+            
+            // Hide after 2 seconds of no movement
+            titlebarHideTimeout = setTimeout(() => {
+              titlebar.classList.remove('visible');
+            }, 2000);
           }
         });
         
-        // Drag overlay management
-        // By default: overlay visible = window can be dragged
-        // On double-click: hide overlay = text selection enabled
-        // Press Escape or click outside: show overlay again
-        const dragOverlay = document.getElementById('dragOverlay');
-        let selectionModeTimeout = null;
-        
-        function enterSelectionMode() {
-          if (dragOverlay) {
-            dragOverlay.classList.add('hidden');
-            document.body.classList.add('selection-mode');
-            // Enable pointer-events on active iframe
-            const activeIframe = document.querySelector('.slide-frame.active iframe');
-            if (activeIframe) {
-              activeIframe.style.pointerEvents = 'auto';
-            }
+        // Also hide when mouse leaves the window
+        document.addEventListener('mouseleave', () => {
+          if (titlebarHideTimeout) {
+            clearTimeout(titlebarHideTimeout);
           }
-        }
-        
-        function exitSelectionMode() {
-          if (dragOverlay) {
-            dragOverlay.classList.remove('hidden');
-            document.body.classList.remove('selection-mode');
-            // Disable pointer-events on all iframes
-            document.querySelectorAll('.slide-frame iframe').forEach(iframe => {
-              iframe.style.pointerEvents = 'none';
-            });
-            // Clear any text selection
-            window.getSelection()?.removeAllRanges();
-            // Re-focus body for keyboard nav
-            document.body.focus();
-          }
-        }
-        
-        // Double-click on overlay enters selection mode
-        if (dragOverlay) {
-          dragOverlay.addEventListener('dblclick', (e) => {
-            e.preventDefault();
-            enterSelectionMode();
-            showUI();
-          });
-        }
-        
-        // Single click on overlay just shows UI (and allows drag)
-        if (dragOverlay) {
-          dragOverlay.addEventListener('click', () => {
-            showUI();
-            document.body.focus();
-          });
-        }
-        
-        // Escape key exits selection mode (in addition to window close handling)
-        // This is handled specially - we check selection mode first
-        document.addEventListener('keydown', (e) => {
-          if (e.key === 'Escape' && document.body.classList.contains('selection-mode')) {
-            e.preventDefault();
-            e.stopPropagation();
-            exitSelectionMode();
-          }
-        }, true); // Use capture to handle before other listeners
-        
-        // Mouse movement shows UI
-        document.addEventListener('mousemove', () => {
-          showUI();
+          titlebar.classList.remove('visible');
         });
-        
-        // Initial UI show
-        showUI();
-        
-        // Ensure focus on body for keyboard events
-        document.body.tabIndex = 0;
-        document.body.focus();
-        
-        // Expose function to update a single slide's iframe (for live updates)
-        window.updateSlideContent = function(index, html) {
-          const frames = document.querySelectorAll('.slide-frame');
-          const frame = frames[index];
-          if (frame) {
-            const iframe = frame.querySelector('iframe');
-            if (iframe) {
-              iframe.srcdoc = html;
-            }
+      }
+      
+      // Expose for main process to call
+      window.updateSlideContent = function(index, html) {
+        const frames = document.querySelectorAll('.slide-frame');
+        const frame = frames[index];
+        if (frame) {
+          const iframe = frame.querySelector('iframe');
+          if (iframe) {
+            iframe.srcdoc = html;
           }
-        };
-        
-        // Expose function to update slide count (when slides are added/removed)
-        window.updateSlideCount = function(newTotal) {
-          window.totalSlides = newTotal;
-          document.getElementById('totalSlides').textContent = newTotal;
-          // Clamp current slide if needed
-          if (window.currentSlide >= newTotal) {
-            showSlide(newTotal - 1);
-          }
-        };
-      })();
+        }
+      };
+      
+      window.updateSlideCount = function(newTotal) {
+        window.totalSlides = newTotal;
+        document.getElementById('totalSlides').textContent = newTotal;
+        if (window.currentSlide >= newTotal) {
+          showSlide(newTotal - 1);
+        }
+      };
     `;
   }
 
-  /**
-   * Generate theme CSS variables
-   */
   private generateThemeVariables(theme: Theme): string {
     const preset = theme.presets[0];
     if (!preset) return '';
@@ -593,23 +493,53 @@ export class PresentationWindow {
     `;
   }
 
-  /**
-   * Update the presentation content while preserving current slide.
-   * Uses incremental updates when possible - only updates the currently displayed slide
-   * if it was modified, otherwise does nothing.
-   */
+  private getLockedAspectRatioCSS(frontmatter: PresentationFrontmatter): string {
+    if (!frontmatter.lockAspectRatio) {
+      return '';
+    }
+
+    const aspectRatio = frontmatter.aspectRatio || '16:9';
+    const ratios: Record<string, number> = {
+      '16:9': 16 / 9,
+      '4:3': 4 / 3,
+      '16:10': 16 / 10,
+      'auto': 0
+    };
+
+    const ratio = ratios[aspectRatio];
+    if (ratio === 0) {
+      return ''; // 'auto' aspect ratio - no locking needed
+    }
+
+    return `
+      .slides-container {
+        width: auto;
+        height: auto;
+        max-width: 100%;
+        max-height: 100%;
+        aspect-ratio: ${aspectRatio};
+      }
+      
+      .slide-frame {
+        width: 100%;
+        height: 100%;
+        position: relative !important;
+        top: auto !important;
+        left: auto !important;
+      }
+    `;
+  }
+
   async updateContent(presentation: Presentation, theme: Theme | null): Promise<void> {
     const debug = getDebugService();
     if (!this.win || this.win.isDestroyed()) return;
 
-    // Guard against empty presentations
     if (!presentation.slides || presentation.slides.length === 0) {
       debug.warn('presentation-window', 'Cannot update presentation window: no slides');
       return;
     }
 
     try {
-      // Get current slide index from the window
       let currentSlide = this.currentSlideIndex;
       try {
         const result = await this.win.webContents.executeJavaScript('window.currentSlide');
@@ -620,52 +550,41 @@ export class PresentationWindow {
         // Use stored index if we can't get it from window
       }
 
-      // Ensure slide index is valid
       if (currentSlide < 0 || currentSlide >= presentation.slides.length) {
         currentSlide = Math.max(0, Math.min(currentSlide, presentation.slides.length - 1));
       }
       this.currentSlideIndex = currentSlide;
 
-      // Check if we have a cache and can do incremental update
       if (this.presentationCache) {
         const diff = diffPresentations(this.presentationCache, presentation);
 
-        // No changes - skip update entirely
         if (diff.type === 'none') {
           return;
         }
 
-        // Theme changed or major structural changes - need full reload
         if (requiresFullRender(diff) || diff.type === 'structural') {
           await this.fullReload(presentation, theme, currentSlide);
           return;
         }
 
-        // Content-only changes - check if current slide was modified
         if (diff.type === 'content-only') {
           const currentSlideModified = diff.modifiedIndices.includes(currentSlide);
 
           if (currentSlideModified) {
-            // Only update the current slide's iframe
             const renderer = this.createRenderer(presentation, theme);
             const slideHTML = renderer.renderPresentationSlideHTML(presentation.slides[currentSlide], currentSlide);
-
-            // Escape the HTML for JavaScript string
             const escapedHTML = JSON.stringify(slideHTML);
             await this.win.webContents.executeJavaScript(
               `window.updateSlideContent(${currentSlide}, ${escapedHTML})`
             );
           }
-          // If current slide wasn't modified, we don't need to update anything visible
 
-          // Update cache for next comparison
           this.presentationCache = buildPresentationCache(presentation);
           this.currentTheme = theme;
           return;
         }
       }
 
-      // No cache (first update) - do full reload
       await this.fullReload(presentation, theme, currentSlide);
 
     } catch (error) {
@@ -673,47 +592,18 @@ export class PresentationWindow {
     }
   }
 
-  /**
-   * Specifically update just the frontmatter for live previews
-   */
-  async updateFrontmatter(frontmatter: any, theme: Theme | null): Promise<void> {
-    if (!this.win || this.win.isDestroyed()) return;
-
-    // For now, the simplest way is to trigger a re-render of the current slide
-    // This will pick up the updated frontmatter which should be modified in the object passed here
-    const currentSlide = this.currentSlideIndex;
-    try {
-      const result = await this.win.webContents.executeJavaScript('window.currentSlide');
-      if (typeof result === 'number' && !isNaN(result)) {
-        this.currentSlideIndex = result;
-      }
-    } catch (e) { }
-
-    // We can't easily reach into the renderer without the full presentation object
-    // but the main plugin has it.
-  }
-
-  /**
-   * Perform a full reload of the presentation window
-   */
   private async fullReload(presentation: Presentation, theme: Theme | null, currentSlide: number): Promise<void> {
-    // Update stored presentation
     this.presentation = presentation;
     
     const renderer = this.createRenderer(presentation, theme);
     const html = this.generatePresentationHTML(presentation, renderer, theme, currentSlide);
 
-    // Use temp file approach to avoid data URL length limits
     await this.loadHTMLContent(html);
 
-    // Update cache
     this.presentationCache = buildPresentationCache(presentation);
     this.currentTheme = theme;
   }
 
-  /**
-   * Close the presentation window
-   */
   close(): void {
     if (this.win && !this.win.isDestroyed()) {
       this.win.close();
@@ -721,9 +611,6 @@ export class PresentationWindow {
     }
   }
 
-  /**
-   * Check if window is open
-   */
   isOpen(): boolean {
     return this.win !== null && !this.win.isDestroyed();
   }

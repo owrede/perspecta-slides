@@ -32,6 +32,15 @@ const DEFAULT_FONT_CACHE_FOLDER = 'perspecta-fonts';
 const GOOGLE_FONTS_API_BASE = 'https://fonts.googleapis.com/css2';
 
 /**
+ * Result of font discovery - shows what's available to download
+ */
+export interface FontDiscoveryResult {
+  fontName: string;
+  allWeights: number[];
+  allStyles: string[];
+}
+
+/**
  * Manages downloading and caching of Google Fonts
  */
 export class FontManager {
@@ -70,7 +79,8 @@ export class FontManager {
 
   private log(...args: unknown[]): void {
     if (this.debugMode) {
-      console.log('[FontManager]', ...args);
+      const debug = getDebugService();
+      debug.log('font-handling', '[FontManager]', ...args);
     }
   }
 
@@ -144,36 +154,188 @@ export class FontManager {
   }
 
   /**
+   * DISCOVERY STAGE: Query Google Fonts API to see what weights and styles are available
+   * This is called before downloading to let user choose what to download
+   * @param url Google Fonts URL (specimen or CSS URL)
+   * @returns Discovery result with available weights/styles, or null if failed
+   */
+  async discoverGoogleFont(url: string): Promise<FontDiscoveryResult | null> {
+    const debug = getDebugService();
+    const fontName = FontManager.parseGoogleFontsUrl(url);
+    if (!fontName) {
+      debug.error('font-handling', `Invalid Google Fonts URL: ${url}`);
+      console.error('[FontManager] Invalid Google Fonts URL:', url);
+      return null;
+    }
+
+    try {
+      debug.log('font-handling', `[font-discovery] Starting discovery for "${fontName}"...`);
+      
+      // Fetch font CSS with ALL available weights and both normal + italic styles
+      const allWeights = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+      const normalParams = allWeights.map(w => `0,${w}`);
+      const italicParams = allWeights.map(w => `1,${w}`);
+      const weightParams = [...normalParams, ...italicParams].join(';');
+      const cssUrl = `${GOOGLE_FONTS_API_BASE}?family=${encodeURIComponent(fontName)}:ital,wght@${weightParams}&display=swap`;
+      
+      debug.log('font-handling', `[font-discovery] Querying Google Fonts API...`);
+      debug.log('font-handling', `[font-discovery] API URL: ${cssUrl}`);
+      
+      const cssResponse = await requestUrl({
+        url: cssUrl,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+        }
+      });
+
+      debug.log('font-handling', `[font-discovery] API response status: ${cssResponse.status}`);
+      
+      if (cssResponse.status !== 200) {
+        debug.error('font-handling', `Failed to fetch Google Fonts CSS: HTTP ${cssResponse.status}`);
+        console.error('[FontManager] HTTP error from Google Fonts API:', cssResponse.status);
+        return null;
+      }
+
+      // Parse CSS to discover available weights and styles
+      debug.log('font-handling', `[font-discovery] Parsing CSS response, length: ${cssResponse.text.length}`);
+      const { allWeights: discoveredWeights, allStyles } = this.parseDiscoveryCSS(cssResponse.text, fontName);
+      
+      debug.log('font-handling', `[font-discovery] Parsed discovery: weights=[${discoveredWeights.sort((a,b) => a-b)}], styles=[${allStyles.sort()}]`);
+      debug.log('font-handling', `[font-discovery] Discovered ${fontName}: weights=[${discoveredWeights.sort((a,b) => a-b)}], styles=[${allStyles.sort()}]`);
+      
+      return {
+        fontName,
+        allWeights: discoveredWeights,
+        allStyles
+      };
+    } catch (error) {
+      debug.error('font-handling', `Error discovering Google Font: ${error instanceof Error ? error.message : String(error)}`);
+      console.error('[FontManager] Discovery error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Parse CSS to extract available weights and styles (for discovery)
+   */
+  private parseDiscoveryCSS(cssText: string, fontName: string): { allWeights: number[], allStyles: string[] } {
+    const debug = getDebugService();
+    const allWeights = new Set<number>();
+    const allStyles = new Set<string>();
+
+    const fontFaceRegex = /@font-face\s*\{([^}]*)\}/gs;
+    let match: RegExpExecArray | null;
+
+    while ((match = fontFaceRegex.exec(cssText)) !== null) {
+      const fontFaceContent = match[1];
+
+      // Extract font-weight
+      const weightMatch = fontFaceContent.match(/font-weight:\s*(\d+)/i);
+      if (weightMatch) {
+        allWeights.add(parseInt(weightMatch[1]));
+      }
+
+      // Extract font-style
+      const styleMatch = fontFaceContent.match(/font-style:\s*(normal|italic)/i);
+      if (styleMatch) {
+        allStyles.add(styleMatch[1].toLowerCase());
+      }
+    }
+
+    // Ensure we have at least some defaults
+    if (allWeights.size === 0) allWeights.add(400);
+    if (allStyles.size === 0) allStyles.add('normal');
+
+    return {
+      allWeights: Array.from(allWeights),
+      allStyles: Array.from(allStyles)
+    };
+  }
+
+  /**
    * Download and cache a Google Font
    * @param url Google Fonts URL (specimen or CSS URL)
+   * @param selectedWeights Weights to download (user selected from discovery)
+   * @param selectedStyles Styles to download (user selected from discovery)
    * @param displayName Optional custom display name for the font
    * @returns The font name if successful, null if failed
    */
-  async cacheGoogleFont(url: string, displayName?: string): Promise<string | null> {
+  async cacheGoogleFont(url: string, selectedWeights?: number[], selectedStyles?: string[], displayName?: string): Promise<string | null> {
+    const debug = getDebugService();
     const fontName = FontManager.parseGoogleFontsUrl(url);
     if (!fontName) {
-      console.error('Invalid Google Fonts URL:', url);
+      debug.error('font-handling', `Invalid Google Fonts URL: ${url}`);
       return null;
     }
 
     // Check if already cached
     if (this.isCached(fontName)) {
+      debug.log('font-handling', `Font "${fontName}" already cached`);
       return fontName;
     }
 
+    // Use defaults if not specified (backward compatibility)
+    const weightsToDownload = selectedWeights || [400];
+    const stylesToDownload = selectedStyles || ['normal'];
+
     try {
+      debug.log('font-handling', `[font-download] Starting download for "${fontName}"...`);
+      debug.log('font-handling', `[font-download] Selected weights: [${weightsToDownload}], styles: [${stylesToDownload}]`);
+      
       // Ensure cache folder exists
       await this.ensureCacheFolder();
 
-      // Fetch font CSS with multiple weights and both normal + italic styles
-      // Google Fonts API requires tuples sorted: all normal (0,wght) first, then all italic (1,wght)
-      const weights = [400, 500, 600, 700];
-      const normalParams = weights.map(w => `0,${w}`);
-      const italicParams = weights.map(w => `1,${w}`);
-      const weightParams = [...normalParams, ...italicParams].join(';');
+      // Clean up existing font folder if it exists (to avoid conflicts with partial downloads)
+      const fontFolderPath = `${this.fontCacheFolder}/${fontName.replace(/\s+/g, '-')}`;
+      const existingFolder = this.app.vault.getAbstractFileByPath(fontFolderPath);
+      if (existingFolder instanceof TFolder) {
+        debug.log('font-handling', `[font-download] Removing existing font folder: ${fontFolderPath}`);
+        
+        // Recursively delete all files in the folder
+        const deleteRecursively = async (folder: TFolder) => {
+          for (const child of [...folder.children]) {
+            if (child instanceof TFolder) {
+              await deleteRecursively(child);
+            } else {
+              await this.app.vault.delete(child);
+            }
+          }
+          await this.app.vault.delete(folder);
+        };
+        
+        try {
+          await deleteRecursively(existingFolder);
+          debug.log('font-handling', `[font-download] Successfully removed existing font folder`);
+        } catch (e) {
+          debug.warn('font-handling', `[font-download] Failed to remove existing font folder: ${e instanceof Error ? e.message : String(e)}`);
+          console.warn('[FontManager] Failed to remove existing font folder:', e);
+        }
+      }
+
+      // Fetch font CSS with ONLY the selected weights and styles
+      // Google Fonts API requires tuples in specific order: normal (0,weight) FIRST, then italic (1,weight)
+      // Format: 0,weight (normal) or 1,weight (italic)
+      const params: string[] = [];
+      
+      // Always add normal weights first (0,weight)
+      if (stylesToDownload.includes('normal')) {
+        for (const weight of weightsToDownload) {
+          params.push(`0,${weight}`);
+        }
+      }
+      
+      // Then add italic weights if requested (1,weight)
+      if (stylesToDownload.includes('italic')) {
+        for (const weight of weightsToDownload) {
+          params.push(`1,${weight}`);
+        }
+      }
+      
+      const weightParams = params.join(';');
       const cssUrl = `${GOOGLE_FONTS_API_BASE}?family=${encodeURIComponent(fontName)}:ital,wght@${weightParams}&display=swap`;
       
-      this.log('Fetching font CSS:', cssUrl);
+      debug.log('font-handling', `[font-download] Requesting from Google Fonts API...`);
+      debug.log('font-handling', `[font-download] CSS URL: ${cssUrl}`);
       
       // Request with a browser-like User-Agent to get woff2 format
       const cssResponse = await requestUrl({
@@ -183,27 +345,34 @@ export class FontManager {
         }
       });
 
+      debug.log('font-handling', `[font-download] CSS Response status: ${cssResponse.status}`);
+      
       if (cssResponse.status !== 200) {
-        console.error('Failed to fetch Google Fonts CSS:', cssResponse.status);
+        debug.error('font-handling', `Failed to fetch Google Fonts CSS: HTTP ${cssResponse.status}`);
         return null;
       }
 
       const cssText = cssResponse.text;
-      this.log('Font CSS response length:', cssText.length);
+      debug.log('font-handling', `[font-download] Received CSS response (${cssText.length} bytes), downloading files...`);
       
       // Parse @font-face rules and download font files
-      const { fontFiles, allWeights, allStyles } = await this.parseCssAndDownloadFonts(cssText, fontName);
+      // This will download only the files present in the CSS response
+      const { fontFiles, allWeights: parsedWeights, allStyles, fileMap } = await this.parseCssAndDownloadFonts(cssText, fontName);
       
       if (fontFiles.length === 0) {
-        console.error('No font files found in CSS for font:', fontName);
+        debug.error('font-handling', `No font files found in CSS for font "${fontName}"`);
         return null;
       }
 
-      // Use all weights from CSS (for variable fonts, this is all available weights)
-      const downloadedWeights = [...new Set(allWeights)].sort((a, b) => a - b);
-      const downloadedStyles = [...new Set(allStyles)].sort();
+      // For variable fonts: if we got fewer files than requested, we need to create entries for all requested weights/styles
+      // pointing to the downloaded variable font file(s)
+      const expandedFontFiles = this.expandVariableFontFiles(fontFiles, weightsToDownload, stylesToDownload, fileMap);
       
-      this.log('Downloaded weights:', downloadedWeights, 'styles:', downloadedStyles);
+      // Use weights/styles that were actually downloaded/expanded
+      const downloadedWeights = [...new Set(expandedFontFiles.map(f => f.weight))].sort((a, b) => a - b);
+      const downloadedStyles = [...new Set(expandedFontFiles.map(f => f.style))].sort();
+      
+      debug.log('font-handling', `[font-caching] Downloaded: weights=[${downloadedWeights}], styles=[${downloadedStyles}], files=${expandedFontFiles.length}`);
 
       // Store in cache
       const cachedFont: CachedFont = {
@@ -212,19 +381,22 @@ export class FontManager {
         sourceUrl: url,
         weights: downloadedWeights,
         styles: downloadedStyles,
-        files: fontFiles,
+        files: expandedFontFiles,
         cachedAt: Date.now()
       };
 
       this.cache.fonts[fontName] = cachedFont;
       await this.saveCallback(this.cache);
 
+      debug.log('font-handling', `[font-caching] Successfully cached "${fontName}": ${downloadedWeights.length} weights, ${downloadedStyles.length} styles`);
       return fontName;
 
     } catch (error) {
-      console.error('Error caching Google Font:', error);
+      debug.error('font-handling', `Error caching Google Font: ${error instanceof Error ? error.message : String(error)}`);
+      console.error('[FontManager] Caching error:', error);
       if (error instanceof Error) {
-        console.error('Error details:', error.message, error.stack);
+        console.error('[FontManager] Error details:', error.message, error.stack);
+        debug.log('font-handling', `Stack trace: ${error.stack}`);
       }
       return null;
     }
@@ -238,32 +410,32 @@ export class FontManager {
    * @returns The font name if successful, null if failed
    */
   async cacheLocalFont(folderPath: string, fontName?: string): Promise<string | null> {
-    console.log('[FontManager] cacheLocalFont called with path:', folderPath, 'fontName:', fontName);
+    const debug = getDebugService();
+    debug.log('font-handling', `[font-local] cacheLocalFont called with path: ${folderPath}, fontName: ${fontName}`);
     this.log('Caching local font from folder:', folderPath);
 
     try {
       const folder = this.app.vault.getAbstractFileByPath(folderPath);
-      console.log('[FontManager] folder lookup result:', folder?.path, 'isFolder:', folder instanceof TFolder);
+      debug.log('font-handling', `[font-local] Folder lookup result: ${folder?.path}, isFolder: ${folder instanceof TFolder}`);
       
       if (!folder || !(folder instanceof TFolder)) {
-        console.error('[FontManager] Folder not found:', folderPath);
+        debug.error('font-handling', `[font-local] Folder not found: ${folderPath}`);
         return null;
       }
 
       // Find all font files in the folder
       const fontExtensions = ['otf', 'ttf', 'woff', 'woff2'];
-      console.log('[FontManager] Folder children:', folder.children.map(f => ({ name: f.name, type: f instanceof TFile ? 'file' : 'folder', ext: (f as TFile).extension })));
       
       this.log('Searching for fonts in folder, found files:', folder.children.map(f => f.name));
       const fontFilesInFolder = folder.children.filter(
         f => f instanceof TFile && fontExtensions.includes(f.extension.toLowerCase())
       ) as TFile[];
 
-      console.log('[FontManager] Filtered font files:', fontFilesInFolder.map(f => f.basename));
+      debug.log('font-handling', `[font-local] Found ${fontFilesInFolder.length} font files`);
       this.log('Found', fontFilesInFolder.length, 'font files:', fontFilesInFolder.map(f => f.basename));
       
       if (fontFilesInFolder.length === 0) {
-        console.error('[FontManager] No font files found in folder:', folderPath);
+        debug.error('font-handling', `[font-local] No font files found in folder: ${folderPath}`);
         return null;
       }
 
@@ -340,11 +512,11 @@ export class FontManager {
           if (existing instanceof TFile) {
             // File exists, overwrite it
             await this.app.vault.modifyBinary(existing, data);
-            console.log('[FontManager] Overwrote existing font file:', destPath);
+            debug.log('font-handling', `[font-local] Overwrote existing font file: ${destPath}`);
           } else {
             // File doesn't exist, create it
             await this.app.vault.createBinary(destPath, data);
-            console.log('[FontManager] Created new font file:', destPath);
+            debug.log('font-handling', `[font-local] Created new font file: ${destPath}`);
           }
           fileCopied = true;
         } catch (error) {
@@ -385,13 +557,10 @@ export class FontManager {
       };
 
       this.cache.fonts[fontName] = cachedFont;
-      console.log('[FontManager] Added font to cache:', fontName);
-      console.log('[FontManager] Calling saveCallback...');
+      debug.log('font-handling', `[font-local] Added font to cache: ${fontName}`);
       await this.saveCallback(this.cache);
-      console.log('[FontManager] saveCallback completed');
 
       this.log('Successfully cached local font:', fontName, 'with', fontFiles.length, 'files');
-      console.log('[FontManager] cacheLocalFont returning:', fontName);
       return fontName;
 
       } catch (error) {
@@ -416,11 +585,13 @@ export class FontManager {
   /**
    * Parse CSS and download font files
    * Handles variable fonts (single file for all weights) efficiently
-   * Returns font files, all parsed weights, and all parsed styles from CSS
+   * Returns font files, all parsed weights, all parsed styles from CSS, and file map (URL -> {localPath, format})
    */
-  private async parseCssAndDownloadFonts(css: string, fontName: string): Promise<{ fontFiles: CachedFontFile[], allWeights: number[], allStyles: string[] }> {
+  private async parseCssAndDownloadFonts(css: string, fontName: string): Promise<{ fontFiles: CachedFontFile[], allWeights: number[], allStyles: string[], fileMap: Map<string, {localPath: string, format: string}> }> {
+    const debug = getDebugService();
     const fontFiles: CachedFontFile[] = [];
     const downloadedUrls = new Map<string, string>(); // URL -> localPath mapping
+    const fileMap = new Map<string, {localPath: string, format: string}>(); // URL -> {localPath, format} mapping
     const allWeights: number[] = [];
     const allStyles: string[] = [];
     
@@ -428,11 +599,15 @@ export class FontManager {
     const fontFolderPath = `${this.fontCacheFolder}/${fontName.replace(/\s+/g, '-')}`;
     await this.ensureFontFolder(fontFolderPath);
     
+    debug.log('font-handling', `[font-parsing] Parsing CSS for ${fontName}...`);
+    
     // Match @font-face blocks (use [\s\S] to match across newlines)
     const fontFaceRegex = /@font-face\s*\{([\s\S]*?)\}/g;
     let match;
+    let fontFaceCount = 0;
 
     while ((match = fontFaceRegex.exec(css)) !== null) {
+      fontFaceCount++;
       const block = match[1];
       
       // Extract font-weight
@@ -449,7 +624,10 @@ export class FontManager {
       // Example: src: url(https://...) format('woff2');
       // Also handles truetype (.ttf) and opentype (.otf) formats
       const srcMatch = block.match(/src:\s*url\(([^)]+)\)\s*format\(['"]([^'"]+)['"]\)/);
-      if (!srcMatch) continue;
+      if (!srcMatch) {
+        debug.warn('font-handling', `[font-parsing] No src URL found in @font-face block for weight ${weight}, style ${style}`);
+        continue;
+      }
 
       const fontUrl = srcMatch[1].replace(/['"]/g, '');
       // Map format names to file extensions
@@ -461,11 +639,21 @@ export class FontManager {
       };
       const format = formatMap[srcMatch[2]] || srcMatch[2];
 
+      debug.log('font-handling', `[font-parsing] Found @font-face: weight=${weight}, style=${style}, format=${format}`);
+
       // Check if we already downloaded this URL (variable fonts use same file for all weights)
       if (downloadedUrls.has(fontUrl)) {
         // Already downloaded - reuse existing file but track this weight/style combo
         const existingPath = downloadedUrls.get(fontUrl)!;
-        // Don't add duplicate entries, the file handles all weights
+        debug.log('font-handling', `[font-parsing] URL already downloaded (variable font), reusing: ${existingPath}`);
+        // Add entry for this weight/style even though we're reusing the same file
+        // This ensures all requested weights/styles are tracked in fontFiles
+        fontFiles.push({
+          weight,
+          style,
+          localPath: existingPath,
+          format
+        });
         continue;
       }
 
@@ -473,6 +661,7 @@ export class FontManager {
       const fileName = `${fontName.replace(/\s+/g, '-')}-${weight}-${style}.${format}`;
       const localPath = `${fontFolderPath}/${fileName}`;
       downloadedUrls.set(fontUrl, localPath);
+      fileMap.set(fontUrl, { localPath, format });
 
       try {
         // Check if file already exists
@@ -486,14 +675,19 @@ export class FontManager {
             localPath,
             format
           });
+          debug.log('font-handling', `[font-download] Using cached file: ${localPath}`);
         } else {
           // Download and save
+          debug.log('font-handling', `[font-download] Downloading ${weight}/${style}...`);
+          
           const fontResponse = await requestUrl({
             url: fontUrl,
             headers: {
               'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
             }
           });
+
+          debug.log('font-handling', `[font-download] Response status: ${fontResponse.status}, size: ${fontResponse.arrayBuffer.byteLength} bytes`);
 
           if (fontResponse.status === 200) {
             await this.app.vault.createBinary(localPath, fontResponse.arrayBuffer);
@@ -504,14 +698,23 @@ export class FontManager {
               localPath,
               format
             });
+            
+            const sizeKb = (fontResponse.arrayBuffer.byteLength / 1024).toFixed(1);
+            debug.log('font-handling', `[font-download] Downloaded ${weight}/${style}: ${sizeKb} KB`);
+          } else {
+            debug.error('font-handling', `[font-download] HTTP ${fontResponse.status} for weight ${weight}/${style}`);
           }
         }
       } catch (e) {
-        this.log('Failed to download font file:', e);
+        debug.error('font-handling', `[font-download] Error downloading ${weight}/${style}: ${e instanceof Error ? e.message : String(e)}`);
+        console.error('[FontManager] Download error for weight', weight, 'style', style, ':', e);
       }
     }
 
-    return { fontFiles, allWeights, allStyles };
+    debug.log('font-handling', `[font-parsing] Completed: found ${fontFaceCount} @font-faces, extracted weights ${allWeights}, styles ${allStyles}`);
+    debug.log('font-handling', `[font-download] Cached ${fontFiles.length} font files`);
+
+    return { fontFiles, allWeights, allStyles, fileMap };
   }
 
   /**
@@ -564,33 +767,38 @@ export class FontManager {
     const font = this.getCachedFont(fontName);
     
     if (!font) {
-      debug.warn('font-loading', `Font "${fontName}" not found in cache for CSS generation`);
+      debug.warn('font-handling', `Font "${fontName}" not found in cache for CSS generation`);
       return '';
     }
 
-    debug.log('font-loading', `Generating @font-face CSS for "${fontName}" with ${font.files.length} files`);
+    debug.log('font-handling', `Generating @font-face CSS for "${fontName}" with ${font.files.length} files`);
 
     const rules: string[] = [];
-    const processedFiles = new Set<string>();
+    const fileDataCache: Map<string, ArrayBuffer> = new Map(); // Cache file data to avoid re-reading
 
     for (const file of font.files) {
       // Normalize the path - remove double slashes that might have been introduced during caching
       const normalizedPath = file.localPath.replace(/\/+/g, '/');
-      
-      // Skip if we've already processed this file (for variable fonts with one file)
-      if (processedFiles.has(normalizedPath)) continue;
-      processedFiles.add(normalizedPath);
 
-      debug.log('font-loading', `Processing font file: ${normalizedPath} (weight: ${file.weight}, style: ${file.style})`);
+      debug.log('font-handling', `Processing font file: ${normalizedPath} (weight: ${file.weight}, style: ${file.style})`);
 
       const fontFile = this.app.vault.getAbstractFileByPath(normalizedPath);
       if (!(fontFile instanceof TFile)) {
-        debug.warn('font-loading', `Font file not found in vault: ${normalizedPath}`);
+        debug.warn('font-handling', `Font file not found in vault: ${normalizedPath}`);
         continue;
       }
 
       try {
-        const data = await this.app.vault.readBinary(fontFile);
+        // Get file data, using cache to avoid re-reading same file multiple times
+        let data: ArrayBuffer;
+        if (fileDataCache.has(normalizedPath)) {
+          data = fileDataCache.get(normalizedPath)!;
+          debug.log('font-handling', `Using cached file data for: ${normalizedPath}`);
+        } else {
+          data = await this.app.vault.readBinary(fontFile);
+          fileDataCache.set(normalizedPath, data);
+        }
+        
         const base64 = this.arrayBufferToBase64(data);
         
         // Map file extensions to MIME types and format strings
@@ -609,7 +817,9 @@ export class FontManager {
         const mimeType = mimeTypes[file.format] || 'font/woff2';
         const formatString = formatStrings[file.format] || file.format;
 
-        // Each file has its own weight (non-variable fonts have separate files per weight)
+        // Generate @font-face for EACH weight/style combination
+        // Even for variable fonts where multiple weights share the same file,
+        // we need to generate separate @font-face rules so browsers know about all available weights
         const rule = `
 @font-face {
   font-family: '${font.name}';
@@ -619,14 +829,14 @@ export class FontManager {
   src: url('data:${mimeType};base64,${base64}') format('${formatString}');
 }`;
         rules.push(rule);
-        debug.log('font-loading', `Generated @font-face for ${font.name} weight ${file.weight} (${base64.length} bytes base64)`);
+        debug.log('font-handling', `Generated @font-face for ${font.name} weight ${file.weight} style ${file.style}`);
       } catch (e) {
-        debug.error('font-loading', `Failed to read font file: ${normalizedPath}, Error: ${e instanceof Error ? e.message : String(e)}`);
+        debug.error('font-handling', `Failed to read font file: ${normalizedPath}, Error: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
     const result = rules.join('\n');
-    debug.log('font-loading', `Generated ${rules.length} @font-face rules for "${fontName}" (${result.length} bytes total)`);
+    debug.log('font-handling', `Generated ${rules.length} @font-face rules for "${fontName}" (${result.length} bytes total)`);
     return result;
   }
 
@@ -640,6 +850,67 @@ export class FontManager {
       binary += String.fromCharCode(bytes[i]);
     }
     return btoa(binary);
+  }
+
+  /**
+   * Expand variable font files to cover all requested weights/styles
+   * 
+   * For variable fonts, Google Fonts returns CSS with only one @font-face block,
+   * but we requested multiple weights/styles. This function creates entries for all
+   * requested weights/styles pointing to the downloaded variable font file.
+   * 
+   * @param fontFiles Files that were actually parsed from the CSS
+   * @param requestedWeights Weights that user requested
+   * @param requestedStyles Styles that user requested
+   * @param fileMap Map of URL -> {localPath, format} for downloaded files
+   * @returns Expanded list with entries for all requested weights/styles
+   */
+  private expandVariableFontFiles(
+    fontFiles: CachedFontFile[],
+    requestedWeights: number[],
+    requestedStyles: string[],
+    fileMap: Map<string, {localPath: string, format: string}>
+  ): CachedFontFile[] {
+    const debug = getDebugService();
+    
+    // If we got the same number of files as requested weights×styles, no expansion needed
+    if (fontFiles.length === requestedWeights.length * requestedStyles.length) {
+      return fontFiles;
+    }
+    
+    debug.log('font-handling', `[font-expand] Expanding variable font: got ${fontFiles.length} files, expected ${requestedWeights.length * requestedStyles.length}`);
+    
+    // For variable fonts, we typically get one file per style (e.g., one for normal, one for italic)
+    // Group by style to map which file handles which style
+    const filesByStyle = new Map<string, CachedFontFile>();
+    for (const file of fontFiles) {
+      filesByStyle.set(file.style, file);
+    }
+    
+    // If we only got one file total, it probably handles all weights/styles
+    const singleFile = fontFiles.length === 1 ? fontFiles[0] : null;
+    
+    // Create entries for all requested weight/style combinations
+    const expanded: CachedFontFile[] = [];
+    for (const weight of requestedWeights) {
+      for (const style of requestedStyles) {
+        // Use the file for this style if available, otherwise use the single file
+        const sourceFile = filesByStyle.get(style) || singleFile;
+        
+        if (sourceFile) {
+          expanded.push({
+            weight,
+            style,
+            localPath: sourceFile.localPath,
+            format: sourceFile.format
+          });
+        }
+      }
+    }
+    
+    debug.log('font-handling', `[font-expand] Expanded from ${fontFiles.length} files to ${expanded.length} entries covering all weights/styles`);
+    
+    return expanded;
   }
 
   /**
@@ -660,17 +931,42 @@ export class FontManager {
     const font = this.getCachedFont(fontName);
     if (!font) return;
 
-    // Delete font files from vault
+    const debug = getDebugService();
+    const fontFolders = new Set<string>();
+
+    // Delete font files from vault and track their folders
     for (const file of font.files) {
       const fontFile = this.app.vault.getAbstractFileByPath(file.localPath);
       if (fontFile instanceof TFile) {
+        // Extract folder path (everything except the filename)
+        const folderPath = file.localPath.substring(0, file.localPath.lastIndexOf('/'));
+        fontFolders.add(folderPath);
+        
         await this.app.vault.delete(fontFile);
+        debug.log('font-handling', `[font-cleanup] Deleted file: ${file.localPath}`);
+      }
+    }
+
+    // Clean up empty font-specific folders
+    for (const folderPath of fontFolders) {
+      try {
+        const folder = this.app.vault.getAbstractFileByPath(folderPath);
+        if (folder instanceof TFolder) {
+          // Only delete if folder is empty
+          if (folder.children.length === 0) {
+            await this.app.vault.delete(folder);
+            debug.log('font-handling', `[font-cleanup] Deleted empty folder: ${folderPath}`);
+          }
+        }
+      } catch (e) {
+        debug.warn('font-handling', `[font-cleanup] Failed to delete folder ${folderPath}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
     // Remove from cache
     delete this.cache.fonts[fontName];
     await this.saveCallback(this.cache);
+    debug.log('font-handling', `[font-cleanup] Removed "${fontName}" from cache`);
   }
 
   /**

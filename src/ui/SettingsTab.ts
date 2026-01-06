@@ -11,14 +11,67 @@
  * @module ui/SettingsTab
  */
 
-import { App, PluginSettingTab, Setting, Notice, setIcon, TFolder } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice, setIcon, TFolder, Modal } from 'obsidian';
 import type PerspectaSlidesPlugin from '../../main';
 import { renderChangelogToContainer } from '../changelog';
 import { getThemeNames } from '../themes';
 import { ContentMode, Theme } from '../types';
 import { FontManager, CachedFont } from '../utils/FontManager';
+import { FontDiscoveryModal } from './FontDiscoveryModal';
 
 type SettingsTabId = 'changelog' | 'presentation' | 'themes' | 'fonts' | 'content' | 'export' | 'debug';
+
+/**
+ * Modal for renaming a font's display name
+ */
+class RenameFontModal extends Modal {
+	private currentName: string;
+	private onConfirm: (newName: string) => void;
+
+	constructor(app: App, currentName: string, onConfirm: (newName: string) => void) {
+		super(app);
+		this.currentName = currentName;
+		this.onConfirm = onConfirm;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.addClass('perspecta-rename-font-modal');
+
+		contentEl.createEl('h2', { text: 'Rename Font' });
+
+		let inputValue = this.currentName;
+		new Setting(contentEl)
+			.setName('Display name')
+			.addText(text => {
+				text
+					.setValue(this.currentName)
+					.onChange(value => {
+						inputValue = value;
+					});
+				text.inputEl.focus();
+				text.inputEl.select();
+			});
+
+		const footer = contentEl.createDiv({ cls: 'modal-button-container' });
+
+		const cancelBtn = footer.createEl('button', { text: 'Cancel' });
+		cancelBtn.addEventListener('click', () => this.close());
+
+		const confirmBtn = footer.createEl('button', { text: 'Rename', cls: 'mod-cta' });
+		confirmBtn.addEventListener('click', () => {
+			if (inputValue && inputValue.trim() !== this.currentName) {
+				this.onConfirm(inputValue.trim());
+			}
+			this.close();
+		});
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
 
 export class PerspectaSlidesSettingTab extends PluginSettingTab {
 	plugin: PerspectaSlidesPlugin;
@@ -354,24 +407,60 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 						return;
 					}
 
-					new Notice(`Downloading font "${parsedName}"...`);
+					// DISCOVERY STAGE: Query Google Fonts to see what's available
+					new Notice(`Discovering available variants for "${parsedName}"...`);
+					console.log('[FontSettings] Starting discovery for:', fontUrl);
+					const discovery = await fontManager.discoverGoogleFont(fontUrl);
+					console.log('[FontSettings] Discovery result:', discovery);
 					
-					const result = await fontManager.cacheGoogleFont(fontUrl, displayName.trim() || undefined);
-					if (result) {
-						// Reload cache to sync with updated settings
-						fontManager.reloadCache(this.plugin.settings.fontCache || { fonts: {} });
-						
-						// Refresh all open Inspector panels to show the new font
-						const inspectorLeaves = this.app.workspace.getLeavesOfType('perspecta-inspector');
-						for (const leaf of inspectorLeaves) {
-							(leaf.view as any)?.render?.();
-						}
-						
-						new Notice(`Font "${displayName.trim() || result}" downloaded successfully`);
-						this.display();
-					} else {
-						new Notice('Failed to download font');
+					if (!discovery) {
+						console.error('[FontSettings] Discovery failed for:', fontUrl);
+						new Notice(`Failed to discover font variants for "${parsedName}". Please check that the font exists at ${fontUrl}`);
+						return;
 					}
+
+					// Show discovery modal to let user select weights/styles
+					const modal = new FontDiscoveryModal(
+						this.app,
+						discovery.fontName,
+						discovery.allWeights,
+						discovery.allStyles,
+						async (selectedWeights, selectedStyles) => {
+							// DOWNLOAD STAGE: User confirmed their selection
+							new Notice(`Downloading font "${parsedName}"...`);
+							console.log('[FontSettings] Starting download with selections:', { selectedWeights, selectedStyles });
+							const result = await fontManager.cacheGoogleFont(
+								fontUrl,
+								selectedWeights,
+								selectedStyles,
+								displayName.trim() || undefined
+							);
+							
+							console.log('[FontSettings] Download result:', result);
+							
+							if (result) {
+								// Reload cache to sync with updated settings
+								fontManager.reloadCache(this.plugin.settings.fontCache || { fonts: {} });
+								
+								// Refresh all open Inspector panels to show the new font
+								const inspectorLeaves = this.app.workspace.getLeavesOfType('perspecta-inspector');
+								for (const leaf of inspectorLeaves) {
+									(leaf.view as any)?.render?.();
+								}
+								
+								new Notice(`Font "${displayName.trim() || result}" downloaded successfully`);
+								this.display();
+							} else {
+								console.error('[FontSettings] Font download failed');
+								new Notice('Failed to download font. Check the console for details.');
+							}
+						},
+						() => {
+							// User cancelled
+							new Notice('Font download cancelled');
+						}
+					);
+					modal.open();
 				}));
 
 		containerEl.createEl('h2', { text: 'Add Local Font' });
@@ -467,12 +556,12 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 				setIcon(editBtn, 'pencil');
 				editBtn.setAttribute('aria-label', 'Edit display name');
 				editBtn.addEventListener('click', async () => {
-					const newName = prompt('Enter new display name:', font.displayName);
-					if (newName && newName.trim() !== font.displayName) {
-						await fontManager.updateDisplayName(font.name, newName.trim());
-						new Notice(`Font renamed to "${newName.trim()}"`);
+					const modal = new RenameFontModal(this.app, font.displayName, async (newName) => {
+						await fontManager.updateDisplayName(font.name, newName);
+						new Notice(`Font renamed to "${newName}"`);
 						this.display();
-					}
+					});
+					modal.open();
 				});
 
 				const deleteBtn = fontActions.createEl('button', { cls: 'perspecta-font-btn perspecta-font-btn-danger' });
@@ -615,9 +704,9 @@ This creates an image slide.`
 			.setName('Debug font loading')
 			.setDesc('Enable console logging for Google Fonts downloading and caching.')
 			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.debugFontLoading)
+				.setValue(this.plugin.settings.debugFontHandling)
 				.onChange(async (value) => {
-					this.plugin.settings.debugFontLoading = value;
+					this.plugin.settings.debugFontHandling = value;
 					if (this.plugin.fontManager) {
 						this.plugin.fontManager.setDebugMode(value);
 					}

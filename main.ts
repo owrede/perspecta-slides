@@ -102,12 +102,17 @@ export default class PerspectaSlidesPlugin extends Plugin {
    * doesn't have access to Obsidian's custom protocol handler
    */
   presentationImagePathResolver: ImagePathResolver = (path: string, isWikiLink: boolean): string => {
-    if (!isWikiLink) {
-      // Standard markdown paths - return as-is (may be URL or relative path)
+    // Handle URLs - pass through as-is
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return path;
+    }
+    
+    // Handle absolute paths - pass through as-is
+    if (path.startsWith('file://') || path.startsWith('/')) {
       return path;
     }
 
-    // For wiki-links, resolve to file:// URL
+    // For wiki-links and plain filenames, resolve to file:// URL
     try {
       // Decode any URL-encoded characters in the path (e.g., %20 for space)
       const decodedPath = decodeURIComponent(path);
@@ -157,7 +162,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
       },
       this.settings.fontCacheFolder
     );
-    this.fontManager.setDebugMode(this.settings.debugFontLoading);
+    // Font handling uses the new consolidated debug topic instead of a separate setting
+    // this.fontManager.setDebugMode(this.settings.debugFontHandling);
 
     // Initialize theme loader with built-in themes first
     this.themeLoader = new ThemeLoader(this.app, this.settings.customThemesFolder);
@@ -464,7 +470,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
       active: true,
     });
 
-    const view = leaf.view as PresentationView;
+    const view = leaf.view;
+    if (!(view instanceof PresentationView)) return;
     await view.loadFile(file);
 
     this.app.workspace.revealLeaf(leaf);
@@ -606,7 +613,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
         // Still update inspector to reflect cursor position
         const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
         for (const leaf of inspectorLeaves) {
-          const view = leaf.view as InspectorPanelView;
+          const view = leaf.view;
+          if (!(view instanceof InspectorPanelView)) continue;
           if (presentation.slides[currentSlideIndex]) {
             view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
           }
@@ -663,7 +671,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Update thumbnail navigator (only modified slides)
     const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
     for (const leaf of thumbnailLeaves) {
-      const view = leaf.view as ThumbnailNavigatorView;
+      const view = leaf.view;
+      if (!(view instanceof ThumbnailNavigatorView)) continue;
       view.setImagePathResolver(this.imagePathResolver);
       if (theme) {
         view.setTheme(theme);
@@ -678,7 +687,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Update presentation view - always update the presentation object and current slide
     const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
     for (const leaf of presentationLeaves) {
-      const view = leaf.view as PresentationView;
+      const view = leaf.view;
+      if (!(view instanceof PresentationView)) continue;
       view.setImagePathResolver(this.imagePathResolver);
       view.setPresentationImagePathResolver(this.presentationImagePathResolver);
       // Update all modified slides in the view's internal state
@@ -693,7 +703,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Update inspector with current slide
     const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
     for (const leaf of inspectorLeaves) {
-      const view = leaf.view as InspectorPanelView;
+      const view = leaf.view;
+      if (!(view instanceof InspectorPanelView)) continue;
       if (presentation.slides[currentSlideIndex]) {
         view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
       }
@@ -722,7 +733,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
 
     for (const leaf of thumbnailLeaves) {
-      const view = leaf.view as ThumbnailNavigatorView;
+      const view = leaf.view;
+      if (!(view instanceof ThumbnailNavigatorView)) continue;
       view.setImagePathResolver(this.imagePathResolver);
 
       // Update internal presentation reference WITHOUT triggering a full re-render
@@ -749,7 +761,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Update presentation view
     const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
     for (const leaf of presentationLeaves) {
-      const view = leaf.view as PresentationView;
+      const view = leaf.view;
+      if (!(view instanceof PresentationView)) continue;
       view.setImagePathResolver(this.imagePathResolver);
       view.setPresentationImagePathResolver(this.presentationImagePathResolver);
       view.setPresentation(presentation, theme);
@@ -759,7 +772,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Update inspector
     const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
     for (const leaf of inspectorLeaves) {
-      const view = leaf.view as InspectorPanelView;
+      const view = leaf.view;
+      if (!(view instanceof InspectorPanelView)) continue;
       view.setPresentation(presentation, file);
       if (presentation.slides[currentSlideIndex]) {
         view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
@@ -795,7 +809,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const fontWeightsCache = this.buildFontWeightsCache();
 
     for (const leaf of thumbnailLeaves) {
-      const view = leaf.view as ThumbnailNavigatorView;
+      const view = leaf.view;
+      if (!(view instanceof ThumbnailNavigatorView)) continue;
       view.setImagePathResolver(this.imagePathResolver);
       view.setCustomFontCSS(customFontCSS);
       view.setFontWeightsCache(fontWeightsCache);
@@ -815,7 +830,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
     for (const leaf of inspectorLeaves) {
-      const view = leaf.view as InspectorPanelView;
+      const view = leaf.view;
+      if (!(view instanceof InspectorPanelView)) continue;
+      
       if (this.fontManager) {
         view.setFontManager(this.fontManager);
       }
@@ -840,7 +857,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
     for (const leaf of presentationLeaves) {
-      const view = leaf.view as PresentationView;
+      const view = leaf.view;
+      if (!(view instanceof PresentationView)) continue;
       view.setImagePathResolver(this.imagePathResolver);
       view.setPresentationImagePathResolver(this.presentationImagePathResolver);
       view.setCustomFontCSS(customFontCSS);
@@ -876,23 +894,26 @@ export default class PerspectaSlidesPlugin extends Plugin {
     if (!fromPresentationView) {
       const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
       for (const leaf of presentationLeaves) {
-        const view = leaf.view as PresentationView;
-        view.goToSlide(index);
+        if (leaf.view instanceof PresentationView) {
+          leaf.view.goToSlide(index);
+        }
       }
     }
 
     const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
     for (const leaf of inspectorLeaves) {
-      const view = leaf.view as InspectorPanelView;
-      if (presentation.slides[index]) {
-        view.setCurrentSlide(presentation.slides[index], index);
+      if (leaf.view instanceof InspectorPanelView) {
+        if (presentation.slides[index]) {
+          leaf.view.setCurrentSlide(presentation.slides[index], index);
+        }
       }
     }
 
     const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
     for (const leaf of thumbnailLeaves) {
-      const view = leaf.view as ThumbnailNavigatorView;
-      view.selectSlide(index);
+      if (leaf.view instanceof ThumbnailNavigatorView) {
+        leaf.view.selectSlide(index);
+      }
     }
 
     // Move cursor in the markdown editor to the corresponding slide section
@@ -969,21 +990,24 @@ export default class PerspectaSlidesPlugin extends Plugin {
       // Update thumbnail navigator selection
       const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
       for (const leaf of thumbnailLeaves) {
-        const view = leaf.view as ThumbnailNavigatorView;
+        const view = leaf.view;
+        if (!(view instanceof ThumbnailNavigatorView)) continue;
         view.selectSlide(slideIndex);
       }
 
       // Update inspector panel
       const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
       for (const leaf of inspectorLeaves) {
-        const view = leaf.view as InspectorPanelView;
+        const view = leaf.view;
+        if (!(view instanceof InspectorPanelView)) continue;
         view.setCurrentSlide(presentation.slides[slideIndex], slideIndex);
       }
 
       // Update presentation view (without triggering callback to avoid cursor repositioning)
       const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
       for (const leaf of presentationLeaves) {
-        const view = leaf.view as PresentationView;
+        const view = leaf.view;
+        if (!(view instanceof PresentationView)) continue;
         view.goToSlide(slideIndex, false);
       }
     }
@@ -1134,24 +1158,38 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
   private async startPresentationAtSlide(file: TFile, slideIndex: number) {
     try {
+      console.error('[Plugin] startPresentationAtSlide called for:', file.name, 'slide:', slideIndex);
       const content = await this.app.vault.read(file);
       const presentation = this.parser.parse(content);
       const theme = this.getThemeByName(presentation.frontmatter.theme || this.settings.defaultTheme);
 
       // Close existing presentation window if open
       if (this.presentationWindow && this.presentationWindow.isOpen()) {
+        console.error('[Plugin] Closing existing presentation window');
         this.presentationWindow.close();
       }
 
       // Generate custom font CSS for cached fonts
       const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
 
+      // Build font weights cache for weight validation/fallback
+      const fontWeightsCache = new Map<string, number[]>();
+      if (this.fontManager) {
+        for (const cachedFont of this.fontManager.getAllCachedFonts()) {
+          fontWeightsCache.set(cachedFont.name, cachedFont.weights);
+        }
+      }
+
       // Create new presentation window
       // Use presentationImagePathResolver which returns file:// URLs for the external window
+      console.error('[Plugin] Creating new PresentationWindow');
       this.presentationWindow = new PresentationWindow();
       this.presentationWindow.setImagePathResolver(this.presentationImagePathResolver);
       this.presentationWindow.setCustomFontCSS(customFontCSS);
+      this.presentationWindow.setFontWeightsCache(fontWeightsCache);
+      console.error('[Plugin] Calling presentationWindow.open()');
       await this.presentationWindow.open(presentation, theme || null, file, slideIndex);
+      console.error('[Plugin] Presentation window opened successfully');
 
       this.currentPresentationFile = file;
     } catch (e) {
@@ -1498,7 +1536,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Update all views without writing to disk
     const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
     for (const leaf of thumbnailLeaves) {
-      const view = leaf.view as ThumbnailNavigatorView;
+      const view = leaf.view;
+      if (!(view instanceof ThumbnailNavigatorView)) continue;
       const presentation = view.getPresentation();
       if (presentation) {
         Object.assign(presentation.frontmatter, updates);
@@ -1508,7 +1547,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
     for (const leaf of presentationLeaves) {
-      const view = leaf.view as PresentationView;
+      const view = leaf.view;
+      if (!(view instanceof PresentationView)) continue;
       const presentation = view.getPresentation();
       if (presentation) {
         Object.assign(presentation.frontmatter, updates);
@@ -1531,7 +1571,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
 
     for (const leaf of inspectorLeaves) {
-      const view = leaf.view as InspectorPanelView;
+      const view = leaf.view;
+      if (!(view instanceof InspectorPanelView)) continue;
       const isFocused = activeFile !== null && view.getTargetFile()?.path === activeFile.path;
       view.setFocused(isFocused);
     }
@@ -1553,7 +1594,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       // Load fonts from the custom theme's fonts/ folder
       const themeFontCSS = await this.themeLoader.generateThemeFontCSS(theme);
       if (themeFontCSS) {
-        debug.log('font-loading', `Added theme font CSS (${themeName})`);
+        debug.log('font-handling', `Added theme font CSS (${themeName})`);
         cssRules.push(themeFontCSS);
       }
     }
@@ -1568,30 +1609,30 @@ export default class PerspectaSlidesPlugin extends Plugin {
         frontmatter.footerFont
       ].filter(Boolean) as string[];
 
-      debug.log('font-loading', `Checking fonts for CSS generation: ${fontsToCheck.join(', ')}`);
+      debug.log('font-handling', `Checking fonts for CSS generation: ${fontsToCheck.join(', ')}`);
 
       for (const fontName of fontsToCheck) {
         const isCached = this.fontManager.isCached(fontName);
-        debug.log('font-loading', `Font "${fontName}" cached: ${isCached}`);
+        debug.log('font-handling', `Font "${fontName}" cached: ${isCached}`);
         
         if (isCached) {
           const css = await this.fontManager.generateFontFaceCSS(fontName);
           if (css) {
-            debug.log('font-loading', `Generated @font-face CSS for "${fontName}" (${css.length} bytes)`);
+            debug.log('font-handling', `Generated @font-face CSS for "${fontName}" (${css.length} bytes)`);
             cssRules.push(css);
           } else {
-            debug.warn('font-loading', `Failed to generate CSS for cached font "${fontName}"`);
+            debug.warn('font-handling', `Failed to generate CSS for cached font "${fontName}"`);
           }
         } else {
-          debug.warn('font-loading', `Font "${fontName}" not found in cache`);
+          debug.warn('font-handling', `Font "${fontName}" not found in cache`);
         }
       }
     } else {
-      debug.warn('font-loading', 'FontManager not initialized');
+      debug.warn('font-handling', 'FontManager not initialized');
     }
 
     const result = cssRules.join('\n');
-    debug.log('font-loading', `Total custom font CSS: ${result.length} bytes, ${cssRules.length} rules`);
+    debug.log('font-handling', `Total custom font CSS: ${result.length} bytes, ${cssRules.length} rules`);
     return result;
   }
 

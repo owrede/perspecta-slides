@@ -29,6 +29,7 @@ import { FontManager, FontCache } from './src/utils/FontManager';
 import { ThemeExporter, SaveThemeModal } from './src/utils/ThemeExporter';
 import { ThemeLoader } from './src/themes/ThemeLoader';
 import { getBuiltInThemeNames } from './src/themes/builtin';
+import { DebugService, setDebugService } from './src/utils/DebugService';
 
 const SLIDES_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
 
@@ -48,6 +49,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
   parser: SlideParser = new SlideParser();
   fontManager: FontManager | null = null;
   themeLoader: ThemeLoader | null = null;
+  debugService: DebugService = new DebugService();
   private presentationWindow: PresentationWindow | null = null;
   private currentPresentationFile: TFile | null = null;
   private presentationCache: PresentationCache | null = null;
@@ -140,6 +142,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
+
+    // Initialize debug service with settings
+    this.debugService.setTopicConfig(this.settings.debugTopics || {});
+    setDebugService(this.debugService);
 
     // Initialize font manager
     this.fontManager = new FontManager(

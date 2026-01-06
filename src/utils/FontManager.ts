@@ -44,14 +44,16 @@ export class FontManager {
     this.app = app;
     this.cache = initialCache || { fonts: {} };
     this.saveCallback = saveCallback;
-    this.fontCacheFolder = fontCacheFolder || DEFAULT_FONT_CACHE_FOLDER;
+    // Remove trailing slash to avoid double slashes when concatenating paths
+    this.fontCacheFolder = (fontCacheFolder || DEFAULT_FONT_CACHE_FOLDER).replace(/\/$/, '');
   }
 
   /**
    * Set the font cache folder path
    */
   setFontCacheFolder(folder: string): void {
-    this.fontCacheFolder = folder || DEFAULT_FONT_CACHE_FOLDER;
+    // Remove trailing slash to avoid double slashes when concatenating paths
+    this.fontCacheFolder = (folder || DEFAULT_FONT_CACHE_FOLDER).replace(/\/$/, '');
   }
 
   /**
@@ -130,6 +132,14 @@ export class FontManager {
    */
   isCached(fontName: string): boolean {
     return fontName in this.cache.fonts;
+  }
+
+  /**
+   * Reload the font cache from the provided data
+   * Used to sync the in-memory cache with updated settings
+   */
+  reloadCache(cacheData: FontCache | null): void {
+    this.cache = cacheData || { fonts: {} };
   }
 
   /**
@@ -227,33 +237,45 @@ export class FontManager {
    * @returns The font name if successful, null if failed
    */
   async cacheLocalFont(folderPath: string, fontName?: string): Promise<string | null> {
+    console.log('[FontManager] cacheLocalFont called with path:', folderPath, 'fontName:', fontName);
     this.log('Caching local font from folder:', folderPath);
 
     try {
       const folder = this.app.vault.getAbstractFileByPath(folderPath);
+      console.log('[FontManager] folder lookup result:', folder?.path, 'isFolder:', folder instanceof TFolder);
+      
       if (!folder || !(folder instanceof TFolder)) {
-        console.error('Folder not found:', folderPath);
+        console.error('[FontManager] Folder not found:', folderPath);
         return null;
       }
 
       // Find all font files in the folder
       const fontExtensions = ['otf', 'ttf', 'woff', 'woff2'];
+      console.log('[FontManager] Folder children:', folder.children.map(f => ({ name: f.name, type: f instanceof TFile ? 'file' : 'folder', ext: (f as TFile).extension })));
+      
+      this.log('Searching for fonts in folder, found files:', folder.children.map(f => f.name));
       const fontFilesInFolder = folder.children.filter(
         f => f instanceof TFile && fontExtensions.includes(f.extension.toLowerCase())
       ) as TFile[];
 
+      console.log('[FontManager] Filtered font files:', fontFilesInFolder.map(f => f.basename));
+      this.log('Found', fontFilesInFolder.length, 'font files:', fontFilesInFolder.map(f => f.basename));
+      
       if (fontFilesInFolder.length === 0) {
-        console.error('No font files found in folder:', folderPath);
+        console.error('[FontManager] No font files found in folder:', folderPath);
         return null;
       }
 
       // Auto-detect font name from first file if not provided
-      // E.g., "ClanOT-Bold.otf" -> "ClanOT"
+      // E.g., "ClanOT-Bold.otf" -> "ClanOT", "Clan.otf" -> "Clan"
       if (!fontName) {
         const firstFile = fontFilesInFolder[0];
-        const match = firstFile.basename.match(/^([^-]+)/);
+        const match = firstFile.basename.match(/^([^-.]+)/);
         fontName = match ? match[1] : firstFile.basename;
+        this.log('Auto-detected font name from file:', firstFile.basename, '-> fontName:', fontName);
       }
+      
+      this.log('Caching font with name:', fontName);
 
       // Parse font files to extract weight and style info
       const fontFiles: CachedFontFile[] = [];
@@ -282,8 +304,10 @@ export class FontManager {
         'ultra': 950,
       };
 
-      // Ensure cache folder exists
+      // Ensure cache folder exists and create font-specific subfolder
       await this.ensureCacheFolder();
+      const fontFolderPath = `${this.fontCacheFolder}/${fontName.replace(/\s+/g, '-')}`;
+      await this.ensureFontFolder(fontFolderPath);
 
       for (const file of fontFilesInFolder) {
         const baseName = file.basename.toLowerCase();
@@ -301,27 +325,51 @@ export class FontManager {
         const isItalic = baseName.includes('ita') || baseName.includes('italic') || baseName.includes('oblique');
         const style = isItalic ? 'italic' : 'normal';
 
-        // Copy file to cache folder
+        // Copy file to font-specific subfolder
         const format = file.extension.toLowerCase();
         const destFileName = `${fontName.replace(/\s+/g, '-')}-${weight}-${style}.${format}`;
-        const destPath = `${this.fontCacheFolder}/${destFileName}`;
+        const destPath = `${fontFolderPath}/${destFileName}`;
 
         // Check if destination exists
         const existing = this.app.vault.getAbstractFileByPath(destPath);
-        if (!existing) {
+        let fileCopied = false;
+        
+        try {
           const data = await this.app.vault.readBinary(file);
-          await this.app.vault.createBinary(destPath, data);
+          if (existing instanceof TFile) {
+            // File exists, overwrite it
+            await this.app.vault.modifyBinary(existing, data);
+            console.log('[FontManager] Overwrote existing font file:', destPath);
+          } else {
+            // File doesn't exist, create it
+            await this.app.vault.createBinary(destPath, data);
+            console.log('[FontManager] Created new font file:', destPath);
+          }
+          fileCopied = true;
+        } catch (error) {
+          console.error('[FontManager] Error copying font file:', destFileName, error);
+          // Check if file exists anyway (in case error was from overwrite attempt)
+          const fileExists = this.app.vault.getAbstractFileByPath(destPath) instanceof TFile;
+          if (!fileExists) {
+            // File truly doesn't exist and we couldn't copy it, skip this file
+            continue;
+          }
+          // File exists even though copy failed, continue to register it below
+          fileCopied = true;
         }
 
-        fontFiles.push({
-          weight,
-          style,
-          localPath: destPath,
-          format,
-        });
+        // Add to fontFiles if copy succeeded or file already exists
+        if (fileCopied) {
+          fontFiles.push({
+            weight,
+            style,
+            localPath: destPath,
+            format,
+          });
 
-        if (!weights.includes(weight)) weights.push(weight);
-        if (!styles.includes(style)) styles.push(style);
+          if (!weights.includes(weight)) weights.push(weight);
+          if (!styles.includes(style)) styles.push(style);
+        }
       }
 
       // Create cached font entry
@@ -336,16 +384,20 @@ export class FontManager {
       };
 
       this.cache.fonts[fontName] = cachedFont;
+      console.log('[FontManager] Added font to cache:', fontName);
+      console.log('[FontManager] Calling saveCallback...');
       await this.saveCallback(this.cache);
+      console.log('[FontManager] saveCallback completed');
 
       this.log('Successfully cached local font:', fontName, 'with', fontFiles.length, 'files');
+      console.log('[FontManager] cacheLocalFont returning:', fontName);
       return fontName;
 
-    } catch (error) {
-      console.error('Error caching local font:', error);
+      } catch (error) {
+      console.error('[FontManager] Error caching local font:', error);
       return null;
-    }
-  }
+      }
+      }
 
   /**
    * Check if a path is a local font folder (contains font files)
@@ -370,6 +422,10 @@ export class FontManager {
     const downloadedUrls = new Map<string, string>(); // URL -> localPath mapping
     const allWeights: number[] = [];
     const allStyles: string[] = [];
+    
+    // Create font-specific subfolder
+    const fontFolderPath = `${this.fontCacheFolder}/${fontName.replace(/\s+/g, '-')}`;
+    await this.ensureFontFolder(fontFolderPath);
     
     // Match @font-face blocks (use [\s\S] to match across newlines)
     const fontFaceRegex = /@font-face\s*\{([\s\S]*?)\}/g;
@@ -414,7 +470,7 @@ export class FontManager {
 
       // Include weight in filename to handle non-variable fonts with separate files per weight
       const fileName = `${fontName.replace(/\s+/g, '-')}-${weight}-${style}.${format}`;
-      const localPath = `${this.fontCacheFolder}/${fileName}`;
+      const localPath = `${fontFolderPath}/${fileName}`;
       downloadedUrls.set(fontUrl, localPath);
 
       try {
@@ -475,6 +531,23 @@ export class FontManager {
   }
 
   /**
+   * Ensure a font-specific subfolder exists within the cache folder
+   */
+  private async ensureFontFolder(folderPath: string): Promise<void> {
+    const folder = this.app.vault.getAbstractFileByPath(folderPath);
+    if (!folder) {
+      try {
+        await this.app.vault.createFolder(folderPath);
+      } catch (e) {
+        // Folder might already exist (race condition) - ignore
+        if (!(e instanceof Error && e.message.includes('Folder already exists'))) {
+          throw e;
+        }
+      }
+    }
+  }
+
+  /**
    * Generate @font-face CSS for a cached font (uses base64 for iframe compatibility)
    */
   async generateFontFaceCSS(fontName: string): Promise<string> {
@@ -487,7 +560,9 @@ export class FontManager {
    */
   async generateFontFaceCSSForExport(fontName: string): Promise<string> {
     const font = this.getCachedFont(fontName);
-    if (!font) return '';
+    if (!font) {
+      return '';
+    }
 
     const rules: string[] = [];
     const processedFiles = new Set<string>();

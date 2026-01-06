@@ -892,15 +892,94 @@ export class SlideRenderer {
 
   private renderList(content: string): string {
     const lines = content.split('\n');
-    const isOrdered = /^\d+\./.test(lines[0]);
-    const tag = isOrdered ? 'ol' : 'ul';
-
-    const items = lines.map(line => {
-      const text = line.replace(/^[-*+]\s+/, '').replace(/^\d+\.\s+/, '');
-      return `<li>${this.renderMarkdown(text)}</li>`;
-    }).join('\n');
-
-    return `<${tag}>${items}</${tag}>`;
+    
+    // Parse list structure with indentation levels
+    interface ListItem {
+      level: number;
+      text: string;
+      isOrdered: boolean;
+    }
+    
+    const items: ListItem[] = lines.map(line => {
+      // Count leading spaces/tabs to determine indentation level
+      const leadingWhitespace = line.match(/^(\s*)/)?.[1] || '';
+      
+      // Count tabs as single units, spaces as pairs (2 spaces = 1 level)
+      let indentLevel = 0;
+      for (const char of leadingWhitespace) {
+        if (char === '\t') {
+          indentLevel++;
+        } else if (char === ' ') {
+          // Count spaces - every 2 spaces = 1 level
+          // We'll handle this by converting spaces to tab-equivalent
+        }
+      }
+      // Handle remaining spaces (in case there are any)
+      const spaceCount = leadingWhitespace.replace(/\t/g, '').length;
+      indentLevel += Math.floor(spaceCount / 2);
+      
+      const isOrdered = /^\d+\./.test(line.trim());
+      const text = line.trim().replace(/^[-*+]\s+/, '').replace(/^\d+\.\s+/, '');
+      
+      return {
+        level: indentLevel,
+        text,
+        isOrdered
+      };
+    });
+    
+    // Build nested HTML - properly handle nesting by looking ahead
+    const buildListHTML = (items: ListItem[], startIndex: number = 0, parentLevel: number = -1): { html: string; nextIndex: number } => {
+      let html = '';
+      let i = startIndex;
+      
+      // Determine the list type from the first item at this level
+      let listTag = 'ul';
+      if (i < items.length && items[i].level > parentLevel) {
+        listTag = items[i].isOrdered ? 'ol' : 'ul';
+      }
+      
+      html += `<${listTag}>`;
+      
+      while (i < items.length) {
+        const item = items[i];
+        
+        // If item is at a lower level, we're done
+        if (item.level <= parentLevel) {
+          break;
+        }
+        
+        // If item is deeper than our level, let parent handle recursion
+        if (item.level > parentLevel + 1) {
+          i++;
+          continue;
+        }
+        
+        // Item is at our level (parentLevel + 1)
+        if (item.level === parentLevel + 1) {
+          html += `<li data-level="${item.level}">${this.renderMarkdown(item.text)}`;
+          
+          // Look ahead to see if next item is nested
+          if (i + 1 < items.length && items[i + 1].level > item.level) {
+            // Recursively render nested list
+            const { html: nestedHtml, nextIndex } = buildListHTML(items, i + 1, item.level);
+            html += nestedHtml;
+            i = nextIndex;
+          } else {
+            i++;
+          }
+          
+          html += `</li>`;
+        }
+      }
+      
+      html += `</${listTag}>`;
+      
+      return { html, nextIndex: i };
+    };
+    
+    const { html } = buildListHTML(items, 0, -1);
+    return html;
   }
 
   /**
@@ -1390,21 +1469,61 @@ export class SlideRenderer {
         font-weight: var(--body-font-weight, 400);
         padding-left: 0;
         margin-left: 0;
+        margin-top: 0;
+        margin-bottom: 0;
         font-size: calc(var(--slide-unit) * 2.8 * var(--body-font-scale, 1) * var(--font-scale, 1)); 
         line-height: var(--line-height, 1.1);
         list-style: none;
       }
+      
+      /* First level lists */
+      > ul > li::before,
+      > ol > li::before {
+        opacity: 1;
+      }
+      
+      /* Nested lists get left indentation */
+      ul ul, ul ol, ol ul, ol ol {
+        margin-left: calc(var(--slide-unit) * 4);
+        margin-top: calc(var(--slide-unit) * 0.5);
+        margin-bottom: calc(var(--slide-unit) * 0.5);
+      }
+      
       li { 
         margin-bottom: calc(var(--list-item-spacing, 1) * var(--slide-unit));
-        padding-left: calc(var(--slide-unit) * 2);
+        margin-top: 0;
+        padding-left: calc(var(--slide-unit) * 2.5);
         position: relative;
       }
+      
+      /* Level bullets based on data-level attribute */
       li::before {
-        content: '•';
         position: absolute;
         left: 0;
         width: calc(var(--slide-unit) * 2);
         text-align: left;
+      }
+      
+      /* Level 0 bullet */
+      li[data-level="0"]::before {
+        content: '•';
+      }
+      
+      /* Level 1 bullet (different style) */
+      li[data-level="1"]::before {
+        content: '◦';
+      }
+      
+      /* Level 2 bullet (different style) */
+      li[data-level="2"]::before {
+        content: '▪';
+      }
+      
+      /* Level 3+ bullet */
+      li[data-level="3"]::before,
+      li[data-level="4"]::before,
+      li[data-level="5"]::before {
+        content: '▫';
       }
       ol { counter-reset: list-counter; }
       ol li { 

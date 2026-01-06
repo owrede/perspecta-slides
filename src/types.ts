@@ -382,6 +382,16 @@ export interface PerspecaSlidesSettings {
   debugSlideRendering: boolean;
   debugFontLoading: boolean;
   fontCache?: FontCacheData;
+  // Debug topics (topic-specific debug logging)
+  debugTopics?: {
+    'presentation-view'?: boolean;
+    'presentation-window'?: boolean;
+    'slide-parsing'?: boolean;
+    'font-loading'?: boolean;
+    'renderer'?: boolean;
+    'inspector'?: boolean;
+    'thumbnail-navigator'?: boolean;
+  };
 }
 
 /**
@@ -413,6 +423,15 @@ export const DEFAULT_SETTINGS: PerspecaSlidesSettings = {
   debugSlideRendering: false,
   debugFontLoading: false,
   fontCache: { fonts: {} },
+  debugTopics: {
+    'presentation-view': false,
+    'presentation-window': false,
+    'slide-parsing': false,
+    'font-loading': false,
+    'renderer': false,
+    'inspector': false,
+    'thumbnail-navigator': false,
+  },
 };
 
 /**

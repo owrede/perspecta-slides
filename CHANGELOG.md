@@ -2,6 +2,26 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.1] - 2026-01-06
+
+### Local Font Support Fixes
+
+- **Fix**: Resolved font cache path issues where trailing slashes in `fontCacheFolder` caused double slashes in file paths (e.g., `perspecta-fonts//Clan/`)
+- **Fix**: Font caching now properly normalizes paths by removing trailing slashes in FontManager constructor and setter methods
+- **Fix**: Fixed "File already exists" errors when re-adding local fonts - now uses `modifyBinary()` for existing files instead of `createBinary()`
+- **Fix**: Font metadata is now properly registered even when some files fail to copy during re-add operations
+
+### Nested List Rendering
+
+- **New**: Proper nested list support with `<ul>` elements inside `<li>` elements
+- **New**: Visual hierarchy for nested lists with different bullet styles per level:
+  - Level 0: Filled bullet (•)
+  - Level 1: Open circle (◦)
+  - Level 2: Filled square (▪)
+  - Level 3+: Open square (▫)
+- **Improved**: Indentation detection now counts tabs as full units for consistent nesting
+- **Improved**: Data-level attributes on list items for CSS styling and depth tracking
+
 ## [0.2.0] - 2026-01-06
 
 ### Theme System Overhaul

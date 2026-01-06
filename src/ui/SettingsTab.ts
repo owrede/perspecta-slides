@@ -295,7 +295,8 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 				.setPlaceholder('perspecta-fonts')
 				.setValue(this.plugin.settings.fontCacheFolder)
 				.onChange(async (value) => {
-					this.plugin.settings.fontCacheFolder = value.trim() || 'perspecta-fonts';
+					// Remove trailing slash from path
+					this.plugin.settings.fontCacheFolder = (value.trim() || 'perspecta-fonts').replace(/\/$/, '');
 					if (this.plugin.fontManager) {
 						this.plugin.fontManager.setFontCacheFolder(this.plugin.settings.fontCacheFolder);
 					}
@@ -357,6 +358,15 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 					
 					const result = await fontManager.cacheGoogleFont(fontUrl, displayName.trim() || undefined);
 					if (result) {
+						// Reload cache to sync with updated settings
+						fontManager.reloadCache(this.plugin.settings.fontCache || { fonts: {} });
+						
+						// Refresh all open Inspector panels to show the new font
+						const inspectorLeaves = this.app.workspace.getLeavesOfType('perspecta-inspector');
+						for (const leaf of inspectorLeaves) {
+							(leaf.view as any)?.render?.();
+						}
+						
 						new Notice(`Font "${displayName.trim() || result}" downloaded successfully`);
 						this.display();
 					} else {
@@ -408,7 +418,22 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 					new Notice('Adding local font...');
 					
 					const result = await fontManager.cacheLocalFont(localFontPath.trim(), localFontName.trim() || undefined);
+					console.log('[FontSettings] cacheLocalFont result:', result);
+					console.log('[FontSettings] Plugin settings fontCache after:', this.plugin.settings.fontCache);
+					
 					if (result) {
+						// Reload cache to sync with updated settings
+						console.log('[FontSettings] Reloading fontManager cache...');
+						fontManager.reloadCache(this.plugin.settings.fontCache || { fonts: {} });
+						console.log('[FontSettings] Cache reloaded. Fonts:', fontManager.getAllCachedFonts().map(f => f.name));
+						
+						// Refresh all open Inspector panels to show the new font
+						const inspectorLeaves = this.app.workspace.getLeavesOfType('perspecta-inspector');
+						console.log('[FontSettings] Found', inspectorLeaves.length, 'inspector leaves');
+						for (const leaf of inspectorLeaves) {
+							(leaf.view as any)?.render?.();
+						}
+						
 						new Notice(`Font "${result}" added successfully`);
 						this.display();
 					} else {
@@ -572,6 +597,9 @@ This creates an image slide.`
 	private displayDebugSettings(containerEl: HTMLElement): void {
 		containerEl.createEl('h2', { text: 'Debug Options' });
 
+		// Legacy debug options (kept for compatibility)
+		containerEl.createEl('h3', { text: 'Legacy Debug Settings' });
+
 		new Setting(containerEl)
 			.setName('Debug slide rendering')
 			.setDesc('Enable console logging for slide parsing and column auto-detection.')
@@ -596,6 +624,31 @@ This creates an image slide.`
 					await this.plugin.saveSettings();
 				}));
 
+		// Topic-specific debug settings
+		containerEl.createEl('h3', { text: 'Topic-Specific Debug Logging' });
+
+		const topics = this.plugin.debugService.getTopics();
+		for (const { topic, enabled } of topics) {
+			const friendlyName = topic
+				.split('-')
+				.map(word => word.charAt(0).toUpperCase() + word.slice(1))
+				.join(' ');
+
+			new Setting(containerEl)
+				.setName(`Debug: ${friendlyName}`)
+				.setDesc(`Enable detailed logging for ${topic}`)
+				.addToggle(toggle => toggle
+					.setValue(enabled)
+					.onChange(async (value) => {
+						if (!this.plugin.settings.debugTopics) {
+							this.plugin.settings.debugTopics = {};
+						}
+						this.plugin.settings.debugTopics[topic as keyof typeof this.plugin.settings.debugTopics] = value;
+						this.plugin.debugService.setTopicConfig(this.plugin.settings.debugTopics);
+						await this.plugin.saveSettings();
+					}));
+		}
+
 		// Debug info section
 		const debugInfoBox = containerEl.createDiv({ cls: 'perspecta-slides-info-box' });
 		debugInfoBox.createEl('h4', { text: 'Debug Information' });
@@ -608,9 +661,10 @@ This creates an image slide.`
 		const debugList = info.createEl('ul');
 		debugList.createEl('li', { text: 'Slide rendering: Element parsing, column auto-detection, layout logic' });
 		debugList.createEl('li', { text: 'Font loading: Font file downloads, caching, CSS generation' });
+		debugList.createEl('li', { text: 'Topic-specific logs: Detailed trace information for specific features' });
 		
 		info.createEl('p', { 
-			text: 'Use these when troubleshooting layout issues or font loading problems.'
+			text: 'Use these when troubleshooting layout issues or font loading problems. Look for messages prefixed with [topic-name] in the console.'
 		});
 	}
 }

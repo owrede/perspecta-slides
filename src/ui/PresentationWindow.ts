@@ -1,4 +1,5 @@
 import { TFile, Notice } from 'obsidian';
+import { getDebugService } from '../utils/DebugService';
 import { Presentation, Theme } from '../types';
 import { SlideRenderer, ImagePathResolver } from '../renderer/SlideRenderer';
 import {
@@ -129,8 +130,9 @@ export class PresentationWindow {
     await this.loadHTMLContent(html);
 
     // Show window when ready
+    const debug = getDebugService();
     this.win.once('ready-to-show', () => {
-      console.log('ready-to-show event fired');
+      debug.log('presentation-window', 'ready-to-show event fired');
       this.win.show();
       this.win.focus();
     });
@@ -138,7 +140,7 @@ export class PresentationWindow {
     // Fallback: show window after a short delay if ready-to-show doesn't fire
     setTimeout(() => {
       if (this.win && !this.win.isDestroyed() && !this.win.isVisible()) {
-        console.log('Fallback: showing window after timeout');
+        debug.log('presentation-window', 'Fallback: showing window after timeout');
         this.win.show();
         this.win.focus();
       }
@@ -188,8 +190,9 @@ export class PresentationWindow {
    * This is faster than writing temp files and has no size limit
    */
   private async loadHTMLContent(html: string): Promise<void> {
+    const debug = getDebugService();
     if (!this.win) {
-      console.error('Cannot load HTML: win is null');
+      debug.error('presentation-window', 'Cannot load HTML: win is null');
       return;
     }
 
@@ -207,7 +210,7 @@ export class PresentationWindow {
         document.close();
       `);
     } catch (error) {
-      console.error('Failed to load HTML content:', error);
+      debug.error('presentation-window', `Failed to load HTML content: ${error}`);
       new Notice('Failed to open presentation window.');
     }
   }
@@ -596,11 +599,12 @@ export class PresentationWindow {
    * if it was modified, otherwise does nothing.
    */
   async updateContent(presentation: Presentation, theme: Theme | null): Promise<void> {
+    const debug = getDebugService();
     if (!this.win || this.win.isDestroyed()) return;
 
     // Guard against empty presentations
     if (!presentation.slides || presentation.slides.length === 0) {
-      console.warn('Cannot update presentation window: no slides');
+      debug.warn('presentation-window', 'Cannot update presentation window: no slides');
       return;
     }
 
@@ -665,7 +669,7 @@ export class PresentationWindow {
       await this.fullReload(presentation, theme, currentSlide);
 
     } catch (error) {
-      console.error('Failed to update presentation content:', error);
+      debug.error('presentation-window', `Failed to update presentation content: ${error}`);
     }
   }
 

@@ -5,6 +5,7 @@ import { SlideRenderer, ImagePathResolver } from '../renderer/SlideRenderer';
 import { getTheme } from '../themes';
 import { ThemeLoader } from '../themes/ThemeLoader';
 import { PresentationWindow } from './PresentationWindow';
+import { getDebugService } from '../utils/DebugService';
 
 export const PRESENTATION_VIEW_TYPE = 'perspecta-presentation';
 
@@ -126,23 +127,20 @@ export class PresentationView extends ItemView {
   }
   
   async loadFile(file: TFile) {
-    console.log('loadFile called with file:', file);
-    console.log('File name:', file?.name);
-    console.log('File path:', file?.path);
+    const debug = getDebugService();
+    debug.log('presentation-view', `loadFile called with file: ${file.name} (${file.path})`);
     
     this.file = file;
-    console.log('Set this.file to:', this.file);
-    
     const content = await this.app.vault.read(file);
-    console.log('Read content, length:', content.length);
+    debug.log('presentation-view', `Read content, length: ${content.length}`);
     
     this.presentation = this.parser.parse(content);
-    console.log('Parsed presentation, slides count:', this.presentation.slides.length);
+    debug.log('presentation-view', `Parsed presentation, slides count: ${this.presentation.slides.length}`);
     
     this.currentSlideIndex = 0;
     this.render();
     
-    console.log('loadFile completed. this.file:', this.file, 'this.presentation:', !!this.presentation);
+    debug.log('presentation-view', `loadFile completed. File: ${this.file?.path}, has presentation: ${!!this.presentation}`);
   }
   
   setPresentation(presentation: Presentation, theme?: Theme, sourceFile?: TFile) {
@@ -175,7 +173,8 @@ export class PresentationView extends ItemView {
   }
   
   private setupLiveUpdates(sourceFile: TFile) {
-    console.log('Setting up live updates for file:', sourceFile.path);
+    const debug = getDebugService();
+    debug.log('presentation-view', `Setting up live updates for file: ${sourceFile.path}`);
     
     // Clean up existing watcher
     if (this.fileWatcher) {
@@ -189,7 +188,7 @@ export class PresentationView extends ItemView {
     this.fileWatcher = this.registerEvent(
       this.app.vault.on('modify', async (file) => {
         if (file.path === sourceFile.path) {
-          console.log('Source file modified, updating presentation...');
+          debug.log('presentation-view', 'Source file modified, updating presentation...');
           try {
             if (!(file instanceof TFile)) return;
             const content = await this.app.vault.read(file);
@@ -205,9 +204,9 @@ export class PresentationView extends ItemView {
             }
             
             this.render();
-            console.log('Presentation updated successfully');
+            debug.log('presentation-view', 'Presentation updated successfully');
           } catch (error) {
-            console.error('Failed to update presentation on file change:', error);
+            debug.error('presentation-view', 'Failed to update presentation on file change:', error);
           }
         }
       })
@@ -407,7 +406,8 @@ More content here...`
     const presentBtn = actions.createEl('button', { cls: 'mod-cta' });
     presentBtn.createSpan({ text: 'Present' });
     presentBtn.addEventListener('click', () => {
-      console.log('Present button clicked');
+      const debug = getDebugService();
+      debug.log('presentation-view', 'Present button clicked');
       this.startPresentation();
     });
     
@@ -415,7 +415,8 @@ More content here...`
     const presenterBtn = actions.createEl('button');
     presenterBtn.createSpan({ text: 'Presenter View' });
     presenterBtn.addEventListener('click', () => {
-      console.log('Presenter View button clicked');
+      const debug = getDebugService();
+      debug.log('presentation-view', 'Presenter View button clicked');
       this.startPresenterView();
     });
     
@@ -997,7 +998,8 @@ More content here...`
   }
   
   private async startPresentation() {
-    console.log('startPresentation called');
+    const debug = getDebugService();
+    debug.log('presentation-view', 'startPresentation called');
     
     let file = this.file;
     
@@ -1014,10 +1016,10 @@ More content here...`
     
     // Use the main plugin's startPresentationAtSlide for consistent behavior
     if (this.onStartPresentation) {
-      console.log('Using main plugin startPresentationAtSlide');
+      debug.log('presentation-view', 'Using main plugin startPresentationAtSlide');
       this.onStartPresentation(file, this.currentSlideIndex);
     } else {
-      console.error('onStartPresentation callback not set');
+      debug.error('presentation-view', 'onStartPresentation callback not set');
       new Notice('Cannot start presentation - callback not configured');
     }
   }
@@ -1051,7 +1053,8 @@ More content here...`
         try {
           fileUrl = this.app.vault.getResourcePath(file as any);
         } catch (e) {
-          console.log('getResourcePath failed:', e);
+          const debug = getDebugService();
+          debug.log('presentation-view', `getResourcePath failed: ${e}`);
         }
         
         // Method 2: Try constructing the URL manually
@@ -1099,8 +1102,9 @@ More content here...`
         new Notice('Could not create temporary file');
       }
     } catch (e) {
-      console.error('Presentation open error:', e);
-      new Notice('Could not open presentation: ' + (e as Error).message);
+    const debug = getDebugService();
+    debug.error('presentation-view', `Presentation open error: ${e}`);
+    new Notice('Could not open presentation: ' + (e as Error).message);
     }
   }
   

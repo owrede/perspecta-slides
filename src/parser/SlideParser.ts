@@ -738,7 +738,8 @@ export class SlideParser {
             break;
           }
 
-          if (nextLine.match(/^[-*+]\s+/) || nextLine.match(/^\d+\.\s+/)) {
+          // Allow indented list items (nested lists)
+          if (nextLine.match(/^\s*[-*+]\s+/) || nextLine.match(/^\s*\d+\.\s+/)) {
             listItems.push(nextLine);
             nextIndex++;
           } else {

@@ -11,6 +11,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.2.3',
+		date: '2026-01-07',
+		changes: [
+			'Fix: Variable font files now stored as single file per style (not expanded per weight)',
+			'Fix: Bold text (weight 700) now persists when changing body font weight',
+			'Fix: @font-face CSS now always includes weight 700 for body font to support <strong> and <b> tags',
+			'Fix: Font cache reload after deletion - can now re-download deleted fonts immediately',
+			'New: Font download dialog now accepts plain font names (e.g., "Saira", "Open Sans") instead of requiring URLs',
+			'New: Font names with spaces are fully supported in both download and display',
+			'New: Fonts sorted alphabetically in Settings Downloaded Fonts list',
+			'New: Fonts sorted alphabetically in all Inspector font dropdowns',
+			'Improved: Font expansion logic simplified - variable fonts detected by checking weights array from cache',
+		],
+	},
+	{
 		version: '0.2.1',
 		date: '2026-01-06',
 		changes: [

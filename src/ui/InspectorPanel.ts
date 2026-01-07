@@ -432,7 +432,6 @@ export class InspectorPanelView extends ItemView {
 
     new Setting(container)
       .setName('Lock Aspect Ratio')
-      .setDesc('Maintain aspect ratio in presentation window with letterbox/pillarbox borders')
       .addToggle(toggle => toggle
         .setValue(fm.lockAspectRatio || false)
         .onChange(value => this.updateFrontmatter({ lockAspectRatio: value })));
@@ -550,7 +549,9 @@ export class InspectorPanelView extends ItemView {
     const fm = this.presentation?.frontmatter;
     if (!fm) return;
 
-    const cachedFonts = this.fontManager?.getAllCachedFonts() || [];
+    const cachedFonts = (this.fontManager?.getAllCachedFonts() || []).sort((a, b) => 
+      a.displayName.localeCompare(b.displayName)
+    );
     const cachedFontNames = new Set(cachedFonts.map(f => f.name));
 
     // Helper to get weights for a font
@@ -724,6 +725,26 @@ export class InspectorPanelView extends ItemView {
 
     // Description
     container.createDiv({ cls: 'section-description', text: 'Changes in % from defaults' });
+
+    // Global Text Scale
+    new Setting(container)
+      .setName('Global Scale')
+      .setDesc('Multiplier for all text sizes (0.5 = half size, 1.5 = 1.5x size)')
+      .addSlider(slider => {
+        slider
+          .setLimits(0.5, 2, 0.05)
+          .setValue(fm.textScale ?? 1)
+          .setDynamicTooltip()
+          .onChange(value => this.updateFrontmatter({ textScale: value }, false));
+        slider.sliderEl.addEventListener('pointerup', () => {
+          const val = slider.getValue();
+          this.updateFrontmatter({ textScale: val === 1 ? undefined : val }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to 1.0x')
+        .onClick(() => this.updateFrontmatter({ textScale: undefined }, true)));
 
     // Title Size
     new Setting(container)
@@ -1637,6 +1658,7 @@ export class InspectorPanelView extends ItemView {
       tableHeaderBg: themePreset?.LightTableHeaderBg || '#f0f0f0',
       codeBorder: themePreset?.LightCodeBorder || '#e0e0e0',
       progressBar: themePreset?.LightProgressBar || '#0066cc',
+      bold: '#333333',
     } : {
       link: themePreset?.DarkLinkColor || '#66b3ff',
       bullet: themePreset?.DarkBulletColor || '#e0e0e0',
@@ -1644,6 +1666,7 @@ export class InspectorPanelView extends ItemView {
       tableHeaderBg: themePreset?.DarkTableHeaderBg || '#333333',
       codeBorder: themePreset?.DarkCodeBorder || '#444444',
       progressBar: themePreset?.DarkProgressBar || '#66b3ff',
+      bold: '#e0e0e0',
     };
 
     const semanticConfigs = [
@@ -1682,6 +1705,12 @@ export class InspectorPanelView extends ItemView {
         lightKey: 'lightProgressBar' as const, 
         darkKey: 'darkProgressBar' as const,
         defaultVal: defaults.progressBar
+      },
+      { 
+        label: 'Bold Text', 
+        lightKey: 'lightBoldColor' as const, 
+        darkKey: 'darkBoldColor' as const,
+        defaultVal: defaults.bold
       },
     ];
 

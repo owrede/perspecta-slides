@@ -2,6 +2,26 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.3] - 2026-01-07
+
+### Bug Fixes
+
+- **Fix**: Variable font files now stored as single file per style (not expanded per weight)
+- **Fix**: Bold text (weight 700) now persists when changing body font weight
+- **Fix**: @font-face CSS now always includes weight 700 for body font to support `<strong>` and `<b>` tags
+- **Fix**: Font cache reload after deletion - can now re-download deleted fonts immediately
+
+### New Features
+
+- **New**: Font download dialog now accepts plain font names (e.g., "Saira", "Open Sans") instead of requiring URLs
+- **New**: Font names with spaces are fully supported in both download and display
+- **New**: Fonts sorted alphabetically in Settings Downloaded Fonts list
+- **New**: Fonts sorted alphabetically in all Inspector font dropdowns
+
+### Technical Improvements
+
+- **Improved**: Font expansion logic simplified - variable fonts detected by checking weights array from cache
+
 ## [0.2.2] - 2026-01-07
 
 ### Bug Fixes
@@ -15,11 +35,17 @@ All notable changes to Perspecta Slides will be documented in this file.
 
 - **New**: Lock Aspect Ratio toggle in Inspector Presentation tab - maintains slideshow aspect ratio with letterbox/pillarbox black bars
 - **New**: Aspect ratio locking respects 16:9, 4:3, and 16:10 formats while filling window with centered slides
+- **New**: Global Text Scale slider in Inspector Typography tab (0.5x to 2.0x) - multiplies all typography sizes without changing theme defaults
+- **New**: Typography scaling now uses geometric mean approximation for orientation-independent sizing
+- **New**: Bold text color customization with lightBoldColor and darkBoldColor frontmatter properties
+- **New**: Startup view initialization fixed - presentation views now load with correct theme colors when Obsidian restarts with visible panels
 
 ### Technical Improvements
 
 - **Improved**: All view.getLeavesOfType() loops now check instance type before calling methods
 - **Improved**: Background image paths now resolve through same system as wiki-link images
+- **Improved**: Presentation window aspect ratio CSS cascades properly with base styles
+- **Improved**: Font-size scaling uses `calc((1vw + 1vh) / 2)` for better aspect-ratio independence
 
 ## [0.2.1] - 2026-01-06
 

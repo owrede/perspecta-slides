@@ -360,23 +360,23 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 
 		const addFontSection = containerEl.createDiv({ cls: 'perspecta-add-font-section' });
 
-		let fontUrl = '';
+		let fontNameOrUrl = '';
 		let displayName = '';
 
 		new Setting(addFontSection)
-			.setName('Google Fonts URL')
-			.setDesc('Paste a Google Fonts URL (e.g., https://fonts.google.com/specimen/Barlow)')
+			.setName('Font name')
+			.setDesc('Enter the Google Fonts name (e.g., "Saira", "Open Sans", "Noto Sans"). You can also paste a specimen URL.')
 			.addText(text => text
-				.setPlaceholder('https://fonts.google.com/specimen/...')
+				.setPlaceholder('Saira')
 				.onChange(value => {
-					fontUrl = value;
+					fontNameOrUrl = value;
 				}));
 
 		new Setting(addFontSection)
-			.setName('Display name')
-			.setDesc('Optional custom name for the font (leave empty to use the font family name)')
+			.setName('Display name (optional)')
+			.setDesc('Custom name for UI display (spaces allowed, e.g., "My Serif"). Leave empty to use the font name.')
 			.addText(text => text
-				.setPlaceholder('My Custom Font')
+				.setPlaceholder('Leave empty to use font name')
 				.onChange(value => {
 					displayName = value;
 				}));
@@ -386,19 +386,19 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 				.setButtonText('Download Font')
 				.setCta()
 				.onClick(async () => {
-					if (!fontUrl.trim()) {
-						new Notice('Please enter a Google Fonts URL');
+					if (!fontNameOrUrl.trim()) {
+						new Notice('Please enter a font name (e.g., "Saira") or a Google Fonts URL');
 						return;
 					}
 
-					if (!FontManager.isGoogleFontsUrl(fontUrl)) {
-						new Notice('Invalid Google Fonts URL');
+					if (!FontManager.isGoogleFontsUrl(fontNameOrUrl)) {
+						new Notice('Invalid font name or URL. Please use a valid Google Fonts name (with spaces allowed).');
 						return;
 					}
 
-					const parsedName = FontManager.parseGoogleFontsUrl(fontUrl);
+					const parsedName = FontManager.parseGoogleFontsUrl(fontNameOrUrl);
 					if (!parsedName) {
-						new Notice('Could not parse font name from URL');
+						new Notice('Could not parse font name');
 						return;
 					}
 
@@ -409,13 +409,13 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 
 					// DISCOVERY STAGE: Query Google Fonts to see what's available
 					new Notice(`Discovering available variants for "${parsedName}"...`);
-					console.log('[FontSettings] Starting discovery for:', fontUrl);
-					const discovery = await fontManager.discoverGoogleFont(fontUrl);
+					console.log('[FontSettings] Starting discovery for:', fontNameOrUrl);
+					const discovery = await fontManager.discoverGoogleFont(fontNameOrUrl);
 					console.log('[FontSettings] Discovery result:', discovery);
 					
 					if (!discovery) {
-						console.error('[FontSettings] Discovery failed for:', fontUrl);
-						new Notice(`Failed to discover font variants for "${parsedName}". Please check that the font exists at ${fontUrl}`);
+						console.error('[FontSettings] Discovery failed for:', fontNameOrUrl);
+						new Notice(`Failed to discover font variants for "${parsedName}". Please check that the font exists on Google Fonts.`);
 						return;
 					}
 
@@ -430,7 +430,7 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 							new Notice(`Downloading font "${parsedName}"...`);
 							console.log('[FontSettings] Starting download with selections:', { selectedWeights, selectedStyles });
 							const result = await fontManager.cacheGoogleFont(
-								fontUrl,
+								fontNameOrUrl,
 								selectedWeights,
 								selectedStyles,
 								displayName.trim() || undefined
@@ -532,7 +532,9 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 
 		containerEl.createEl('h2', { text: 'Downloaded Fonts' });
 
-		const cachedFonts = fontManager.getAllCachedFonts();
+		const cachedFonts = fontManager.getAllCachedFonts().sort((a, b) => 
+			a.displayName.localeCompare(b.displayName)
+		);
 
 		if (cachedFonts.length === 0) {
 			const emptyState = containerEl.createDiv({ cls: 'perspecta-slides-info-box' });
@@ -570,6 +572,8 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 				deleteBtn.addEventListener('click', async () => {
 					if (confirm(`Delete font "${font.displayName}"? This will remove the cached font files.`)) {
 						await fontManager.removeFont(font.name);
+						// Reload cache to sync with updated settings
+						fontManager.reloadCache(this.plugin.settings.fontCache || { fonts: {} });
 						new Notice(`Font "${font.displayName}" deleted`);
 						this.display();
 					}
@@ -589,6 +593,8 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 					.onClick(async () => {
 						if (confirm('Delete all cached fonts? This cannot be undone.')) {
 							await fontManager.clearCache();
+							// Reload cache to sync with updated settings
+							fontManager.reloadCache(this.plugin.settings.fontCache || { fonts: {} });
 							new Notice('Font cache cleared');
 							this.display();
 						}

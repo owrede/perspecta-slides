@@ -85,43 +85,67 @@ export class FontManager {
   }
 
   /**
-   * Parse a Google Fonts URL and extract the font name
+   * Parse a Google Fonts URL or plain font name and extract the font name
    * Supports:
-   * - https://fonts.google.com/specimen/Barlow
-   * - https://fonts.google.com/specimen/Open+Sans
-   * - https://fonts.google.com/noto/specimen/Noto+Sans (Noto fonts)
-   * - https://fonts.googleapis.com/css2?family=Barlow
+   * - Plain font names: "Barlow", "Open Sans", "Noto Sans"
+   * - URLs: https://fonts.google.com/specimen/Barlow
+   * - URLs: https://fonts.google.com/specimen/Open+Sans
+   * - URLs: https://fonts.google.com/noto/specimen/Noto+Sans (Noto fonts)
+   * - URLs: https://fonts.googleapis.com/css2?family=Barlow
    */
-  static parseGoogleFontsUrl(url: string): string | null {
-    // Match: https://fonts.google.com/noto/specimen/FontName (Noto fonts have special path)
-    const notoMatch = url.match(/fonts\.google\.com\/noto\/specimen\/([^/?#]+)/i);
-    if (notoMatch) {
-      // Convert URL-encoded name (e.g., "Noto+Sans" -> "Noto Sans")
-      return decodeURIComponent(notoMatch[1].replace(/\+/g, ' '));
-    }
+  static parseGoogleFontsUrl(urlOrName: string): string | null {
+    const input = urlOrName.trim();
+    
+    // Check if it's a URL
+    if (input.includes('fonts.google.com') || input.includes('fonts.googleapis.com')) {
+      // Match: https://fonts.google.com/noto/specimen/FontName (Noto fonts have special path)
+      const notoMatch = input.match(/fonts\.google\.com\/noto\/specimen\/([^/?#]+)/i);
+      if (notoMatch) {
+        // Convert URL-encoded name (e.g., "Noto+Sans" -> "Noto Sans")
+        return decodeURIComponent(notoMatch[1].replace(/\+/g, ' '));
+      }
 
-    // Match: https://fonts.google.com/specimen/FontName
-    const specimenMatch = url.match(/fonts\.google\.com\/specimen\/([^/?#]+)/i);
-    if (specimenMatch) {
-      // Convert URL-encoded name (e.g., "Open+Sans" -> "Open Sans")
-      return decodeURIComponent(specimenMatch[1].replace(/\+/g, ' '));
-    }
+      // Match: https://fonts.google.com/specimen/FontName
+      const specimenMatch = input.match(/fonts\.google\.com\/specimen\/([^/?#]+)/i);
+      if (specimenMatch) {
+        // Convert URL-encoded name (e.g., "Open+Sans" -> "Open Sans")
+        return decodeURIComponent(specimenMatch[1].replace(/\+/g, ' '));
+      }
 
-    // Match: https://fonts.googleapis.com/css2?family=FontName
-    const cssMatch = url.match(/fonts\.googleapis\.com\/css2?\?family=([^:&]+)/i);
-    if (cssMatch) {
-      return decodeURIComponent(cssMatch[1].replace(/\+/g, ' '));
-    }
+      // Match: https://fonts.googleapis.com/css2?family=FontName
+      const cssMatch = input.match(/fonts\.googleapis\.com\/css2?\?family=([^:&]+)/i);
+      if (cssMatch) {
+        return decodeURIComponent(cssMatch[1].replace(/\+/g, ' '));
+      }
 
-    return null;
+      return null;
+    }
+    
+    // If not a URL, assume it's a plain font name
+    // Font names can contain spaces and special characters
+    // Just validate it's not empty and return as-is
+    return input.length > 0 ? input : null;
   }
 
   /**
-   * Check if a string is a Google Fonts URL
+   * Check if a string is a valid Google Fonts input (URL or plain font name)
    */
   static isGoogleFontsUrl(value: string): boolean {
-    return /fonts\.google\.com\/(noto\/)?specimen\//i.test(value) ||
-           /fonts\.googleapis\.com\/css/i.test(value);
+    const input = value.trim();
+    
+    // Check if it's a valid URL
+    if (/fonts\.google\.com\/(noto\/)?specimen\//i.test(input) ||
+        /fonts\.googleapis\.com\/css/i.test(input)) {
+      return true;
+    }
+    
+    // Check if it's a plain font name (non-empty string without special chars that suggest it's invalid)
+    // Allow letters, numbers, spaces, and common typographic characters (dash, underscore)
+    if (input.length > 0 && /^[a-z0-9\s\-_]+$/i.test(input)) {
+      return true;
+    }
+    
+    return false;
   }
 
   /**
@@ -364,15 +388,16 @@ export class FontManager {
         return null;
       }
 
-      // For variable fonts: if we got fewer files than requested, we need to create entries for all requested weights/styles
-      // pointing to the downloaded variable font file(s)
-      const expandedFontFiles = this.expandVariableFontFiles(fontFiles, weightsToDownload, stylesToDownload, fileMap);
+      // For variable fonts: don't expand to multiple weight entries.
+      // Variable fonts have one file per style that covers all weights.
+      const finalFontFiles = this.expandVariableFontFiles(fontFiles, weightsToDownload, stylesToDownload, fileMap);
       
-      // Use weights/styles that were actually downloaded/expanded
-      const downloadedWeights = [...new Set(expandedFontFiles.map(f => f.weight))].sort((a, b) => a - b);
-      const downloadedStyles = [...new Set(expandedFontFiles.map(f => f.style))].sort();
+      // Use requested weights (variable fonts support all requested weights)
+      // Use styles that were actually downloaded
+      const downloadedWeights = weightsToDownload.sort((a, b) => a - b);
+      const downloadedStyles = [...new Set(finalFontFiles.map(f => f.style))].sort();
       
-      debug.log('font-handling', `[font-caching] Downloaded: weights=[${downloadedWeights}], styles=[${downloadedStyles}], files=${expandedFontFiles.length}`);
+      debug.log('font-handling', `[font-caching] Downloaded: weights=[${downloadedWeights}], styles=[${downloadedStyles}], files=${finalFontFiles.length}`);
 
       // Store in cache
       const cachedFont: CachedFont = {
@@ -381,7 +406,7 @@ export class FontManager {
         sourceUrl: url,
         weights: downloadedWeights,
         styles: downloadedStyles,
-        files: expandedFontFiles,
+        files: finalFontFiles,
         cachedAt: Date.now()
       };
 
@@ -646,19 +671,14 @@ export class FontManager {
         // Already downloaded - reuse existing file but track this weight/style combo
         const existingPath = downloadedUrls.get(fontUrl)!;
         debug.log('font-handling', `[font-parsing] URL already downloaded (variable font), reusing: ${existingPath}`);
-        // Add entry for this weight/style even though we're reusing the same file
-        // This ensures all requested weights/styles are tracked in fontFiles
-        fontFiles.push({
-          weight,
-          style,
-          localPath: existingPath,
-          format
-        });
+        // Don't add another entry - variable fonts are already tracked with their weight range
+        // The first weight/style combo will be used to generate the @font-face rule
         continue;
       }
 
-      // Include weight in filename to handle non-variable fonts with separate files per weight
-      const fileName = `${fontName.replace(/\s+/g, '-')}-${weight}-${style}.${format}`;
+      // For font file naming, don't include weight since variable fonts support all weights
+      // Static fonts will have a single weight entry anyway
+      const fileName = `${fontName.replace(/\s+/g, '-')}-${style}.${format}`;
       const localPath = `${fontFolderPath}/${fileName}`;
       downloadedUrls.set(fontUrl, localPath);
       fileMap.set(fontUrl, { localPath, format });
@@ -753,16 +773,20 @@ export class FontManager {
 
   /**
    * Generate @font-face CSS for a cached font (uses base64 for iframe compatibility)
+   * @param fontName Font name to generate CSS for
+   * @param usedWeights Optional array of weights to include. If not specified, includes all weights.
    */
-  async generateFontFaceCSS(fontName: string): Promise<string> {
-    return this.generateFontFaceCSSForExport(fontName);
+  async generateFontFaceCSS(fontName: string, usedWeights?: number[]): Promise<string> {
+    return this.generateFontFaceCSSForExport(fontName, usedWeights);
   }
 
   /**
    * Generate @font-face CSS with data URLs for export (self-contained)
    * For variable fonts, generates a single @font-face with weight range
+   * @param fontName Font name to generate CSS for
+   * @param usedWeights Optional array of weights to include. If not specified, includes all weights.
    */
-  async generateFontFaceCSSForExport(fontName: string): Promise<string> {
+  async generateFontFaceCSSForExport(fontName: string, usedWeights?: number[]): Promise<string> {
     const debug = getDebugService();
     const font = this.getCachedFont(fontName);
     
@@ -771,16 +795,48 @@ export class FontManager {
       return '';
     }
 
-    debug.log('font-handling', `Generating @font-face CSS for "${fontName}" with ${font.files.length} files`);
+    // Filter files to only include used weights (if specified)
+    let filesToInclude = font.files;
+    if (usedWeights && usedWeights.length > 0) {
+      filesToInclude = font.files.filter(f => usedWeights.includes(f.weight));
+      debug.log('font-handling', `Filtering to used weights [${usedWeights.join(', ')}]: ${filesToInclude.length} of ${font.files.length} files`);
+    }
+
+    debug.log('font-handling', `Generating @font-face CSS for "${fontName}" with ${filesToInclude.length} files`);
 
     const rules: string[] = [];
     const fileDataCache: Map<string, ArrayBuffer> = new Map(); // Cache file data to avoid re-reading
 
-    for (const file of font.files) {
-      // Normalize the path - remove double slashes that might have been introduced during caching
-      const normalizedPath = file.localPath.replace(/\/+/g, '/');
+    // Group files by (style, localPath)
+    // For variable fonts, all weights use the same file, so we use the font's weights array for the range
+    const fileGroups = new Map<string, { files: typeof filesToInclude; minWeight: number; maxWeight: number }>();
+    
+    for (const file of filesToInclude) {
+      const key = `${file.style}|${file.localPath}`;
+      if (!fileGroups.has(key)) {
+        fileGroups.set(key, { files: [], minWeight: Infinity, maxWeight: -Infinity });
+      }
+      const group = fileGroups.get(key)!;
+      group.files.push(file);
+      group.minWeight = Math.min(group.minWeight, file.weight);
+      group.maxWeight = Math.max(group.maxWeight, file.weight);
+    }
+    
+    // For variable fonts with cached weights, use the actual weights from cache (not just file weights)
+    // This ensures @font-face declares the full range (e.g., "font-weight: 100 900") even if only 1 file
+    for (const group of fileGroups.values()) {
+      if (font.weights && font.weights.length > 0) {
+        group.minWeight = Math.min(...font.weights);
+        group.maxWeight = Math.max(...font.weights);
+      }
+    }
 
-      debug.log('font-handling', `Processing font file: ${normalizedPath} (weight: ${file.weight}, style: ${file.style})`);
+    // Generate @font-face rules, deduplicating variable fonts
+    for (const group of fileGroups.values()) {
+      const firstFile = group.files[0];
+      const normalizedPath = firstFile.localPath.replace(/\/+/g, '/');
+
+      debug.log('font-handling', `Processing font file group: ${normalizedPath} (styles: ${firstFile.style}, weights: ${group.minWeight}-${group.maxWeight})`);
 
       const fontFile = this.app.vault.getAbstractFileByPath(normalizedPath);
       if (!(fontFile instanceof TFile)) {
@@ -814,22 +870,25 @@ export class FontManager {
           'ttf': 'truetype',
           'otf': 'opentype',
         };
-        const mimeType = mimeTypes[file.format] || 'font/woff2';
-        const formatString = formatStrings[file.format] || file.format;
+        const mimeType = mimeTypes[firstFile.format] || 'font/woff2';
+        const formatString = formatStrings[firstFile.format] || firstFile.format;
 
-        // Generate @font-face for EACH weight/style combination
-        // Even for variable fonts where multiple weights share the same file,
-        // we need to generate separate @font-face rules so browsers know about all available weights
+        // For variable fonts (multiple weights per file), use weight range; otherwise use single weight
+        const isVariableFont = group.files.length > 1;
+        const fontWeightDecl = isVariableFont
+          ? `font-weight: ${group.minWeight} ${group.maxWeight};`
+          : `font-weight: ${firstFile.weight};`;
+
         const rule = `
-@font-face {
-  font-family: '${font.name}';
-  font-style: ${file.style};
-  font-weight: ${file.weight};
-  font-display: swap;
-  src: url('data:${mimeType};base64,${base64}') format('${formatString}');
-}`;
+    @font-face {
+    font-family: '${font.name}';
+    font-style: ${firstFile.style};
+    ${fontWeightDecl}
+    font-display: swap;
+    src: url('data:${mimeType};base64,${base64}') format('${formatString}');
+    }`;
         rules.push(rule);
-        debug.log('font-handling', `Generated @font-face for ${font.name} weight ${file.weight} style ${file.style}`);
+        debug.log('font-handling', `Generated @font-face for ${font.name} style ${firstFile.style} ${isVariableFont ? `weight range ${group.minWeight}-${group.maxWeight}` : `weight ${firstFile.weight}`}`);
       } catch (e) {
         debug.error('font-handling', `Failed to read font file: ${normalizedPath}, Error: ${e instanceof Error ? e.message : String(e)}`);
       }
@@ -873,44 +932,12 @@ export class FontManager {
   ): CachedFontFile[] {
     const debug = getDebugService();
     
-    // If we got the same number of files as requested weights×styles, no expansion needed
-    if (fontFiles.length === requestedWeights.length * requestedStyles.length) {
-      return fontFiles;
-    }
+    // Variable fonts should NOT be expanded.
+    // They have 1 file per style (e.g., one normal, one italic) that covers all weights.
+    // Return files as-is and let @font-face generation handle the weight ranges.
+    debug.log('font-handling', `[font-expand] Variable font with ${fontFiles.length} file(s) - keeping as-is (one per style)`);
     
-    debug.log('font-handling', `[font-expand] Expanding variable font: got ${fontFiles.length} files, expected ${requestedWeights.length * requestedStyles.length}`);
-    
-    // For variable fonts, we typically get one file per style (e.g., one for normal, one for italic)
-    // Group by style to map which file handles which style
-    const filesByStyle = new Map<string, CachedFontFile>();
-    for (const file of fontFiles) {
-      filesByStyle.set(file.style, file);
-    }
-    
-    // If we only got one file total, it probably handles all weights/styles
-    const singleFile = fontFiles.length === 1 ? fontFiles[0] : null;
-    
-    // Create entries for all requested weight/style combinations
-    const expanded: CachedFontFile[] = [];
-    for (const weight of requestedWeights) {
-      for (const style of requestedStyles) {
-        // Use the file for this style if available, otherwise use the single file
-        const sourceFile = filesByStyle.get(style) || singleFile;
-        
-        if (sourceFile) {
-          expanded.push({
-            weight,
-            style,
-            localPath: sourceFile.localPath,
-            format: sourceFile.format
-          });
-        }
-      }
-    }
-    
-    debug.log('font-handling', `[font-expand] Expanded from ${fontFiles.length} files to ${expanded.length} entries covering all weights/styles`);
-    
-    return expanded;
+    return fontFiles;
   }
 
   /**

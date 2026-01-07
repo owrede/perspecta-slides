@@ -157,20 +157,20 @@ export class SlideRenderer {
     const headingOverrideCSS = this.generateHeadingColorOverrides(frontmatter);
 
     return `<!DOCTYPE html>
-  <html>
-  <head>
-  <meta charset="utf-8" />
-  <style>${this.customFontCSS}</style>
-  <style>${this.getBaseStyles(context)}</style>
-  <style>${themeCSS}</style>
-  <style>${frontmatterCSS}</style>
-  <style>${headingOverrideCSS}</style>
-  <style>${fontScaleCSS}</style>
-  </head>
-  <body class="${bodyClass} ${themeClasses}">
-  ${this.renderSlide(slide, index, frontmatter, false)}
-  </body>
-  </html>`;
+    <html>
+    <head>
+    <meta charset="utf-8" />
+    <style>${this.customFontCSS}</style>
+    <style>${this.getBaseStyles(context, frontmatter)}</style>
+    <style>${themeCSS}</style>
+    <style>${frontmatterCSS}</style>
+    <style>${headingOverrideCSS}</style>
+    <style>${fontScaleCSS}</style>
+    </head>
+    <body class="${bodyClass} ${themeClasses}">
+    ${this.renderSlide(slide, index, frontmatter, false)}
+    </body>
+    </html>`;
   }
 
   /**
@@ -1598,6 +1598,15 @@ export class SlideRenderer {
       a:hover { opacity: 0.8; }
       .slide.dark a { color: var(--dark-link-color, #66b3ff); }
       
+      /* Bold text - always use weight 700 regardless of body font weight */
+      b, strong {
+        font-weight: 700;
+        color: var(--light-bold-color, inherit);
+      }
+      .slide.dark b, .slide.dark strong {
+        color: var(--dark-bold-color, inherit);
+      }
+      
       /* Bullets */
       li::before { color: var(--light-bullet-color, inherit); }
       .slide.dark li::before { color: var(--dark-bullet-color, inherit); }
@@ -1623,14 +1632,14 @@ export class SlideRenderer {
       th, td {
         padding: calc(var(--slide-unit) * 1);
         text-align: left;
-        border-bottom: 1px solid var(--light-blockquote-border, #cccccc);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.5);
       }
       th {
         background: var(--light-table-header-bg, #f0f0f0);
         font-weight: 600;
       }
       .slide.dark th { background: var(--dark-table-header-bg, #333333); }
-      .slide.dark th, .slide.dark td { border-bottom-color: var(--dark-blockquote-border, #555555); }
+      .slide.dark th, .slide.dark td { border-bottom-color: rgba(255, 255, 255, 0.5); }
       
       /* Code */
       code {
@@ -1983,13 +1992,19 @@ export class SlideRenderer {
     `;
   }
 
-  private getBaseStyles(context: 'thumbnail' | 'preview' | 'presentation' = 'thumbnail'): string {
+  private getBaseStyles(context: 'thumbnail' | 'preview' | 'presentation' = 'thumbnail', frontmatter?: PresentationFrontmatter): string {
     const containerClass = context === 'thumbnail' ? 'perspecta-thumbnail' : 'perspecta-preview';
+    const textScale = frontmatter?.textScale || 1;
 
     return `
       * { margin: 0; padding: 0; box-sizing: border-box; }
       :root {
-        --slide-unit: min(1vh, 1.778vw);
+        /* Scale typography based on geometric mean of viewport dimensions */
+        /* Approximated as arithmetic mean: (1vw + 1vh) / 2 */
+        /* This accounts for aspect ratio: wider viewports = larger fonts, narrower = smaller */
+        /* Prevents text overflow when aspect ratio changes (e.g., 16:9 to 4:3) */
+        /* Global text scale multiplier from frontmatter (default: 1) */
+        --slide-unit: calc((1vw + 1vh) / 2 * ${textScale});
       }
       html, body { 
         width: 100%; 
@@ -2011,6 +2026,7 @@ export class SlideRenderer {
     const cssVars = this.generateCSSVariables(frontmatter);
     const themeCSS = this.theme ? generateThemeCSS(this.theme, 'export') : '';
     const headingOverrideCSS = this.generateHeadingColorOverrides(frontmatter);
+    const textScale = frontmatter?.textScale || 1;
 
     return `<style>
 /* Custom Fonts */
@@ -2019,7 +2035,7 @@ ${this.customFontCSS}
 ${themeCSS}
 :root {
 ${cssVars}
-  --slide-unit: min(1vh, 1.778vw);
+  --slide-unit: calc((1vw + 1vh) / 2 * ${textScale});
 }
 
 ${headingOverrideCSS}
@@ -2246,6 +2262,7 @@ ${this.getSlideCSS()}
     if (frontmatter.lightTableHeaderBg) vars.push(`  --light-table-header-bg: ${frontmatter.lightTableHeaderBg};`);
     if (frontmatter.lightCodeBorder) vars.push(`  --light-code-border: ${frontmatter.lightCodeBorder};`);
     if (frontmatter.lightProgressBar) vars.push(`  --light-progress-bar: ${frontmatter.lightProgressBar};`);
+    if (frontmatter.lightBoldColor) vars.push(`  --light-bold-color: ${frontmatter.lightBoldColor};`);
 
     // Semantic colors (dark mode)
     if (frontmatter.darkLinkColor) vars.push(`  --dark-link-color: ${frontmatter.darkLinkColor};`);
@@ -2254,6 +2271,7 @@ ${this.getSlideCSS()}
     if (frontmatter.darkTableHeaderBg) vars.push(`  --dark-table-header-bg: ${frontmatter.darkTableHeaderBg};`);
     if (frontmatter.darkCodeBorder) vars.push(`  --dark-code-border: ${frontmatter.darkCodeBorder};`);
     if (frontmatter.darkProgressBar) vars.push(`  --dark-progress-bar: ${frontmatter.darkProgressBar};`);
+    if (frontmatter.darkBoldColor) vars.push(`  --dark-bold-color: ${frontmatter.darkBoldColor};`);
 
     if (frontmatter.lightBackground) vars.push(`  --light-background: ${frontmatter.lightBackground};`);
     if (frontmatter.darkBackground) vars.push(`  --dark-background: ${frontmatter.darkBackground};`);

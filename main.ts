@@ -55,6 +55,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
   private presentationCache: PresentationCache | null = null;
   private cachedFilePath: string | null = null;
   private currentTheme: Theme | null = null;
+  private lastUsedSlideDocument: TFile | null = null;
 
   /**
    * Image path resolver for Obsidian wiki-links
@@ -173,6 +174,29 @@ export default class PerspectaSlidesPlugin extends Plugin {
     this.app.workspace.onLayoutReady(async () => {
       if (this.themeLoader) {
         await this.themeLoader.loadThemes();
+      }
+      
+      // Initialize restored views with theme data
+      // Fixes: When Obsidian restores workspace with visible views (navigator, presenter, inspector),
+      // they may not have theme data yet because no file was actively focused.
+      const activeFile = this.app.workspace.getActiveFile();
+      if (activeFile && activeFile.extension === 'md') {
+        // There's an active file - initialize with its content
+        await this.updateSidebarsWithContext(activeFile, true);
+      } else {
+        // Check if any views are already open (restored from session)
+        const hasRestoredViews = 
+          this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE).length > 0 ||
+          this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE).length > 0 ||
+          this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE).length > 0;
+        
+        if (hasRestoredViews) {
+          // Find any visible markdown file to initialize with
+          const visibleFile = this.findVisibleMarkdownFile();
+          if (visibleFile) {
+            await this.updateSidebarsWithContext(visibleFile, true);
+          }
+        }
       }
     });
 
@@ -331,6 +355,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Track cursor position to update slide selection
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile && activeFile.extension === 'md') {
+          this.lastUsedSlideDocument = activeFile;
+        }
         this.setupCursorTracking();
         this.updateInspectorFocus();
       })
@@ -474,6 +502,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
     if (!(view instanceof PresentationView)) return;
     await view.loadFile(file);
 
+    // Track this as the last used slide document for initialization context
+    this.lastUsedSlideDocument = file;
+
     this.app.workspace.revealLeaf(leaf);
 
     if (this.settings.showThumbnailNavigator) {
@@ -483,7 +514,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
       await this.ensureInspector();
     }
 
-    this.updateSidebars(file);
+    // Use first slide as context for initialization (not cursor-dependent)
+    await this.updateSidebarsWithContext(file, true);
   }
 
   private async toggleThumbnailNavigator() {
@@ -495,9 +527,23 @@ export default class PerspectaSlidesPlugin extends Plugin {
       await this.ensureThumbnailNavigator();
       // Wait for the view to be fully initialized before updating
       await this.waitForView(THUMBNAIL_VIEW_TYPE);
-      const file = this.app.workspace.getActiveFile();
+      
+      // Use active file, or fall back to visible markdown file, or previously used file
+      let file = this.app.workspace.getActiveFile();
+      
+      // If no active file, try to find a visible markdown file
+      if (!file || file.extension !== 'md') {
+        file = this.findVisibleMarkdownFile();
+      }
+      
+      // If no visible file, use the last file that was actually used
+      if (!file && this.lastUsedSlideDocument) {
+        file = this.lastUsedSlideDocument;
+      }
+      
       if (file && file.extension === 'md') {
-        this.updateSidebars(file);
+        // Force first slide context when opening navigator without active cursor
+        await this.updateSidebarsWithContext(file, true);
       }
     }
   }
@@ -511,9 +557,23 @@ export default class PerspectaSlidesPlugin extends Plugin {
       await this.ensureInspector();
       // Wait for the view to be fully initialized before updating
       await this.waitForView(INSPECTOR_VIEW_TYPE);
-      const file = this.app.workspace.getActiveFile();
+      
+      // Use active file, or fall back to visible markdown file, or previously used file
+      let file = this.app.workspace.getActiveFile();
+      
+      // If no active file, try to find a visible markdown file
+      if (!file || file.extension !== 'md') {
+        file = this.findVisibleMarkdownFile();
+      }
+      
+      // If no visible file, use the last file that was actually used
+      if (!file && this.lastUsedSlideDocument) {
+        file = this.lastUsedSlideDocument;
+      }
+      
       if (file && file.extension === 'md') {
-        this.updateSidebars(file);
+        // Force first slide context when opening inspector without active cursor
+        await this.updateSidebarsWithContext(file, true);
       }
     }
   }
@@ -556,6 +616,26 @@ export default class PerspectaSlidesPlugin extends Plugin {
         active: true,
       });
     }
+  }
+
+  /**
+   * Find a visible markdown file in the workspace.
+   * Searches all workspace leaves to find a TFile with markdown extension.
+   */
+  private findVisibleMarkdownFile(): TFile | null {
+    const allLeaves = this.app.workspace.getLeavesOfType('markdown');
+    
+    // Return the first visible markdown file found
+    for (const leaf of allLeaves) {
+      if (leaf.view instanceof MarkdownView) {
+        const file = leaf.view.file;
+        if (file && file.extension === 'md') {
+          return file;
+        }
+      }
+    }
+    
+    return null;
   }
 
   private updateTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -781,15 +861,38 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
   }
 
-  private async updateSidebars(file: TFile) {
+  /**
+   * Update sidebars for a document, with intelligent context selection.
+   * If forceFirstSlide is true, always start with slide 0.
+   * Otherwise, use cursor position or default to slide 0.
+   */
+  private async updateSidebarsWithContext(file: TFile, forceFirstSlide: boolean = false) {
     const content = await this.app.vault.read(file);
     const presentation = this.parser.parse(content);
     const theme = this.getThemeByName(presentation.frontmatter.theme || this.settings.defaultTheme);
-    const currentSlideIndex = Math.max(0, Math.min(
-      this.lastCursorSlideIndex >= 0 ? this.lastCursorSlideIndex : 0,
-      presentation.slides.length - 1
-    ));
+    
+    let currentSlideIndex: number;
+    if (forceFirstSlide) {
+      // Force first slide for initialization (when document not focused)
+      currentSlideIndex = 0;
+    } else {
+      // Use cursor position or default to first slide
+      currentSlideIndex = Math.max(0, Math.min(
+        this.lastCursorSlideIndex >= 0 ? this.lastCursorSlideIndex : 0,
+        presentation.slides.length - 1
+      ));
+    }
+    
     this.updateSidebarsWithPresentation(file, presentation, theme, currentSlideIndex);
+  }
+
+  private async updateSidebars(file: TFile) {
+    // Track as last used slide document for initialization fallback
+    if (file.extension === 'md') {
+      this.lastUsedSlideDocument = file;
+    }
+    
+    await this.updateSidebarsWithContext(file, false);
   }
 
   private async updateSidebarsWithPresentation(
@@ -1158,14 +1261,12 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
   private async startPresentationAtSlide(file: TFile, slideIndex: number) {
     try {
-      console.error('[Plugin] startPresentationAtSlide called for:', file.name, 'slide:', slideIndex);
       const content = await this.app.vault.read(file);
       const presentation = this.parser.parse(content);
       const theme = this.getThemeByName(presentation.frontmatter.theme || this.settings.defaultTheme);
 
       // Close existing presentation window if open
       if (this.presentationWindow && this.presentationWindow.isOpen()) {
-        console.error('[Plugin] Closing existing presentation window');
         this.presentationWindow.close();
       }
 
@@ -1182,14 +1283,11 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
       // Create new presentation window
       // Use presentationImagePathResolver which returns file:// URLs for the external window
-      console.error('[Plugin] Creating new PresentationWindow');
       this.presentationWindow = new PresentationWindow();
       this.presentationWindow.setImagePathResolver(this.presentationImagePathResolver);
       this.presentationWindow.setCustomFontCSS(customFontCSS);
       this.presentationWindow.setFontWeightsCache(fontWeightsCache);
-      console.error('[Plugin] Calling presentationWindow.open()');
       await this.presentationWindow.open(presentation, theme || null, file, slideIndex);
-      console.error('[Plugin] Presentation window opened successfully');
 
       this.currentPresentationFile = file;
     } catch (e) {
@@ -1616,9 +1714,30 @@ export default class PerspectaSlidesPlugin extends Plugin {
         debug.log('font-handling', `Font "${fontName}" cached: ${isCached}`);
         
         if (isCached) {
-          const css = await this.fontManager.generateFontFaceCSS(fontName);
+          // Collect all used weights for this font
+          const usedWeights = new Set<number>();
+          if (fontName === frontmatter.titleFont && frontmatter.titleFontWeight) {
+            usedWeights.add(frontmatter.titleFontWeight);
+          }
+          if (fontName === frontmatter.bodyFont && frontmatter.bodyFontWeight) {
+            usedWeights.add(frontmatter.bodyFontWeight);
+            // IMPORTANT: Always include weight 700 for body font to support <strong> and <b> tags
+            usedWeights.add(700);
+          }
+          if (fontName === frontmatter.headerFont && frontmatter.headerFontWeight) {
+            usedWeights.add(frontmatter.headerFontWeight);
+          }
+          if (fontName === frontmatter.footerFont && frontmatter.footerFontWeight) {
+            usedWeights.add(frontmatter.footerFontWeight);
+          }
+          
+          // If no specific weight is used for this font, include all available weights
+          // (this ensures the font is available even if weight selection isn't specified)
+          const weightsToInclude = usedWeights.size > 0 ? Array.from(usedWeights) : undefined;
+          
+          const css = await this.fontManager.generateFontFaceCSS(fontName, weightsToInclude);
           if (css) {
-            debug.log('font-handling', `Generated @font-face CSS for "${fontName}" (${css.length} bytes)`);
+            debug.log('font-handling', `Generated @font-face CSS for "${fontName}" (${css.length} bytes)${weightsToInclude ? ` with weights [${weightsToInclude.join(', ')}]` : ' with all available weights'}`);
             cssRules.push(css);
           } else {
             debug.warn('font-handling', `Failed to generate CSS for cached font "${fontName}"`);
@@ -1658,11 +1777,19 @@ export default class PerspectaSlidesPlugin extends Plugin {
    * This should be used instead of getTheme() to support custom themes
    */
   getThemeByName(name: string): Theme | undefined {
-    // Try the theme loader for custom themes
+    // Try the requested theme first
     if (this.themeLoader && name) {
       const theme = this.themeLoader.getTheme(name);
       if (theme) return theme;
     }
+    
+    // If requested theme not found, try default theme
+    // This handles cases like Advanced Slides theme names that don't exist in Perspecta
+    if (this.themeLoader && this.settings.defaultTheme && this.settings.defaultTheme !== name) {
+      const defaultTheme = this.themeLoader.getTheme(this.settings.defaultTheme);
+      if (defaultTheme) return defaultTheme;
+    }
+    
     // No theme found - return undefined (will use CSS defaults)
     return undefined;
   }

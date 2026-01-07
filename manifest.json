@@ -1,7 +1,7 @@
 {
 	"id": "perspecta-slides",
 	"name": "Perspecta Slides",
-	"version": "0.2.2",
+	"version": "0.2.3",
 	"minAppVersion": "1.0.0",
 	"description": "Create presentations from Markdown using iA Presenter-style syntax with thumbnail navigator, inspector, and HTML export.",
 	"author": "owrede",

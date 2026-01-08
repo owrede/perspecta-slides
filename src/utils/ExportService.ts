@@ -660,7 +660,29 @@ export class ExportService {
           document.querySelectorAll('.slide').forEach(slide => {
             slide.classList.remove('active');
           });
-          document.querySelectorAll('.slide')[index].classList.add('active');
+          const activeSlide = document.querySelectorAll('.slide')[index];
+          activeSlide.classList.add('active');
+
+          // Apply current theme to the active slide's iframe if it just loaded
+          const isLight = html.classList.contains('light-mode');
+          const iframe = activeSlide.querySelector('iframe');
+          if (iframe) {
+            try {
+              const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+              if (iframeDoc) {
+                const iframeHtml = iframeDoc.documentElement;
+                if (isLight) {
+                  iframeHtml.classList.add('light-mode');
+                  iframeHtml.classList.remove('dark-mode');
+                } else {
+                  iframeHtml.classList.add('dark-mode');
+                  iframeHtml.classList.remove('light-mode');
+                }
+              }
+            } catch (e) {
+              // Iframe might not be loaded yet
+            }
+          }
 
           // Update counter
           document.getElementById('current').textContent = index + 1;
@@ -753,26 +775,52 @@ export class ExportService {
         const html = document.documentElement;
         const themeToggle = document.getElementById('themeToggle');
         
+        function applyThemeToIframes(isLight) {
+          // Apply theme to all slide iframes
+          const iframes = document.querySelectorAll('.slide iframe');
+          iframes.forEach(iframe => {
+            try {
+              const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+              if (iframeDoc) {
+                const iframeHtml = iframeDoc.documentElement;
+                if (isLight) {
+                  iframeHtml.classList.add('light-mode');
+                  iframeHtml.classList.remove('dark-mode');
+                } else {
+                  iframeHtml.classList.add('dark-mode');
+                  iframeHtml.classList.remove('light-mode');
+                }
+              }
+            } catch (e) {
+              // Iframe might not be loaded yet or cross-origin
+            }
+          });
+        }
+        
         // Load saved theme preference
         const savedTheme = localStorage.getItem('presentation-theme') || 'dark';
-        if (savedTheme === 'light') {
+        const isLightMode = savedTheme === 'light';
+        if (isLightMode) {
           html.classList.add('light-mode');
           html.classList.remove('dark-mode');
         } else {
           html.classList.add('dark-mode');
           html.classList.remove('light-mode');
         }
+        applyThemeToIframes(isLightMode);
         
         // Toggle theme on button click
         themeToggle.addEventListener('click', () => {
-          const isLightMode = html.classList.contains('light-mode');
-          if (isLightMode) {
+          const isLight = html.classList.contains('light-mode');
+          if (isLight) {
             html.classList.remove('light-mode');
             html.classList.add('dark-mode');
+            applyThemeToIframes(false);
             localStorage.setItem('presentation-theme', 'dark');
           } else {
             html.classList.add('light-mode');
             html.classList.remove('dark-mode');
+            applyThemeToIframes(true);
             localStorage.setItem('presentation-theme', 'light');
           }
         });

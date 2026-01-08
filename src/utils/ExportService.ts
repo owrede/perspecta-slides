@@ -43,7 +43,11 @@ export class ExportService {
       // Render all slides and extract images
       const slides = await Promise.all(
         presentation.slides.map(async (slide, idx) => {
-          const html = renderer.renderPresentationSlideHTML(slide, idx);
+          let html = renderer.renderPresentationSlideHTML(slide, idx);
+          
+          // Inject theme toggle CSS into each slide's HTML
+          html = this.injectThemeToggleCSS(html);
+          
           const { html: processedHtml, images } = await this.extractImagesFromHTML(
             html,
             exportPath
@@ -106,6 +110,72 @@ export class ExportService {
     }
 
     return await this.app.vault.createFolder(folderPath);
+  }
+
+  /**
+   * Inject theme toggle CSS into slide HTML
+   */
+  private injectThemeToggleCSS(html: string): string {
+    const themeToggleCSS = `
+    <style>
+      /* Light mode color overrides */
+      html.light-mode {
+        color-scheme: light;
+      }
+      html.light-mode body {
+        background-color: var(--light-background, #fff) !important;
+        color: var(--light-body-text, #000) !important;
+      }
+      html.light-mode h1, html.light-mode h2, html.light-mode h3, html.light-mode h4, html.light-mode h5, html.light-mode h6 {
+        color: var(--light-title-text, #000) !important;
+      }
+      html.light-mode a {
+        color: var(--light-link-color, #0066cc) !important;
+      }
+      html.light-mode ul li:before {
+        color: var(--light-bullet-color, #0066cc) !important;
+      }
+      html.light-mode blockquote {
+        border-color: var(--light-blockquote-border, #ccc) !important;
+      }
+      html.light-mode table thead {
+        background-color: var(--light-table-header-bg, #f0f0f0) !important;
+      }
+      html.light-mode code {
+        border-color: var(--light-code-border, #ccc) !important;
+      }
+      
+      /* Dark mode color overrides */
+      html.dark-mode {
+        color-scheme: dark;
+      }
+      html.dark-mode body {
+        background-color: var(--dark-background, #000) !important;
+        color: var(--dark-body-text, #fff) !important;
+      }
+      html.dark-mode h1, html.dark-mode h2, html.dark-mode h3, html.dark-mode h4, html.dark-mode h5, html.dark-mode h6 {
+        color: var(--dark-title-text, #fff) !important;
+      }
+      html.dark-mode a {
+        color: var(--dark-link-color, #4a9eff) !important;
+      }
+      html.dark-mode ul li:before {
+        color: var(--dark-bullet-color, #4a9eff) !important;
+      }
+      html.dark-mode blockquote {
+        border-color: var(--dark-blockquote-border, #666) !important;
+      }
+      html.dark-mode table thead {
+        background-color: var(--dark-table-header-bg, #333) !important;
+      }
+      html.dark-mode code {
+        border-color: var(--dark-code-border, #666) !important;
+      }
+    </style>
+    `;
+    
+    // Inject the CSS before the closing </head> tag
+    return html.replace('</head>', `${themeToggleCSS}</head>`);
   }
 
   /**
@@ -279,6 +349,32 @@ export class ExportService {
         --dark-progress-bar: ${preset.DarkProgressBar};
         --title-font: ${theme.template.TitleFont};
         --body-font: ${theme.template.BodyFont};
+      }
+
+      /* Light mode overrides */
+      html.light-mode {
+        --background: var(--light-background);
+        --body-text: var(--light-body-text);
+        --title-text: var(--light-title-text);
+        --link-color: var(--light-link-color);
+        --bullet-color: var(--light-bullet-color);
+        --blockquote-border: var(--light-blockquote-border);
+        --table-header-bg: var(--light-table-header-bg);
+        --code-border: var(--light-code-border);
+        --progress-bar: var(--light-progress-bar);
+      }
+
+      /* Dark mode overrides */
+      html.dark-mode {
+        --background: var(--dark-background);
+        --body-text: var(--dark-body-text);
+        --title-text: var(--dark-title-text);
+        --link-color: var(--dark-link-color);
+        --bullet-color: var(--dark-bullet-color);
+        --blockquote-border: var(--dark-blockquote-border);
+        --table-header-bg: var(--dark-table-header-bg);
+        --code-border: var(--dark-code-border);
+        --progress-bar: var(--dark-progress-bar);
       }
     `;
   }

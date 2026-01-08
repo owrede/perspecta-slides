@@ -766,6 +766,7 @@ export class ExportService {
             try {
               const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
               if (iframeDoc) {
+                // Toggle light/dark mode on html element
                 const iframeHtml = iframeDoc.documentElement;
                 if (isLight) {
                   iframeHtml.classList.add('light-mode');
@@ -774,6 +775,18 @@ export class ExportService {
                   iframeHtml.classList.add('dark-mode');
                   iframeHtml.classList.remove('light-mode');
                 }
+                
+                // Also toggle light/dark classes on section elements
+                const sections = iframeDoc.querySelectorAll('section');
+                sections.forEach(section => {
+                  if (isLight) {
+                    section.classList.add('light');
+                    section.classList.remove('dark');
+                  } else {
+                    section.classList.add('dark');
+                    section.classList.remove('light');
+                  }
+                });
               }
             } catch (e) {
               // Iframe might not be loaded yet
@@ -878,6 +891,7 @@ export class ExportService {
             try {
               const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
               if (iframeDoc) {
+                // Toggle light/dark mode on html element
                 const iframeHtml = iframeDoc.documentElement;
                 if (isLight) {
                   iframeHtml.classList.add('light-mode');
@@ -886,6 +900,18 @@ export class ExportService {
                   iframeHtml.classList.add('dark-mode');
                   iframeHtml.classList.remove('light-mode');
                 }
+                
+                // Also toggle light/dark classes on all section elements for color scheme
+                const sections = iframeDoc.querySelectorAll('section');
+                sections.forEach(section => {
+                  if (isLight) {
+                    section.classList.add('light');
+                    section.classList.remove('dark');
+                  } else {
+                    section.classList.add('dark');
+                    section.classList.remove('light');
+                  }
+                });
               }
             } catch (e) {
               // Iframe might not be loaded yet or cross-origin

@@ -119,17 +119,13 @@ export class PresenterWindow {
       // These will be called by the presenter window's slide navigation code
       this.win.webContents.executeJavaScript(`
         (function() {
-          console.log('[Presenter] Injecting callback handlers');
           window.__presenterCallbacks.onSlideChanged = function(index) {
-            console.log('[Presenter] onSlideChanged handler called with index:', index);
             // Store the value so we can detect it changed
             window.__lastSlideChange = {index: index, timestamp: Date.now()};
           };
           window.__presenterCallbacks.onOpenPresentation = function() {
-            console.log('[Presenter] onOpenPresentation handler called');
             window.__lastOpenPresentation = {timestamp: Date.now()};
           };
-          console.log('[Presenter] Callback handlers ready');
         })();
       `);
       
@@ -524,19 +520,45 @@ export class PresenterWindow {
        </head>
        <body>
          <div class="presenter-container">
-           <!-- Title bar with timer on the right -->
+           <!-- Title bar with controls -->
            <div class="title-bar">
-             <div class="title-text">Present: ${this.escapeHtml(presentation.frontmatter.title || 'Presentation')}</div>
-             <div class="title-controls">
-               <button id="timerPlayBtn" class="title-btn" title="Start timer">
-                 <svg viewBox="0 0 24 24" width="18" height="18">
+             <div class="title-controls-left">
+               <button id="timerPlayBtn" class="title-btn title-btn-play" title="Start timer">
+                 <svg viewBox="0 0 24 24" width="20" height="20">
                    <path fill="currentColor" d="M8 5v14l11-7z"/>
                  </svg>
                </button>
+             </div>
+             
+             <div class="title-controls-center">
+               <div class="slider-group">
+                 <div class="slider-header">
+                   <input type="checkbox" id="slideToggle" class="size-toggle" checked>
+                   <label for="slideToggle" class="slider-label">Slide</label>
+                 </div>
+                 <input type="range" id="slideSlider" class="slider" min="0" max="100" value="0">
+               </div>
+               <div class="slider-group">
+                 <div class="slider-header">
+                   <input type="checkbox" id="contentToggle" class="size-toggle" checked>
+                   <label for="contentToggle" class="slider-label">Content</label>
+                 </div>
+                 <input type="range" id="contentSlider" class="slider" min="0" max="100" value="80">
+               </div>
+               <div class="slider-group">
+                 <div class="slider-header">
+                   <input type="checkbox" id="notesToggle" class="size-toggle" checked>
+                   <label for="notesToggle" class="slider-label">Notes</label>
+                 </div>
+                 <input type="range" id="notesSlider" class="slider" min="0" max="100" value="10">
+               </div>
+             </div>
+             
+             <div class="title-controls-right">
                <div class="timer" id="timer">00:00:00</div>
                <button id="timerResetBtn" class="title-btn" title="Reset timer">
-                 <svg viewBox="0 0 24 24" width="18" height="18">
-                   <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+                 <svg viewBox="0 0 24 24" width="20" height="20">
+                   <path fill="currentColor" d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/>
                  </svg>
                </button>
                <span id="slideCounter">Slide 1 of ${presentation.slides.length}</span>
@@ -569,21 +591,17 @@ export class PresenterWindow {
            try {
              const electron = require('electron');
              ipcRenderer = electron.ipcRenderer;
-             console.log('[Presenter] Successfully got ipcRenderer from electron');
            } catch (e) {
-             console.warn('[Presenter] Failed to get ipcRenderer:', e);
+             // ipcRenderer not available
            }
 
            function sendIPC(channel, args) {
              if (ipcRenderer) {
                try {
                  ipcRenderer.send(channel, args);
-                 console.log('[Presenter] Sent IPC:', channel, args);
                } catch (e) {
-                 console.error('[Presenter] Failed to send IPC:', e);
+                 // Failed to send IPC
                }
-             } else {
-               console.warn('[Presenter] ipcRenderer not available');
              }
            }
 
@@ -597,56 +615,50 @@ export class PresenterWindow {
           }
 
           function setActiveSlide(index) {
-            const slides = document.querySelectorAll('.slide-row');
-            if (index < 0 || index >= slides.length) return;
+             const slides = document.querySelectorAll('.slide-row');
+             if (index < 0 || index >= slides.length) return;
 
-            // Remove active class from all slides
-            slides.forEach(slide => slide.classList.remove('active'));
-            
-            // Add active class to current slide
-            slides[index].classList.add('active');
-            
-            // Scroll into view at top of viewport
-            slides[index].scrollIntoView({ behavior: 'smooth', block: 'start' });
-            
-            // Update counter
-            document.getElementById('slideCounter').textContent = 'Slide ' + (index + 1) + ' of ${presentation.slides.length}';
-            
-            window.currentSlideIndex = index;
-            
-            // Notify parent window via polling flag
-            console.log('[Presenter] Slide change to index', index);
-            window.__lastSlideChange = {index: index, timestamp: Date.now()};
-            console.log('[Presenter] Set __lastSlideChange for polling detection');
-            
-            // Also try the callback if it's injected
-            if (window.__presenterCallbacks && window.__presenterCallbacks.onSlideChanged) {
-              try {
-                console.log('[Presenter] Callback is ready, calling onSlideChanged');
-                window.__presenterCallbacks.onSlideChanged(index);
-              } catch (e) {
-                console.error('[Presenter] Error calling callback:', e);
-              }
-            }
-          }
+             // Remove active class from all slides
+             slides.forEach(slide => slide.classList.remove('active'));
+             
+             // Add active class to current slide
+             slides[index].classList.add('active');
+             
+             // Scroll into view at top of viewport
+             slides[index].scrollIntoView({ behavior: 'smooth', block: 'start' });
+             
+             // Update counter
+             document.getElementById('slideCounter').textContent = 'Slide ' + (index + 1) + ' of ${presentation.slides.length}';
+             
+             window.currentSlideIndex = index;
+             
+             // Notify parent window via polling flag
+             window.__lastSlideChange = {index: index, timestamp: Date.now()};
+             
+             // Also try the callback if it's injected
+             if (window.__presenterCallbacks && window.__presenterCallbacks.onSlideChanged) {
+               try {
+                 window.__presenterCallbacks.onSlideChanged(index);
+               } catch (e) {
+                 // Silently fail
+               }
+             }
+           }
 
           document.getElementById('timerPlayBtn').addEventListener('click', () => {
             const btn = document.getElementById('timerPlayBtn');
+            const svg = btn.querySelector('svg');
+            
             if (!window.timerInterval) {
               // Request to open presentation window if not open
-              console.log('[Presenter] PLAY clicked, requesting presentation window');
-              
-              // Always update the polling flag so the main process detects this request
               window.__lastOpenPresentation = {timestamp: Date.now()};
-              console.log('[Presenter] Set __lastOpenPresentation for polling detection');
               
               // Also try the callback if it's injected
               if (window.__presenterCallbacks && window.__presenterCallbacks.onOpenPresentation) {
                 try {
-                  console.log('[Presenter] Callback is ready, calling onOpenPresentation');
                   window.__presenterCallbacks.onOpenPresentation();
                 } catch (e) {
-                  console.error('[Presenter] Error calling callback:', e);
+                  // Silently fail
                 }
               }
               
@@ -656,10 +668,16 @@ export class PresenterWindow {
                 document.getElementById('timer').textContent = formatTime(window.timerSeconds);
               }, 1000);
               btn.classList.add('active');
+              
+              // Change icon to STOP (square)
+              svg.innerHTML = '<rect fill="currentColor" x="6" y="6" width="12" height="12"/>';
             } else {
               clearInterval(window.timerInterval);
               window.timerInterval = null;
               btn.classList.remove('active');
+              
+              // Change icon back to PLAY (triangle)
+              svg.innerHTML = '<path fill="currentColor" d="M8 5v14l11-7z"/>';
             }
           });
 
@@ -692,7 +710,59 @@ export class PresenterWindow {
               setActiveSlide(slides.length - 1);
             }
           });
-        </script>
+
+          // Slider controls for size adjustments
+          document.getElementById('slideSlider').addEventListener('input', (e) => {
+            const value = e.target.value;
+            const slides = document.querySelectorAll('.slide-thumb-wrapper');
+            slides.forEach(slide => {
+              slide.style.setProperty('--slide-size', value);
+            });
+          });
+
+          // Slide visibility toggle
+          document.getElementById('slideToggle').addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            const slides = document.querySelectorAll('.slide-row');
+            slides.forEach(slide => {
+              slide.setAttribute('data-slides-hidden', isChecked ? 'false' : 'true');
+            });
+          });
+
+          document.getElementById('contentSlider').addEventListener('input', (e) => {
+            const value = e.target.value;
+            const contents = document.querySelectorAll('.slide-text');
+            contents.forEach(content => {
+              content.style.setProperty('--content-size', value);
+            });
+          });
+
+          // Content visibility toggle
+          document.getElementById('contentToggle').addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            const slides = document.querySelectorAll('.slide-row');
+            slides.forEach(slide => {
+              slide.setAttribute('data-content-hidden', isChecked ? 'false' : 'true');
+            });
+          });
+
+          document.getElementById('notesSlider').addEventListener('input', (e) => {
+            const value = e.target.value;
+            const notes = document.querySelectorAll('.notes-content');
+            notes.forEach(note => {
+              note.style.setProperty('--notes-size', value);
+            });
+          });
+
+          // Notes visibility toggle
+          document.getElementById('notesToggle').addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            const slides = document.querySelectorAll('.slide-row');
+            slides.forEach(slide => {
+              slide.setAttribute('data-notes-hidden', isChecked ? 'false' : 'true');
+            });
+          });
+          </script>
       </body>
       </html>
     `;
@@ -857,26 +927,105 @@ export class PresenterWindow {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        height: 32px;
-        padding: 0 16px;
+        height: 48px;
+        padding: 8px 16px;
         background: #2a2a2a;
         border-bottom: 1px solid #333;
         flex-shrink: 0;
         -webkit-app-region: drag;
+        gap: 16px;
       }
 
-      .title-text {
-        font-size: 14px;
-        font-weight: 600;
-        color: #e0e0e0;
-        flex: 1;
-      }
-
-      .title-controls {
+      .title-controls-left,
+      .title-controls-center,
+      .title-controls-right {
         display: flex;
         align-items: center;
         gap: 12px;
         -webkit-app-region: no-drag;
+      }
+
+      .title-controls-center {
+        flex: 1;
+        justify-content: center;
+        gap: 16px;
+        flex-wrap: nowrap;
+        min-width: 0;
+      }
+
+      .slider-group {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .slider-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 20px;
+        flex-shrink: 0;
+      }
+
+      .size-toggle {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+        accent-color: #4a9eff;
+      }
+
+      .slider-label {
+        font-size: 11px;
+        color: #999;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      .slider {
+        width: 80px;
+        height: 4px;
+        border-radius: 2px;
+        background: #3a3a3a;
+        outline: none;
+        -webkit-appearance: none;
+        appearance: none;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+
+      .slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #4a9eff;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+
+      .slider::-webkit-slider-thumb:hover {
+        background: #6ab3ff;
+      }
+
+      .slider::-moz-range-thumb {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #4a9eff;
+        cursor: pointer;
+        border: none;
+        transition: background 0.2s;
+      }
+
+      .slider::-moz-range-thumb:hover {
+        background: #6ab3ff;
       }
 
       .timer {
@@ -946,30 +1095,38 @@ export class PresenterWindow {
         flex-shrink: 0;
       }
 
+      /* Hide slide thumbnails when toggle is unchecked */
+      .slide-row[data-slides-hidden="true"] .slide-thumb-wrapper {
+        display: none;
+      }
+
       .slide-num-circle {
-        width: 48px;
-        height: 48px;
+        width: 36px;
+        height: 36px;
         border-radius: 50%;
         background: #2a3a4a;
         border: 2px solid #4a9eff;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 20px;
+        font-size: 15px;
         font-weight: 700;
         color: #4a9eff;
         flex-shrink: 0;
-        margin-top: 4px;
+        margin-top: 3px;
       }
 
       .slide-thumb-wrapper {
-        width: 100px;
-        height: 60px;
         background: #252525;
         border-radius: 4px;
         overflow: hidden;
         border: 1px solid #333;
         flex-shrink: 0;
+        /* Smooth scaling: 100px to 900px width, maintaining 16:9 aspect ratio */
+        --slide-size: 0;
+        width: calc(100px + var(--slide-size) * 8px);
+        height: calc(60px + var(--slide-size) * 4.8px);
+        transition: width 0.3s, height 0.3s;
       }
 
       .slide-thumb {
@@ -988,11 +1145,12 @@ export class PresenterWindow {
         padding: 12px;
         border-radius: 4px;
         border-left: 3px solid transparent;
-        font-size: 1.5rem;
+        --content-size: 80;
+        font-size: calc(1rem + var(--content-size) * 0.02rem);
         line-height: 1.8;
         color: #999;
         margin-bottom: 12px;
-        transition: all 0.2s;
+        transition: all 0.3s;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       }
 
@@ -1001,6 +1159,17 @@ export class PresenterWindow {
         border-left-color: #4a9eff;
         color: #e0e0e0;
         font-weight: 400;
+      }
+
+      /* Hide non-heading content when content toggle is unchecked - keep only h1 */
+      .slide-row[data-content-hidden="true"] .slide-text h2,
+      .slide-row[data-content-hidden="true"] .slide-text h3,
+      .slide-row[data-content-hidden="true"] .slide-text p,
+      .slide-row[data-content-hidden="true"] .slide-text ul,
+      .slide-row[data-content-hidden="true"] .slide-text strong,
+      .slide-row[data-content-hidden="true"] .slide-text em,
+      .slide-row[data-content-hidden="true"] .slide-text code {
+        display: none;
       }
 
       .slide-text h1 {
@@ -1072,6 +1241,11 @@ export class PresenterWindow {
         transition: all 0.2s;
       }
 
+      /* Hide speaker notes when toggle is unchecked */
+      .slide-row[data-notes-hidden="true"] .speaker-notes {
+        display: none;
+      }
+
       .slide-row.active .speaker-notes {
         background: rgba(255, 154, 74, 0.1);
         border-left-color: #ff9a4a;
@@ -1087,9 +1261,11 @@ export class PresenterWindow {
       }
 
       .notes-content {
-        font-size: 1rem;
+        --notes-size: 10;
+        font-size: calc(1rem + var(--notes-size) * 0.02rem);
         line-height: 1.6;
         color: #999;
+        transition: font-size 0.3s;
       }
 
       .slide-row.active .notes-content {

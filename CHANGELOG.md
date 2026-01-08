@@ -2,6 +2,28 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.5] - 2026-01-08
+
+### New Features
+
+- **New**: HTML export functionality - export presentations to standalone HTML with embedded styles and navigation
+- **New**: Export command `Export presentation to HTML` creates folder with index.html and external images
+- **New**: Exported presentations include responsive navigation: keyboard controls (arrows, space, home/end), click-based navigation (left/right thirds), URL hash support for bookmarking
+- **New**: Speaker notes embedded as HTML comments in exported slides for searching without displaying
+- **New**: Exported presentations include help overlay (press ?) with keyboard shortcut reference
+- **New**: Images extracted as separate files to images/ subdirectory, keeping HTML file sizes minimal
+- **New**: Theme colors and custom fonts fully embedded in exported HTML
+- **New**: Double-click fullscreen support in exported presentations
+- **New**: Progress bar showing current slide position in exported presentations
+
+### Technical Details
+
+- **New**: ExportService class handles all export operations (image extraction, path resolution, HTML generation)
+- **New**: Image path resolver integrated with Obsidian vault system - supports wiki-links and relative paths
+- **New**: Slide counter and progress tracking in exported HTML viewer
+- **New**: Responsive CSS in exported presentations works across all screen sizes
+- **New**: Exported folder structure: `presentation-name-export/index.html` and `images/` subfolder
+
 ## [0.2.3] - 2026-01-07
 
 ### Bug Fixes

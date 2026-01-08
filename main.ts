@@ -31,6 +31,7 @@ import { ThemeExporter, SaveThemeModal } from './src/utils/ThemeExporter';
 import { ThemeLoader } from './src/themes/ThemeLoader';
 import { getBuiltInThemeNames } from './src/themes/builtin';
 import { DebugService, setDebugService } from './src/utils/DebugService';
+import { ExportService } from './src/utils/ExportService';
 
 const SLIDES_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
 
@@ -51,6 +52,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
   fontManager: FontManager | null = null;
   themeLoader: ThemeLoader | null = null;
   debugService: DebugService = new DebugService();
+  exportService: ExportService | null = null;
   private presentationWindow: PresentationWindow | null = null;
   private presenterWindow: PresenterWindow | null = null;
   private currentPresentationFile: TFile | null = null;
@@ -168,6 +170,13 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Font handling uses the new consolidated debug topic instead of a separate setting
     // this.fontManager.setDebugMode(this.settings.debugFontHandling);
 
+    // Initialize export service
+    this.exportService = new ExportService(
+      this.app,
+      this.fontManager,
+      this.presentationImagePathResolver
+    );
+
     // Initialize theme loader with built-in themes first
     this.themeLoader = new ThemeLoader(this.app, this.settings.customThemesFolder);
     await this.themeLoader.loadThemes();
@@ -203,21 +212,16 @@ export default class PerspectaSlidesPlugin extends Plugin {
     });
 
     // Try to access ipcMain from Electron for IPC handling
-    console.log('[Main] Attempting to setup IPC handlers for presenter window');
     try {
       const electron = require('electron');
       const { ipcMain } = electron;
       
       if (ipcMain) {
-        console.log('[Main] ✓ ipcMain is available - setting up IPC handlers');
-        
         // Listen for slide changes from the presenter window
         ipcMain.on('presenter:slide-changed', (event: any, slideIndex: number) => {
-          console.log('[Main] ===== PRESENTER SLIDE CHANGED: index', slideIndex);
           // Call the callback if presenter window is open
           if (this.presenterWindow?.isOpen()) {
             if (this.presenterWindow['onSlideChanged']) {
-              console.log('[Main] Calling onSlideChanged callback');
               this.presenterWindow['onSlideChanged'](slideIndex);
             }
           }
@@ -225,22 +229,15 @@ export default class PerspectaSlidesPlugin extends Plugin {
         
         // Listen for request to open presentation window
         ipcMain.on('presenter:open-presentation', (event: any) => {
-          console.log('[Main] ===== PRESENTER OPEN PRESENTATION REQUESTED');
           if (this.presenterWindow?.isOpen()) {
             if (this.presenterWindow['onOpenPresentationWindow']) {
-              console.log('[Main] Calling onOpenPresentationWindow callback');
               this.presenterWindow['onOpenPresentationWindow']();
             }
           }
         });
-        
-        console.log('[Main] IPC handlers registered successfully');
-      } else {
-        console.log('[Main] ipcMain not available - IPC handlers from presenter window will not work in this context');
-        console.log('[Main] Note: Messages from presenter window will still send via ipcRenderer');
       }
     } catch (e) {
-      console.warn('[Main] Could not setup ipcMain handlers:', e);
+      // IPC setup failed silently
     }
 
     // Listen for system color scheme changes and refresh all views
@@ -310,21 +307,6 @@ export default class PerspectaSlidesPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: 'export-presentation-html',
-      name: 'Export presentation to HTML',
-      checkCallback: (checking: boolean) => {
-        const file = this.app.workspace.getActiveFile();
-        if (file && file.extension === 'md') {
-          if (!checking) {
-            this.exportToHTML(file);
-          }
-          return true;
-        }
-        return false;
-      }
-    });
-
-    this.addCommand({
       id: 'start-presentation',
       name: 'Start presentation',
       checkCallback: (checking: boolean) => {
@@ -387,6 +369,21 @@ export default class PerspectaSlidesPlugin extends Plugin {
         if (file && file.extension === 'md') {
           if (!checking) {
             this.openPresenterViewWithPresentation(file, true);
+          }
+          return true;
+        }
+        return false;
+      }
+    });
+
+    this.addCommand({
+      id: 'export-presentation',
+      name: 'Export presentation to HTML',
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        if (file && file.extension === 'md') {
+          if (!checking) {
+            this.exportPresentation(file);
           }
           return true;
         }
@@ -605,63 +602,54 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
 
     async openPresenterView(file: TFile, fullscreenOnSecondary: boolean = false) {
-      console.log('[Main] openPresenterView called for file:', file.path);
       try {
         const content = await this.app.vault.read(file);
         const presentation = this.parser.parse(content);
         const themeName = presentation.frontmatter.theme || this.settings.defaultTheme;
-        const theme = this.getThemeByName(themeName);
-        console.log('[Main] Creating new PresenterWindow');
+         const theme = this.getThemeByName(themeName);
 
-        // Close any existing presenter window
-        if (this.presenterWindow?.isOpen()) {
-          this.presenterWindow.close();
-        }
+         // Close any existing presenter window
+         if (this.presenterWindow?.isOpen()) {
+           this.presenterWindow.close();
+         }
 
-        this.presenterWindow = new PresenterWindow();
-        this.presenterWindow.setImagePathResolver(this.presentationImagePathResolver);
-        
-        const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
-        const fontWeightsCache = this.buildFontWeightsCache();
-        
-        this.presenterWindow.setCustomFontCSS(customFontCSS);
-        this.presenterWindow.setFontWeightsCache(fontWeightsCache);
+         this.presenterWindow = new PresenterWindow();
+         this.presenterWindow.setImagePathResolver(this.presentationImagePathResolver);
+         
+         const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
+         const fontWeightsCache = this.buildFontWeightsCache();
+         
+         this.presenterWindow.setCustomFontCSS(customFontCSS);
+         this.presenterWindow.setFontWeightsCache(fontWeightsCache);
 
-        // Restore window bounds if available
-        if (this.settings.presenterWindowBounds) {
-          this.presenterWindow.setWindowBounds(this.settings.presenterWindowBounds);
-        }
+         // Restore window bounds if available
+         if (this.settings.presenterWindowBounds) {
+           this.presenterWindow.setWindowBounds(this.settings.presenterWindowBounds);
+         }
 
-        // Set up callback to sync slide changes with presentation window
-        this.presenterWindow.setOnSlideChanged((slideIndex: number) => {
-          console.log('[Main] Presenter slide changed to:', slideIndex);
-          // Update presentation window to the same slide
-          if (this.presentationWindow?.isOpen()) {
-            console.log('[Main] Presentation window is open, updating to slide', slideIndex);
-            this.presentationWindow.goToSlide(slideIndex);
-          } else {
-            console.log('[Main] Presentation window is not open');
-          }
-        });
+         // Set up callback to sync slide changes with presentation window
+         this.presenterWindow.setOnSlideChanged((slideIndex: number) => {
+           // Update presentation window to the same slide
+           if (this.presentationWindow?.isOpen()) {
+             this.presentationWindow.goToSlide(slideIndex);
+           }
+         });
 
-        // Set up callback to save window bounds
-        this.presenterWindow.setOnWindowBoundsChanged((bounds: any) => {
-          this.settings.presenterWindowBounds = bounds;
-          this.saveSettings();
-        });
+         // Set up callback to save window bounds
+         this.presenterWindow.setOnWindowBoundsChanged((bounds: any) => {
+           this.settings.presenterWindowBounds = bounds;
+           this.saveSettings();
+         });
 
-        // Set up callback to open presentation window when timer is started
-        this.presenterWindow.setOnOpenPresentationWindow(() => {
-          console.log('[Main] Opening presentation window from presenter play button');
-          this.startPresentation(file);
-        });
+         // Set up callback to open presentation window when timer is started
+         this.presenterWindow.setOnOpenPresentationWindow(() => {
+           this.startPresentation(file);
+         });
 
-        await this.presenterWindow.open(presentation, theme || null, file, 0, fullscreenOnSecondary);
+         await this.presenterWindow.open(presentation, theme || null, file, 0, fullscreenOnSecondary);
 
-        // Track as last used document
-        this.lastUsedSlideDocument = file;
-
-        console.log('[PresenterWindow] Opened successfully');
+         // Track as last used document
+         this.lastUsedSlideDocument = file;
       } catch (error) {
         console.error('[PresenterWindow] Failed to open:', error);
         new Notice(`Failed to open presenter view: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -700,6 +688,26 @@ export default class PerspectaSlidesPlugin extends Plugin {
         });
 
         await this.presentationWindow.open(presentation, theme || null, file, 0);
+      }
+    }
+
+    private async exportPresentation(file: TFile) {
+      try {
+        const content = await this.app.vault.read(file);
+        const presentation = this.parser.parse(content);
+        const themeName = presentation.frontmatter.theme || this.settings.defaultTheme;
+        const theme = this.getThemeByName(themeName);
+        const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
+
+        if (!this.exportService) {
+          new Notice('Export service not initialized');
+          return;
+        }
+
+        await this.exportService.export(presentation, theme || null, file, customFontCSS);
+      } catch (error) {
+        console.error('Export failed:', error);
+        new Notice(`Failed to export presentation: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
 
@@ -1412,36 +1420,6 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
 
     return frontmatterEnd;
-  }
-
-  private async exportToHTML(file: TFile) {
-    const content = await this.app.vault.read(file);
-    const presentation = this.parser.parse(content);
-    const theme = this.getThemeByName(presentation.frontmatter.theme || this.settings.defaultTheme);
-    const renderer = new SlideRenderer(presentation, theme);
-    
-    // Generate custom font CSS for cached fonts (uses base64 data URLs)
-    const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
-    renderer.setCustomFontCSS(customFontCSS);
-    
-    // Set font weights cache for validation
-    renderer.setFontWeightsCache(this.buildFontWeightsCache());
-    
-    // Set system color scheme so 'system' mode resolves correctly
-    renderer.setSystemColorScheme(getSystemColorScheme());
-    
-    const html = renderer.renderHTML();
-
-    const exportPath = file.path.replace(/\.md$/, '.html');
-
-    const existingFile = this.app.vault.getAbstractFileByPath(exportPath);
-    if (existingFile instanceof TFile) {
-      await this.app.vault.modify(existingFile, html);
-    } else {
-      await this.app.vault.create(exportPath, html);
-    }
-
-    new Notice(`Exported presentation to ${exportPath}`);
   }
 
   private async startPresentation(file: TFile) {

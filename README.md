@@ -7,12 +7,12 @@ An Obsidian plugin for creating presentations from Markdown, inspired by [iA Pre
 - **iA Presenter-style syntax**: Write presentations using familiar Markdown with the same conventions as iA Presenter
 - **Thumbnail navigator**: See all your slides at a glance in the left sidebar with drag-and-drop reordering
 - **Inspector panel**: Edit slide properties, layouts, and design settings in the right sidebar
-- **Multiple themes**: 12 built-in themes with customizable colors and fonts
-- **Custom themes**: Save your design settings as reusable custom themes
+- **Multiple themes**: Built-in themes with customizable colors and fonts
+- **Custom themes**: Save your design settings as reusable custom themes with bundled fonts
 - **Google Fonts**: Download and cache fonts locally for offline presentations
 - **HTML export**: Export your presentations as standalone HTML files
 - **Speaker notes**: Regular paragraphs become speaker notes visible only to you
-- **Presentation mode**: Present directly from Obsidian in a frameless window
+- **Presentation mode**: Present directly from Obsidian in a frameless window with aspect ratio locking
 - **Presenter view**: See current slide, next slide preview, speaker notes, and timer in one view
 - **Transitions**: Fade and slide transitions between slides
 - **Code highlighting**: Automatic syntax highlighting for code blocks
@@ -21,6 +21,8 @@ An Obsidian plugin for creating presentations from Markdown, inspired by [iA Pre
 - **Obsidian image support**: Use `![[image.png]]` wiki-links or standard `![](image.jpg)` syntax
 - **Full-bleed images**: Edge-to-edge images with `object-fit: cover` for cinematic layouts
 - **Header/footer slots**: Customizable header and footer with left, middle, and right positions
+- **Typography control**: Per-slide font selection, size scaling, spacing, and line height adjustments
+- **Semantic colors**: Customizable colors for links, bullets, blockquotes, code, and more
 
 ## Markdown Syntax
 
@@ -94,14 +96,19 @@ theme: zurich
 
 # Typography
 titleFont: Helvetica
+titleFontWeight: 700
 bodyFont: Georgia
-fontSizeOffset: 0     # Percentage: -20 = 20% smaller, 10 = 10% larger
-contentTopOffset: 0   # Percentage: push column content down (0-20%)
+bodyFontWeight: 400
+textScale: 1.0           # Multiplier for all text sizes (0.65 = 65%, 1.5 = 150%)
+titleFontSize: 0         # Percentage offset: -20 = 20% smaller, 10 = 10% larger
+bodyFontSize: 0
+lineHeight: 1.1
 
-# Colors
-accent1: "#000000"
-accent2: "#43aa8b"
-accent3: "#f9c74f"
+# Semantic Colors
+lightLinkColor: "#0066cc"
+darkLinkColor: "#66b3ff"
+lightBoldColor: "#000000"
+darkBoldColor: "#ffffff"
 
 # Header/Footer
 headerLeft: "Company Name"
@@ -109,10 +116,11 @@ headerMiddle: "Presentation Title"
 headerRight: ""
 footerLeft: ""
 footerMiddle: ""
-footerRight: "{{slideNumber}}"
+footerRight: "Page {{slideNumber}}"
 
 # Settings
 aspectRatio: "16:9"
+lockAspectRatio: false   # Lock aspect ratio with letterbox/pillarbox
 showSlideNumbers: true
 showProgress: true
 transition: fade
@@ -150,20 +158,12 @@ With a background image
 
 ## Themes
 
-Perspecta Slides includes twelve built-in themes:
+Perspecta Slides comes with built-in themes you can use or customize:
 
 - **zurich** - Minimal Swiss design with clean typography
 - **kyoto** - Dynamic gradient theme with soft pastel colors
 - **berlin** - Professional theme with deep blue tones
 - **minimal** - Ultra-clean minimal design with generous whitespace
-- **helvetica** - Classic typography focus with professional design
-- **basel** - Swiss serif typography with Noto Serif font
-- **copenhagen** - Nordic elegance with Albert Sans font
-- **garamond** - Classic serif elegance
-- **la** - Modern California style
-- **milano** - Italian sophistication
-- **newyork** - Bold metropolitan design
-- **paris** - Elegant French typography
 
 Set your theme in the frontmatter:
 

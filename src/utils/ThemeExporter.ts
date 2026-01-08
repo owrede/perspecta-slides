@@ -73,32 +73,60 @@ export class SaveThemeModal extends Modal {
         new Notice(`A built-in theme named "${this.themeName}" exists. Your custom theme will be saved as "${this.themeName} (custom)".`);
       }
 
-      // Check for existing custom theme with same name
-      const customThemeExists = this.customThemeNames.some(t => 
-        t.toLowerCase().replace(/\s+/g, '-') === normalizedName
-      );
+      // Check if theme folder actually exists right now (re-check, don't rely on cached state)
+      const folderName = this.themeName.toLowerCase().replace(/\s+/g, '-');
+      const themeFolderPath = `perspecta-themes/${folderName}`;
+      const themeFolder = this.app.vault.getAbstractFileByPath(themeFolderPath);
+      const folderActuallyExists = themeFolder instanceof TFolder;
       
-      let overwrite = false;
-      if (customThemeExists) {
-        if (!confirm(`A custom theme named "${this.themeName}" already exists. Do you want to overwrite it?`)) {
-          return;
-        }
-        overwrite = true;
+      // Only show overwrite dialog if folder actually exists
+      if (folderActuallyExists) {
+        this.showOverwriteConfirmation(saveBtn, this.themeName);
+        return;
       }
 
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Saving...';
-
-      try {
-        await this.onSave(this.themeName, overwrite);
-        this.close();
-      } catch (e) {
-        console.error('Failed to save theme:', e);
-        new Notice(`Failed to save theme: ${e instanceof Error ? e.message : 'Unknown error'}`);
-        saveBtn.disabled = false;
-        saveBtn.textContent = 'Save Theme';
-      }
+      await this.performSave(saveBtn, false);
     });
+  }
+
+  private showOverwriteConfirmation(saveBtn: HTMLButtonElement, themeName: string) {
+    const { contentEl } = this;
+    
+    // Create confirmation dialog
+    const confirmContainer = contentEl.createDiv({ cls: 'perspecta-confirm-overwrite' });
+    confirmContainer.createEl('h3', { text: 'Confirm Update' });
+    confirmContainer.createEl('p', { 
+      text: `A custom theme named "${themeName}" already exists. Do you want to update it with the new values and content?`,
+      cls: 'modal-description'
+    });
+
+    const confirmFooter = confirmContainer.createDiv({ cls: 'modal-button-container' });
+    
+    const cancelConfirmBtn = confirmFooter.createEl('button', { text: 'Cancel' });
+    cancelConfirmBtn.addEventListener('click', () => {
+      confirmContainer.remove();
+    });
+
+    const confirmBtn = confirmFooter.createEl('button', { text: 'Update Theme', cls: 'mod-cta' });
+    confirmBtn.addEventListener('click', async () => {
+      confirmContainer.remove();
+      await this.performSave(saveBtn, true);
+    });
+  }
+
+  private async performSave(saveBtn: HTMLButtonElement, overwrite: boolean) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    try {
+      await this.onSave(this.themeName, overwrite);
+      this.close();
+    } catch (e) {
+      console.error('Failed to save theme:', e);
+      new Notice(`Failed to save theme: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Theme';
+    }
   }
 
   onClose() {
@@ -118,7 +146,8 @@ export class ThemeExporter {
   constructor(app: App, fontManager: FontManager | null, customThemesFolder: string) {
     this.app = app;
     this.fontManager = fontManager;
-    this.customThemesFolder = customThemesFolder;
+    // Normalize path: remove trailing slash to avoid double slashes when concatenating
+    this.customThemesFolder = (customThemesFolder || 'perspecta-themes').replace(/\/$/, '');
   }
 
   /**
@@ -146,9 +175,11 @@ export class ThemeExporter {
     const folderName = themeName.toLowerCase().replace(/\s+/g, '-');
     const themePath = `${this.customThemesFolder}/${folderName}`;
     
-    // If overwriting, delete existing theme folder first
+    // If overwriting, delete and recreate the entire folder
     if (overwrite) {
-      await this.deleteThemeFolder(themePath);
+      await this.deleteThemeFolderCompletely(themePath);
+      // Wait for vault to process deletions
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
     
     await this.ensureFolder(themePath);
@@ -181,22 +212,39 @@ export class ThemeExporter {
   }
 
   /**
-   * Delete an existing theme folder and all its contents
+   * Completely delete an existing theme folder and all its contents
+   * Recursively deletes all files and subfolders
    */
-  private async deleteThemeFolder(themePath: string): Promise<void> {
+  private async deleteThemeFolderCompletely(themePath: string): Promise<void> {
     const folder = this.app.vault.getAbstractFileByPath(themePath);
-    if (folder instanceof TFolder) {
-      const deleteRecursively = async (f: TFolder) => {
-        for (const child of [...f.children]) {
+    if (!(folder instanceof TFolder)) {
+      return; // Folder doesn't exist, nothing to delete
+    }
+
+    // Recursively delete all children first
+    const deleteRecursive = async (f: TFolder) => {
+      const children = [...f.children]; // Create a copy of children array
+      for (const child of children) {
+        try {
           if (child instanceof TFolder) {
-            await deleteRecursively(child);
-          } else {
+            await deleteRecursive(child);
+          } else if (child instanceof TFile) {
             await this.app.vault.delete(child);
           }
+        } catch (e) {
+          console.warn(`Failed to delete ${child.path}:`, e);
         }
-        await this.app.vault.delete(f);
-      };
-      await deleteRecursively(folder);
+      }
+    };
+
+    // Delete all children
+    await deleteRecursive(folder);
+
+    // Finally, delete the folder itself
+    try {
+      await this.app.vault.delete(folder);
+    } catch (e) {
+      console.warn(`Failed to delete theme folder ${themePath}:`, e);
     }
   }
 

@@ -30,3 +30,15 @@ contextBridge.exposeInMainWorld('nativeWindow', {
     ipcRenderer.send('presentation-window-drag-stop');
   }
 });
+
+// Expose electron IPC for presenter window
+contextBridge.exposeInMainWorld('electron', {
+  ipcRenderer: {
+    send: (channel: string, args: any) => {
+      ipcRenderer.send(channel, args);
+    },
+    on: (channel: string, func: any) => {
+      ipcRenderer.on(channel, (event: any, ...args: any[]) => func(...args));
+    }
+  }
+});

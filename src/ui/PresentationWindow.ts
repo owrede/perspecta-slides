@@ -30,6 +30,7 @@ export class PresentationWindow {
   private presentation: Presentation | null = null;
   private customFontCSS: string = '';
   private fontWeightsCache: Map<string, number[]> = new Map();
+  private onSlideChanged: ((index: number) => void) | null = null;
 
   public getPresentation(): Presentation | null {
     return this.presentation;
@@ -45,6 +46,10 @@ export class PresentationWindow {
 
   setFontWeightsCache(cache: Map<string, number[]>): void {
     this.fontWeightsCache = cache;
+  }
+
+  setOnSlideChanged(callback: (index: number) => void): void {
+    this.onSlideChanged = callback;
   }
 
   private createRenderer(presentation: Presentation, theme: Theme | null): SlideRenderer {
@@ -216,15 +221,34 @@ export class PresentationWindow {
     this.goToSlide(this.currentSlideIndex - 1);
   }
 
-  private goToSlide(index: number): void {
-    if (!this.presentation) return;
+  public goToSlide(index: number): void {
+    const debug = getDebugService();
+    debug.log('presentation-window', `[PresentationWindow.goToSlide] called with index ${index}`);
+    
+    if (!this.presentation) {
+      debug.warn('presentation-window', '[PresentationWindow.goToSlide] No presentation loaded');
+      return;
+    }
     if (index < 0) index = 0;
     if (index >= this.presentation.slides.length) index = this.presentation.slides.length - 1;
     
     this.currentSlideIndex = index;
     
+    // Notify any listeners that slide changed (e.g., presenter window)
+    if (this.onSlideChanged) {
+      debug.log('presentation-window', `[PresentationWindow.goToSlide] Invoking onSlideChanged callback with index ${index}`);
+      this.onSlideChanged(index);
+    }
+    
     if (this.win && !this.win.isDestroyed()) {
-      this.win.webContents.executeJavaScript(`showSlide(${index})`).catch(() => {});
+      debug.log('presentation-window', `[PresentationWindow.goToSlide] Executing showSlide(${index}) in window`);
+      this.win.webContents.executeJavaScript(`showSlide(${index})`).then(() => {
+        debug.log('presentation-window', `[PresentationWindow.goToSlide] showSlide(${index}) executed successfully`);
+      }).catch((e: any) => {
+        debug.error('presentation-window', `[PresentationWindow.goToSlide] Error executing showSlide: ${e}`);
+      });
+    } else {
+      debug.warn('presentation-window', '[PresentationWindow.goToSlide] Window is null or destroyed');
     }
   }
 
@@ -322,10 +346,10 @@ export class PresentationWindow {
         top: 0;
         left: 0;
         right: 0;
-        height: 30px;
+        height: 40px;
         background-color: rgba(255, 255, 255, 0);
         -webkit-app-region: drag;
-        z-index: 10000;
+        z-index: 10001;
         pointer-events: none;
         transition: background-color 0.3s ease;
       }
@@ -410,12 +434,13 @@ export class PresentationWindow {
       // Show/hide drag zone based on mouse position and activity
       let titlebarHideTimeout;
       const titlebar = document.querySelector('.titlebar');
-      const windowHeightQuarter = window.innerHeight / 4;
+      const titlebarHeight = 40;
+      const showTitlebarThreshold = window.innerHeight / 4;
       
       if (titlebar) {
         document.addEventListener('mousemove', (e) => {
-          // Show titlebar if mouse is in upper quarter
-          if (e.clientY < windowHeightQuarter) {
+          // Show titlebar if mouse is in upper portion of window
+          if (e.clientY < showTitlebarThreshold) {
             if (!titlebar.classList.contains('visible')) {
               titlebar.classList.add('visible');
             }
@@ -499,33 +524,52 @@ export class PresentationWindow {
     }
 
     const aspectRatio = frontmatter.aspectRatio || '16:9';
-    const ratios: Record<string, number> = {
-      '16:9': 16 / 9,
-      '4:3': 4 / 3,
-      '16:10': 16 / 10,
-      'auto': 0
+    const ratios: Record<string, {width: number, height: number}> = {
+      '16:9': { width: 16, height: 9 },
+      '4:3': { width: 4, height: 3 },
+      '16:10': { width: 16, height: 10 },
+      'auto': { width: 0, height: 0 }
     };
 
     const ratio = ratios[aspectRatio];
-    if (ratio === 0) {
+    if (ratio.width === 0) {
       return ''; // 'auto' aspect ratio - no locking needed
     }
 
     return `
+      .presentation-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        padding: 0;
+        margin: 0;
+      }
+      
       .slides-container {
-        width: auto;
-        height: auto;
-        max-width: 100%;
-        max-height: 100%;
-        aspect-ratio: ${aspectRatio};
+        position: relative;
+        /* Maintain aspect ratio with automatic letterboxing/pillarboxing */
+        aspect-ratio: ${ratio.width} / ${ratio.height};
+        /* Calculate the largest size that fits in the viewport while maintaining aspect ratio */
+        width: min(100vw, calc(100vh * ${ratio.width} / ${ratio.height}));
+        height: min(100vh, calc(100vw * ${ratio.height} / ${ratio.width}));
       }
       
       .slide-frame {
-        width: 100%;
-        height: 100%;
-        position: relative !important;
-        top: auto !important;
-        left: auto !important;
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+      }
+      
+      .slide-frame iframe {
+        width: 100% !important;
+        height: 100% !important;
+        border: none !important;
+        background: transparent !important;
       }
     `;
   }

@@ -42,20 +42,21 @@ export class SlideParser {
    * Parse a markdown document into a Presentation
    * 
    * Content Mode determines how slide content vs speaker notes are distinguished:
-   * 
-   * 'ia-presenter' (iA Presenter style):
-   * - `---` separates slides (horizontal rule)
-   * - Regular text = speaker notes (not visible on slide)
-   * - Headings (#, ##, etc.) = visible on slide
-   * - Tab-indented content = visible on slide
-   * - `//` at start of line = comment (hidden from all)
-   * 
-   * 'advanced-slides' (Obsidian Advanced Slides style):
-   * - `---` separates slides
-   * - All content is visible on slide by default
-   * - `note:` on its own line marks the start of speaker notes
-   * - Everything after `note:` until next slide is speaker notes
-   */
+    * 
+    * 'ia-presenter' (iA Presenter style):
+    * - `---` separates slides (horizontal rule)
+    * - Regular text = speaker notes (not visible on slide)
+    * - Headings (#, ##, etc.) = visible on slide
+    * - Tab-indented content = visible on slide
+    * - `note:` or `notes:` explicitly marks start of speaker notes section
+    * - `//` at start of line = comment (hidden from all)
+    * 
+    * 'advanced-slides' (Obsidian Advanced Slides style):
+    * - `---` separates slides
+    * - All content is visible on slide by default
+    * - `note:` or `notes:` on its own line marks the start of speaker notes
+    * - Everything after `note:`/`notes:` until next slide is speaker notes
+    */
   parse(source: string): Presentation {
     const { frontmatter, content } = this.extractFrontmatter(source);
     const contentMode = frontmatter.contentMode || this.defaultContentMode;
@@ -126,6 +127,8 @@ export class SlideParser {
         'titleFontSize': 'titleFontSize',
         'body-font-size': 'bodyFontSize',
         'bodyFontSize': 'bodyFontSize',
+        'text-scale': 'textScale',
+        'textScale': 'textScale',
         'font-size-offset': 'fontSizeOffset',
         'fontSizeOffset': 'fontSizeOffset',
         'header-top': 'headerTop',
@@ -158,6 +161,8 @@ export class SlideParser {
         'lightCodeBorder': 'lightCodeBorder',
         'light-progress-bar': 'lightProgressBar',
         'lightProgressBar': 'lightProgressBar',
+        'light-bold-color': 'lightBoldColor',
+        'lightBoldColor': 'lightBoldColor',
         'dark-link-color': 'darkLinkColor',
         'darkLinkColor': 'darkLinkColor',
         'dark-bullet-color': 'darkBulletColor',
@@ -170,6 +175,8 @@ export class SlideParser {
         'darkCodeBorder': 'darkCodeBorder',
         'dark-progress-bar': 'darkProgressBar',
         'darkProgressBar': 'darkProgressBar',
+        'dark-bold-color': 'darkBoldColor',
+        'darkBoldColor': 'darkBoldColor',
         'light-background': 'lightBackground',
         'lightBackground': 'lightBackground',
         'dark-background': 'darkBackground',
@@ -190,6 +197,9 @@ export class SlideParser {
         'logo-size': 'logoSize',
         'logoSize': 'logoSize',
         'aspectRatio': 'aspectRatio',
+        'aspect-ratio': 'aspectRatio',
+        'lockAspectRatio': 'lockAspectRatio',
+        'lock-aspect-ratio': 'lockAspectRatio',
         'show-progress': 'showProgress',
         'showProgress': 'showProgress',
         'show-slide-numbers': 'showSlideNumbers',
@@ -288,7 +298,8 @@ export class SlideParser {
           mappedKey === 'contentTop' || mappedKey === 'contentWidth' ||
           mappedKey === 'headerToEdge' || mappedKey === 'footerToEdge' ||
           mappedKey === 'headerTop' || mappedKey === 'footerBottom' ||
-          mappedKey === 'lineHeight' || mappedKey === 'imageOverlayOpacity'
+          mappedKey === 'lineHeight' || mappedKey === 'imageOverlayOpacity' ||
+          mappedKey === 'textScale'
         ) {
           // Parse as number for numeric properties
           const num = parseFloat(value);
@@ -417,9 +428,27 @@ export class SlideParser {
     let currentColumnIndex = 0;
     let imageIndexCounter = 0; // Simple counter for non-indented images
     let lastWasColumnContent = false;
+    let inExplicitSpeakerNotes = false; // Track if we've hit note: or notes: marker
 
     while (i < contentLines.length) {
       const line = contentLines[i];
+
+      // Check for explicit note: or notes: marker (case-insensitive, can have whitespace)
+      // Supports both Advanced Slides (note:) and Perspecta (notes:) syntax
+      if (line.trim().toLowerCase() === 'note:' || line.trim().toLowerCase() === 'notes:') {
+        inExplicitSpeakerNotes = true;
+        i++;
+        continue;
+      }
+
+      // Once we hit explicit notes marker, everything goes to speaker notes
+      if (inExplicitSpeakerNotes) {
+        if (line.trim() !== '') {
+          speakerNotes.push(line);
+        }
+        i++;
+        continue;
+      }
 
       // Check if line is truly empty (not starting with tab)
       const isTabIndented = line.startsWith('\t') || line.startsWith('    ');
@@ -1243,7 +1272,7 @@ export class SlideParser {
     // Create a map of content lines to element indices for easier lookup
     const contentToElementMap = new Map<string, number[]>();
     elements.forEach((element, idx) => {
-      if (element.visible && (element.type === 'paragraph' || element.type === 'list' || element.type === 'blockquote' || element.type === 'image')) {
+      if (element.visible && (element.type === 'paragraph' || element.type === 'list' || element.type === 'blockquote' || element.type === 'image' || element.type === 'table')) {
         // For lists, store each line separately and track all elements that match
         if (element.type === 'list') {
           const lines = element.content.split('\n');
@@ -1261,6 +1290,15 @@ export class SlideParser {
             contentToElementMap.set(rawTrimmed, []);
           }
           contentToElementMap.get(rawTrimmed)!.push(idx);
+        } else if (element.type === 'table') {
+          // For tables, use the first line (header row) as key
+          const firstLine = element.content.split('\n')[0]?.trim();
+          if (firstLine) {
+            if (!contentToElementMap.has(firstLine)) {
+              contentToElementMap.set(firstLine, []);
+            }
+            contentToElementMap.get(firstLine)!.push(idx);
+          }
         } else {
           const trimmed = element.content.trim();
           if (!contentToElementMap.has(trimmed)) {

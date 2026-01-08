@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+
+    .presentation-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    /* OLD APPROACH (doesn't work) */
+    .slides-container-old {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      max-width: 100vw;
+      max-height: 100vh;
+      flex-shrink: 0;
+      background: red;
+    }
+
+    /* NEW APPROACH: Use explicit width calculation */
+    .slides-container-new {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      /* Calculate dimensions that fit in viewport while maintaining ratio */
+      width: min(100vw, calc(100vh * 16 / 9));
+      height: min(100vh, calc(100vw * 9 / 16));
+      background: blue;
+    }
+
+    .slide-frame {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: green;
+      border: 2px solid yellow;
+    }
+  </style>
+</head>
+<body>
+  <div class="presentation-container">
+    <div class="slides-container-new" id="slidesContainer">
+      <div class="slide-frame">SLIDE CONTENT</div>
+    </div>
+  </div>
+</body>
+</html>

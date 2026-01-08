@@ -25,6 +25,7 @@ export class PresentationView extends ItemView {
   private onReload: (() => void) | null = null;
   private onGetFontCSS: ((frontmatter: any) => Promise<string>) | null = null;
   private onStartPresentation: ((file: TFile, slideIndex: number) => void) | null = null;
+  private onStartPresenterView: ((file: TFile) => Promise<void>) | null = null;
   private fontWeightsCache: Map<string, number[]> = new Map();
   
   // Live update related properties
@@ -180,6 +181,10 @@ export class PresentationView extends ItemView {
   
   setOnStartPresentation(callback: (file: TFile, slideIndex: number) => void) {
     this.onStartPresentation = callback;
+  }
+
+  setOnStartPresenterView(callback: (file: TFile) => Promise<void>) {
+    this.onStartPresenterView = callback;
   }
   
   private setupLiveUpdates(sourceFile: TFile) {
@@ -1035,9 +1040,30 @@ More content here...`
   }
   
   private async startPresenterView() {
-    // For now, presenter view uses the same window as presentation
-    // Future: add speaker notes panel
-    await this.startPresentation();
+    const debug = getDebugService();
+    debug.log('presentation-view', 'startPresenterView called');
+    
+    let file = this.file;
+    
+    // If no file is loaded in this view, try to use the active file
+    if (!file) {
+      const activeFile = this.app.workspace.getActiveFile();
+      if (activeFile && activeFile.extension === 'md') {
+        file = activeFile;
+      } else {
+        new Notice('Please open a markdown file first');
+        return;
+      }
+    }
+    
+    // Use the callback if available (preferred method)
+    if (this.onStartPresenterView) {
+      debug.log('presentation-view', 'Using callback for presenter view');
+      await this.onStartPresenterView(file);
+    } else {
+      debug.error('presentation-view', 'onStartPresenterView callback not set');
+      new Notice('Cannot open presenter view - callback not configured');
+    }
   }
   private async openPresentationInBrowser(html: string, mode: 'presentation' | 'presenter') {
     const tempFileName = `.perspecta-${mode}-${Date.now()}.html`;

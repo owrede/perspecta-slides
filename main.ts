@@ -18,6 +18,7 @@ import { InspectorPanelView, INSPECTOR_VIEW_TYPE } from './src/ui/InspectorPanel
 import { PresentationView, PRESENTATION_VIEW_TYPE } from './src/ui/PresentationView';
 import { PerspectaSlidesSettingTab } from './src/ui/SettingsTab';
 import { PresentationWindow } from './src/ui/PresentationWindow';
+import { PresenterWindow } from './src/ui/PresenterWindow';
 import {
   PresentationCache,
   SlideDiff,
@@ -51,6 +52,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
   themeLoader: ThemeLoader | null = null;
   debugService: DebugService = new DebugService();
   private presentationWindow: PresentationWindow | null = null;
+  private presenterWindow: PresenterWindow | null = null;
   private currentPresentationFile: TFile | null = null;
   private presentationCache: PresentationCache | null = null;
   private cachedFilePath: string | null = null;
@@ -200,6 +202,47 @@ export default class PerspectaSlidesPlugin extends Plugin {
       }
     });
 
+    // Try to access ipcMain from Electron for IPC handling
+    console.log('[Main] Attempting to setup IPC handlers for presenter window');
+    try {
+      const electron = require('electron');
+      const { ipcMain } = electron;
+      
+      if (ipcMain) {
+        console.log('[Main] ✓ ipcMain is available - setting up IPC handlers');
+        
+        // Listen for slide changes from the presenter window
+        ipcMain.on('presenter:slide-changed', (event: any, slideIndex: number) => {
+          console.log('[Main] ===== PRESENTER SLIDE CHANGED: index', slideIndex);
+          // Call the callback if presenter window is open
+          if (this.presenterWindow?.isOpen()) {
+            if (this.presenterWindow['onSlideChanged']) {
+              console.log('[Main] Calling onSlideChanged callback');
+              this.presenterWindow['onSlideChanged'](slideIndex);
+            }
+          }
+        });
+        
+        // Listen for request to open presentation window
+        ipcMain.on('presenter:open-presentation', (event: any) => {
+          console.log('[Main] ===== PRESENTER OPEN PRESENTATION REQUESTED');
+          if (this.presenterWindow?.isOpen()) {
+            if (this.presenterWindow['onOpenPresentationWindow']) {
+              console.log('[Main] Calling onOpenPresentationWindow callback');
+              this.presenterWindow['onOpenPresentationWindow']();
+            }
+          }
+        });
+        
+        console.log('[Main] IPC handlers registered successfully');
+      } else {
+        console.log('[Main] ipcMain not available - IPC handlers from presenter window will not work in this context');
+        console.log('[Main] Note: Messages from presenter window will still send via ipcRenderer');
+      }
+    } catch (e) {
+      console.warn('[Main] Could not setup ipcMain handlers:', e);
+    }
+
     // Listen for system color scheme changes and refresh all views
     if (typeof window !== 'undefined' && window.matchMedia) {
       const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -321,10 +364,53 @@ export default class PerspectaSlidesPlugin extends Plugin {
       }
     });
 
+    this.addCommand({
+      id: 'open-presenter-view',
+      name: 'Open presenter view',
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        if (file && file.extension === 'md') {
+          if (!checking) {
+            this.openPresenterView(file);
+          }
+          return true;
+        }
+        return false;
+      }
+    });
+
+    this.addCommand({
+      id: 'open-presenter-presentation-fullscreen',
+      name: 'Open presentation fullscreen on secondary display',
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        if (file && file.extension === 'md') {
+          if (!checking) {
+            this.openPresenterViewWithPresentation(file, true);
+          }
+          return true;
+        }
+        return false;
+      }
+    });
+
     this.addRibbonIcon('presentation', 'Open presentation view', () => {
+      console.log('[Presentation Button] Clicked');
       const file = this.app.workspace.getActiveFile();
       if (file && file.extension === 'md') {
         this.openPresentationView(file);
+      } else {
+        new Notice('Please open a markdown file first');
+      }
+    });
+
+    this.addRibbonIcon('presentation', 'Open presenter view (speaker notes)', () => {
+      console.log('[Presenter Button] Clicked');
+      const file = this.app.workspace.getActiveFile();
+      if (file && file.extension === 'md') {
+        new Notice('Opening presenter view...');
+        console.log('[Presenter Button] Opening presenter view for:', file.path);
+        this.openPresenterView(file);
       } else {
         new Notice('Please open a markdown file first');
       }
@@ -516,9 +602,108 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     // Use first slide as context for initialization (not cursor-dependent)
     await this.updateSidebarsWithContext(file, true);
-  }
+    }
 
-  private async toggleThumbnailNavigator() {
+    async openPresenterView(file: TFile, fullscreenOnSecondary: boolean = false) {
+      console.log('[Main] openPresenterView called for file:', file.path);
+      try {
+        const content = await this.app.vault.read(file);
+        const presentation = this.parser.parse(content);
+        const themeName = presentation.frontmatter.theme || this.settings.defaultTheme;
+        const theme = this.getThemeByName(themeName);
+        console.log('[Main] Creating new PresenterWindow');
+
+        // Close any existing presenter window
+        if (this.presenterWindow?.isOpen()) {
+          this.presenterWindow.close();
+        }
+
+        this.presenterWindow = new PresenterWindow();
+        this.presenterWindow.setImagePathResolver(this.presentationImagePathResolver);
+        
+        const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
+        const fontWeightsCache = this.buildFontWeightsCache();
+        
+        this.presenterWindow.setCustomFontCSS(customFontCSS);
+        this.presenterWindow.setFontWeightsCache(fontWeightsCache);
+
+        // Restore window bounds if available
+        if (this.settings.presenterWindowBounds) {
+          this.presenterWindow.setWindowBounds(this.settings.presenterWindowBounds);
+        }
+
+        // Set up callback to sync slide changes with presentation window
+        this.presenterWindow.setOnSlideChanged((slideIndex: number) => {
+          console.log('[Main] Presenter slide changed to:', slideIndex);
+          // Update presentation window to the same slide
+          if (this.presentationWindow?.isOpen()) {
+            console.log('[Main] Presentation window is open, updating to slide', slideIndex);
+            this.presentationWindow.goToSlide(slideIndex);
+          } else {
+            console.log('[Main] Presentation window is not open');
+          }
+        });
+
+        // Set up callback to save window bounds
+        this.presenterWindow.setOnWindowBoundsChanged((bounds: any) => {
+          this.settings.presenterWindowBounds = bounds;
+          this.saveSettings();
+        });
+
+        // Set up callback to open presentation window when timer is started
+        this.presenterWindow.setOnOpenPresentationWindow(() => {
+          console.log('[Main] Opening presentation window from presenter play button');
+          this.startPresentation(file);
+        });
+
+        await this.presenterWindow.open(presentation, theme || null, file, 0, fullscreenOnSecondary);
+
+        // Track as last used document
+        this.lastUsedSlideDocument = file;
+
+        console.log('[PresenterWindow] Opened successfully');
+      } catch (error) {
+        console.error('[PresenterWindow] Failed to open:', error);
+        new Notice(`Failed to open presenter view: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+
+    private async openPresenterViewWithPresentation(file: TFile, fullscreen: boolean = false) {
+      // Open presenter window first
+      await this.openPresenterView(file, fullscreen);
+
+      // Then open presentation window on secondary display if applicable
+      if (fullscreen && this.presenterWindow?.isOpen()) {
+        const content = await this.app.vault.read(file);
+        const presentation = this.parser.parse(content);
+        const themeName = presentation.frontmatter.theme || this.settings.defaultTheme;
+        const theme = this.getThemeByName(themeName);
+
+        if (this.presentationWindow?.isOpen()) {
+          this.presentationWindow.close();
+        }
+
+        this.presentationWindow = new PresentationWindow();
+        this.presentationWindow.setImagePathResolver(this.presentationImagePathResolver);
+        
+        const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
+        const fontWeightsCache = this.buildFontWeightsCache();
+        
+        this.presentationWindow.setCustomFontCSS(customFontCSS);
+        this.presentationWindow.setFontWeightsCache(fontWeightsCache);
+
+        // Sync presentation window slide changes back to presenter window
+        this.presentationWindow.setOnSlideChanged((slideIndex: number) => {
+          if (this.presenterWindow?.isOpen()) {
+            this.presenterWindow.notifySlideChange(slideIndex);
+          }
+        });
+
+        await this.presentationWindow.open(presentation, theme || null, file, 0);
+      }
+    }
+
+    private async toggleThumbnailNavigator() {
     const existing = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
 
     if (existing.length > 0) {
@@ -987,6 +1172,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
       view.setOnStartPresentation((f, slideIndex) => {
         this.startPresentationAtSlide(f, slideIndex);
       });
+      // Wire up presenter view callback
+      view.setOnStartPresenterView(async (f) => {
+        await this.openPresenterView(f);
+      });
       // Preserve current slide position (without triggering callback)
       view.goToSlide(currentSlideIndex, false);
     }
@@ -1287,6 +1476,14 @@ export default class PerspectaSlidesPlugin extends Plugin {
       this.presentationWindow.setImagePathResolver(this.presentationImagePathResolver);
       this.presentationWindow.setCustomFontCSS(customFontCSS);
       this.presentationWindow.setFontWeightsCache(fontWeightsCache);
+
+      // Sync presentation window slide changes back to presenter window
+      this.presentationWindow.setOnSlideChanged((slideIndex: number) => {
+        if (this.presenterWindow?.isOpen()) {
+          this.presenterWindow.notifySlideChange(slideIndex);
+        }
+      });
+
       await this.presentationWindow.open(presentation, theme || null, file, slideIndex);
 
       this.currentPresentationFile = file;
@@ -1800,7 +1997,24 @@ export default class PerspectaSlidesPlugin extends Plugin {
   async saveAsCustomTheme(file: TFile): Promise<void> {
     const content = await this.app.vault.read(file);
     const presentation = this.parser.parse(content);
-    const frontmatter = presentation.frontmatter;
+    
+    // IMPORTANT: Use the Inspector's current presentation if available (has all user changes)
+    // Otherwise fall back to parsing from file (which may not have unsaved Inspector changes)
+    let frontmatter = presentation.frontmatter;
+    
+    const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
+    for (const leaf of inspectorLeaves) {
+      const view = leaf.view;
+      if (view instanceof InspectorPanelView) {
+        const inspectorPresentation = view.getPresentation();
+        if (inspectorPresentation) {
+          // Use the Inspector's presentation which has all current changes
+          frontmatter = inspectorPresentation.frontmatter;
+          console.log('[ThemeSave] Using Inspector presentation frontmatter with current changes');
+          break;
+        }
+      }
+    }
 
     // Get list of existing theme names (built-in + custom)
     const builtInNames = getBuiltInThemeNames();

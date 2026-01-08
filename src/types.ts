@@ -26,6 +26,7 @@ export interface PresentationFrontmatter {
   bodyFontSize?: number;    // % offset for body text (-50 to +50)
   headerFontSize?: number;  // % offset for header text (-50 to +50)
   footerFontSize?: number;  // % offset for footer text (-50 to +50)
+  textScale?: number;       // Global multiplier for all text sizes (e.g., 0.65 to scale down, 1.2 to scale up)
 
   // Legacy: fontSizeOffset affects all text (deprecated, use titleFontSize/bodyFontSize)
   fontSizeOffset?: number;
@@ -57,6 +58,7 @@ export interface PresentationFrontmatter {
   lightTableHeaderBg?: string;
   lightCodeBorder?: string;
   lightProgressBar?: string;
+  lightBoldColor?: string;
 
   // Dark mode semantic colors
   darkLinkColor?: string;
@@ -65,6 +67,7 @@ export interface PresentationFrontmatter {
   darkTableHeaderBg?: string;
   darkCodeBorder?: string;
   darkProgressBar?: string;
+  darkBoldColor?: string;
 
   // Light mode colors
   lightBackground?: string;
@@ -383,6 +386,7 @@ export interface PerspecaSlidesSettings {
   debugSlideRendering: boolean;
   debugFontHandling: boolean;
   fontCache?: FontCacheData;
+  presenterWindowBounds?: { x: number; y: number; width: number; height: number };
   // Debug topics (topic-specific debug logging)
   debugTopics?: {
     'presentation-view'?: boolean;

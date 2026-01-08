@@ -232,6 +232,14 @@ export class InspectorPanelView extends ItemView {
   }
 
   /**
+   * Get the current presentation object with all unsaved changes
+   * Used by saveAsCustomTheme to capture latest UI state before exporting
+   */
+  getPresentation(): Presentation | null {
+    return this.presentation;
+  }
+
+  /**
    * Get a theme by name, using themeLoader if available
    */
   private getThemeByName(name: string): ReturnType<typeof getTheme> {

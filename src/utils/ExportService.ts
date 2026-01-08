@@ -148,7 +148,15 @@ export class ExportService {
       html.light .cover-container,
       html.light .title-container,
       html.light .section-container,
-      html.light section {
+      html.light .image-container,
+      html.light .split-container,
+      html.light .split-horizontal-container,
+      html.light .caption-container,
+      html.light .grid-container,
+      html.light .columns-container,
+      html.light .default-container,
+      html.light section,
+      html.light .slide {
         background-color: var(--light-background, #fff) !important;
         color: var(--light-body-text, #000) !important;
       }
@@ -160,6 +168,15 @@ export class ExportService {
       }
       html.light .section-container {
         background: var(--light-bg-section, var(--light-background, #fff)) !important;
+      }
+      html.light .image-container,
+      html.light .split-container,
+      html.light .split-horizontal-container,
+      html.light .caption-container,
+      html.light .grid-container,
+      html.light .columns-container,
+      html.light .default-container {
+        background: var(--light-background, #fff) !important;
       }
       
       /* Dark mode color overrides - use html.dark for cascade */
@@ -192,7 +209,15 @@ export class ExportService {
       html.dark .cover-container,
       html.dark .title-container,
       html.dark .section-container,
-      html.dark section {
+      html.dark .image-container,
+      html.dark .split-container,
+      html.dark .split-horizontal-container,
+      html.dark .caption-container,
+      html.dark .grid-container,
+      html.dark .columns-container,
+      html.dark .default-container,
+      html.dark section,
+      html.dark .slide {
         background-color: var(--dark-background, #000) !important;
         color: var(--dark-body-text, #fff) !important;
       }
@@ -204,6 +229,15 @@ export class ExportService {
       }
       html.dark .section-container {
         background: var(--dark-bg-section, var(--dark-background, #000)) !important;
+      }
+      html.dark .image-container,
+      html.dark .split-container,
+      html.dark .split-horizontal-container,
+      html.dark .caption-container,
+      html.dark .grid-container,
+      html.dark .columns-container,
+      html.dark .default-container {
+        background: var(--dark-background, #000) !important;
       }
     </style>
     `;

@@ -302,9 +302,11 @@ export class ExportService {
         return `
         ${speakerNotesComment}
         <div class="slide${idx === 0 ? ' active' : ''}" data-slide-index="${idx}">
-          <div class="slide-content">
-            ${slide.html}
-          </div>
+          <iframe 
+            srcdoc="${this.escapeAttr(slide.html)}"
+            frameborder="0"
+            scrolling="no"
+          ></iframe>
         </div>
       `;
       })
@@ -412,16 +414,7 @@ export class ExportService {
         pointer-events: auto;
       }
 
-      .slide-content {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: auto;
-      }
-
-      .slide-content iframe {
+      .slide iframe {
         width: 100%;
         height: 100%;
         border: none;
@@ -646,6 +639,15 @@ export class ExportService {
       "'": '&#39;',
     };
     return text.replace(/[&<>"']/g, (char) => map[char]);
+  }
+
+  private escapeAttr(text: string): string {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
   private getSystemColorScheme(): 'light' | 'dark' {

@@ -333,6 +333,22 @@ export class ExportService {
 
     <!-- Navigation -->
     <div class="nav-controls">
+      <button class="theme-toggle" id="themeToggle" title="Toggle dark mode">
+        <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
       <div class="slide-counter"><span id="current">1</span> / <span id="total">${slides.length}</span></div>
       <div class="progress-bar">
         <div class="progress-fill" id="progress"></div>
@@ -376,10 +392,24 @@ export class ExportService {
       html, body {
         width: 100%;
         height: 100%;
-        background: #000;
-        color: #fff;
+        background: var(--dark-background, #000);
+        color: var(--dark-body-text, #fff);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         overflow: hidden;
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+
+      html.light-mode, html.light-mode body {
+        background: var(--light-background, #fff) !important;
+        color: var(--light-body-text, #000) !important;
+      }
+
+      html.light-mode {
+        color-scheme: light;
+      }
+
+      html.dark-mode {
+        color-scheme: dark;
       }
 
       .presentation-container {
@@ -424,17 +454,86 @@ export class ExportService {
       .nav-controls {
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: flex-start;
+        gap: 20px;
         height: 40px;
         padding: 0 20px;
         background: rgba(0, 0, 0, 0.8);
         border-top: 1px solid #333;
       }
 
+      html.light-mode .nav-controls {
+        background: rgba(255, 255, 255, 0.8);
+        border-top-color: #ddd;
+      }
+
+      .theme-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border: none;
+        background: transparent;
+        color: #999;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+        padding: 0;
+        flex-shrink: 0;
+      }
+
+      .theme-toggle:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      html.light-mode .theme-toggle {
+        color: #666;
+      }
+
+      html.light-mode .theme-toggle:hover {
+        color: #000;
+        background: rgba(0, 0, 0, 0.1);
+      }
+
+      .theme-toggle svg {
+        width: 16px;
+        height: 16px;
+        position: absolute;
+      }
+
+      .sun-icon {
+        opacity: 0;
+        transform: rotate(-180deg);
+        transition: opacity 0.3s ease, transform 0.3s ease;
+      }
+
+      html.light-mode .sun-icon {
+        opacity: 1;
+        transform: rotate(0deg);
+      }
+
+      .moon-icon {
+        opacity: 1;
+        transform: rotate(0deg);
+        transition: opacity 0.3s ease, transform 0.3s ease;
+      }
+
+      html.light-mode .moon-icon {
+        opacity: 0;
+        transform: rotate(180deg);
+      }
+
       .slide-counter {
         font-size: 14px;
         color: #999;
         min-width: 60px;
+        margin-left: auto;
+      }
+
+      html.light-mode .slide-counter {
+        color: #666;
       }
 
       .progress-bar {
@@ -446,11 +545,19 @@ export class ExportService {
         overflow: hidden;
       }
 
+      html.light-mode .progress-bar {
+        background: #ddd;
+      }
+
       .progress-fill {
         height: 100%;
         background: #4a9eff;
         width: 0%;
         transition: width 0.3s ease;
+      }
+
+      html.light-mode .progress-fill {
+        background: #0066cc;
       }
 
       .help-overlay {
@@ -466,6 +573,10 @@ export class ExportService {
         z-index: 1000;
       }
 
+      html.light-mode .help-overlay {
+        background: rgba(255, 255, 255, 0.95);
+      }
+
       .help-overlay.active {
         display: flex;
       }
@@ -476,6 +587,13 @@ export class ExportService {
         border-radius: 8px;
         padding: 30px;
         max-width: 400px;
+        color: #fff;
+      }
+
+      html.light-mode .help-content {
+        background: #fff;
+        border: 1px solid #ddd;
+        color: #000;
       }
 
       .help-content h2 {
@@ -503,6 +621,13 @@ export class ExportService {
         font-size: 12px;
         min-width: 40px;
         text-align: center;
+        color: #fff;
+      }
+
+      html.light-mode .help-content kbd {
+        background: #f0f0f0;
+        border: 1px solid #ccc;
+        color: #000;
       }
 
       @media (max-width: 768px) {
@@ -621,6 +746,34 @@ export class ExportService {
         document.querySelector('.slides-wrapper').addEventListener('dblclick', () => {
           if (!document.fullscreenElement) {
             document.querySelector('.presentation-container').requestFullscreen();
+          }
+        });
+
+        // Theme toggle
+        const html = document.documentElement;
+        const themeToggle = document.getElementById('themeToggle');
+        
+        // Load saved theme preference
+        const savedTheme = localStorage.getItem('presentation-theme') || 'dark';
+        if (savedTheme === 'light') {
+          html.classList.add('light-mode');
+          html.classList.remove('dark-mode');
+        } else {
+          html.classList.add('dark-mode');
+          html.classList.remove('light-mode');
+        }
+        
+        // Toggle theme on button click
+        themeToggle.addEventListener('click', () => {
+          const isLightMode = html.classList.contains('light-mode');
+          if (isLightMode) {
+            html.classList.remove('light-mode');
+            html.classList.add('dark-mode');
+            localStorage.setItem('presentation-theme', 'dark');
+          } else {
+            html.classList.add('light-mode');
+            html.classList.remove('dark-mode');
+            localStorage.setItem('presentation-theme', 'light');
           }
         });
 

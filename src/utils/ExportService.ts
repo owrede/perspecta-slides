@@ -118,58 +118,92 @@ export class ExportService {
   private injectThemeToggleCSS(html: string): string {
     const themeToggleCSS = `
     <style>
-      /* Light mode color overrides */
-      html.light-mode {
+      /* Light mode color overrides - use html.light for cascade */
+      html.light {
         color-scheme: light;
       }
-      html.light-mode body {
+      html.light body {
         background-color: var(--light-background, #fff) !important;
         color: var(--light-body-text, #000) !important;
       }
-      html.light-mode h1, html.light-mode h2, html.light-mode h3, html.light-mode h4, html.light-mode h5, html.light-mode h6 {
-        color: var(--light-title-text, #000) !important;
+      html.light h1, html.light h2, html.light h3, html.light h4, html.light h5, html.light h5 {
+        color: var(--light-title-text, var(--light-h1-color, #000)) !important;
       }
-      html.light-mode a {
+      html.light a {
         color: var(--light-link-color, #0066cc) !important;
       }
-      html.light-mode ul li:before {
+      html.light ul li:before {
         color: var(--light-bullet-color, #0066cc) !important;
       }
-      html.light-mode blockquote {
+      html.light blockquote {
         border-color: var(--light-blockquote-border, #ccc) !important;
       }
-      html.light-mode table thead {
+      html.light table thead {
         background-color: var(--light-table-header-bg, #f0f0f0) !important;
       }
-      html.light-mode code {
+      html.light code {
         border-color: var(--light-code-border, #ccc) !important;
       }
+      /* All container divs in light mode */
+      html.light .cover-container,
+      html.light .title-container,
+      html.light .section-container,
+      html.light section {
+        background-color: var(--light-background, #fff) !important;
+        color: var(--light-body-text, #000) !important;
+      }
+      html.light .cover-container {
+        background: var(--light-bg-cover, var(--light-background, #fff)) !important;
+      }
+      html.light .title-container {
+        background: var(--light-bg-title, var(--light-background, #fff)) !important;
+      }
+      html.light .section-container {
+        background: var(--light-bg-section, var(--light-background, #fff)) !important;
+      }
       
-      /* Dark mode color overrides */
-      html.dark-mode {
+      /* Dark mode color overrides - use html.dark for cascade */
+      html.dark {
         color-scheme: dark;
       }
-      html.dark-mode body {
+      html.dark body {
         background-color: var(--dark-background, #000) !important;
         color: var(--dark-body-text, #fff) !important;
       }
-      html.dark-mode h1, html.dark-mode h2, html.dark-mode h3, html.dark-mode h4, html.dark-mode h5, html.dark-mode h6 {
-        color: var(--dark-title-text, #fff) !important;
+      html.dark h1, html.dark h2, html.dark h3, html.dark h4, html.dark h5, html.dark h6 {
+        color: var(--dark-title-text, var(--dark-h1-color, #fff)) !important;
       }
-      html.dark-mode a {
+      html.dark a {
         color: var(--dark-link-color, #4a9eff) !important;
       }
-      html.dark-mode ul li:before {
+      html.dark ul li:before {
         color: var(--dark-bullet-color, #4a9eff) !important;
       }
-      html.dark-mode blockquote {
+      html.dark blockquote {
         border-color: var(--dark-blockquote-border, #666) !important;
       }
-      html.dark-mode table thead {
+      html.dark table thead {
         background-color: var(--dark-table-header-bg, #333) !important;
       }
-      html.dark-mode code {
+      html.dark code {
         border-color: var(--dark-code-border, #666) !important;
+      }
+      /* All container divs in dark mode */
+      html.dark .cover-container,
+      html.dark .title-container,
+      html.dark .section-container,
+      html.dark section {
+        background-color: var(--dark-background, #000) !important;
+        color: var(--dark-body-text, #fff) !important;
+      }
+      html.dark .cover-container {
+        background: var(--dark-bg-cover, var(--dark-background, #000)) !important;
+      }
+      html.dark .title-container {
+        background: var(--dark-bg-title, var(--dark-background, #000)) !important;
+      }
+      html.dark .section-container {
+        background: var(--dark-bg-section, var(--dark-background, #000)) !important;
       }
     </style>
     `;
@@ -760,33 +794,20 @@ export class ExportService {
           activeSlide.classList.add('active');
 
           // Apply current theme to the active slide's iframe if it just loaded
-          const isLight = html.classList.contains('light-mode');
+          const isLight = html.classList.contains('light');
           const iframe = activeSlide.querySelector('iframe');
           if (iframe) {
             try {
               const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
               if (iframeDoc) {
-                // Toggle light/dark mode on html element
                 const iframeHtml = iframeDoc.documentElement;
                 if (isLight) {
-                  iframeHtml.classList.add('light-mode');
-                  iframeHtml.classList.remove('dark-mode');
+                  iframeHtml.classList.add('light');
+                  iframeHtml.classList.remove('dark');
                 } else {
-                  iframeHtml.classList.add('dark-mode');
-                  iframeHtml.classList.remove('light-mode');
+                  iframeHtml.classList.add('dark');
+                  iframeHtml.classList.remove('light');
                 }
-                
-                // Also toggle light/dark classes on section elements
-                const sections = iframeDoc.querySelectorAll('section');
-                sections.forEach(section => {
-                  if (isLight) {
-                    section.classList.add('light');
-                    section.classList.remove('dark');
-                  } else {
-                    section.classList.add('dark');
-                    section.classList.remove('light');
-                  }
-                });
               }
             } catch (e) {
               // Iframe might not be loaded yet
@@ -885,33 +906,20 @@ export class ExportService {
         const themeToggle = document.getElementById('themeToggle');
         
         function applyThemeToIframes(isLight) {
-          // Apply theme to all slide iframes
+          // Apply theme to all slide iframes by toggling html class
           const iframes = document.querySelectorAll('.slide iframe');
           iframes.forEach(iframe => {
             try {
               const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
               if (iframeDoc) {
-                // Toggle light/dark mode on html element
                 const iframeHtml = iframeDoc.documentElement;
                 if (isLight) {
-                  iframeHtml.classList.add('light-mode');
-                  iframeHtml.classList.remove('dark-mode');
+                  iframeHtml.classList.add('light');
+                  iframeHtml.classList.remove('dark');
                 } else {
-                  iframeHtml.classList.add('dark-mode');
-                  iframeHtml.classList.remove('light-mode');
+                  iframeHtml.classList.add('dark');
+                  iframeHtml.classList.remove('light');
                 }
-                
-                // Also toggle light/dark classes on all section elements for color scheme
-                const sections = iframeDoc.querySelectorAll('section');
-                sections.forEach(section => {
-                  if (isLight) {
-                    section.classList.add('light');
-                    section.classList.remove('dark');
-                  } else {
-                    section.classList.add('dark');
-                    section.classList.remove('light');
-                  }
-                });
               }
             } catch (e) {
               // Iframe might not be loaded yet or cross-origin
@@ -923,25 +931,25 @@ export class ExportService {
         const savedTheme = localStorage.getItem('presentation-theme') || 'dark';
         const isLightMode = savedTheme === 'light';
         if (isLightMode) {
-          html.classList.add('light-mode');
-          html.classList.remove('dark-mode');
+          html.classList.add('light');
+          html.classList.remove('dark');
         } else {
-          html.classList.add('dark-mode');
-          html.classList.remove('light-mode');
+          html.classList.add('dark');
+          html.classList.remove('light');
         }
         applyThemeToIframes(isLightMode);
         
         // Toggle theme on button click
         themeToggle.addEventListener('click', () => {
-          const isLight = html.classList.contains('light-mode');
+          const isLight = html.classList.contains('light');
           if (isLight) {
-            html.classList.remove('light-mode');
-            html.classList.add('dark-mode');
+            html.classList.remove('light');
+            html.classList.add('dark');
             applyThemeToIframes(false);
             localStorage.setItem('presentation-theme', 'dark');
           } else {
-            html.classList.add('light-mode');
-            html.classList.remove('dark-mode');
+            html.classList.add('light');
+            html.classList.remove('dark');
             applyThemeToIframes(true);
             localStorage.setItem('presentation-theme', 'light');
           }

@@ -6,9 +6,7 @@ All notable changes to Perspecta Slides will be documented in this file.
 
 ### Breaking Changes
 
-- **Changed**: Removed old built-in themes (Zurich, Kyoto, Berlin, Minimal, etc.)
 - **Changed**: Added new "Default" theme as the only built-in theme with Inter font and dynamic gradient backgrounds
-- **Changed**: Content mode renamed from "iA Presenter" to "Perspecta"
 
 ### Improvements
 
@@ -145,7 +143,6 @@ All notable changes to Perspecta Slides will be documented in this file.
 
 ### Theme System Overhaul
 
-- **Breaking**: Removed all 14 built-in themes - themes now come only from user's custom themes folder
 - **New**: Semantic colors replace generic accent colors (link, bullet, blockquote border, table header, code border, progress bar)
 - **New**: Save current presentation as self-contained theme package with all assets
 - **New**: Theme export includes: `theme.json`, `theme.css`, fonts/, images, and `<themename>-demo.md`
@@ -193,14 +190,10 @@ All notable changes to Perspecta Slides will be documented in this file.
 
 ## [0.1.8] - 2026-01-03
 
-- **New**: Support for 6 accent colors (Accent 1-6) with unified color pickers
 - **New**: Support for dynamic background gradients in both light and dark modes
-- **Themes**: Added 7 additional built-in themes (Garamond, LA, Milano, New York, Paris, San Francisco, Vancouver)
-- **Fix**: Resolved issue where font colors were not applying to Helvetica and Swiss themes
+- **Fix**: Resolved issue where font colors were not applying to themes
 - **Improved**: Theme-specific CSS classes correctly applied to presentation body for consistent typography
 - **Improved**: Automatic selection of active appearance mode (Light/Dark) in Inspector panel
-- **Improved**: Refactored all 12 built-in themes to use CSS variables for robust customization
-- **Fix**: Corrected light/dark mode color mapping for Basel, Copenhagen, and Helvetica themes
 
 ## [0.1.7] - 2026-01-03
 
@@ -250,7 +243,7 @@ All notable changes to Perspecta Slides will be documented in this file.
 
 ## [0.1.3] - 2026-01-02
 
-- **Improved**: All built-in themes now have proper light/dark mode support
+- **Improved**: Built-in themes now have proper light/dark mode support
 - **Improved**: Theme loading and color variable handling
 
 ## [0.1.2] - 2026-01-02
@@ -260,7 +253,7 @@ All notable changes to Perspecta Slides will be documented in this file.
 - **Major Fix**: Implemented proper font scaling system with --slide-unit CSS variable
 - **New**: Context-aware theme CSS generation (thumbnail vs preview vs export)
 - **New**: Dynamic font scaling that adapts to container size
-- **New**: Proper light/dark mode support for all themes
+- **New**: Proper light/dark mode support for themes
 - **Fix**: Preview navigation now correctly updates current slide
 - **Fix**: Speaker notes hidden from thumbnails and preview contexts
 - **Fix**: Font sizes now proportional between thumbnails and preview

@@ -32,3 +32,4 @@ examples/*
 # Agents
 .amp/
 .claude/
+AGENTS.md

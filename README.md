@@ -1,36 +1,82 @@
 # Perspecta Slides
 
-An Obsidian plugin for creating presentations from Markdown, inspired by [iA Presenter](https://ia.net/presenter).
+A powerful Obsidian plugin for creating beautiful presentations from Markdown. Write your slides in plain text, style them with themes, and present directly from Obsidian.
 
 ## Features
 
-- **iA Presenter-style syntax**: Write presentations using familiar Markdown with the same conventions as iA Presenter
-- **Thumbnail navigator**: See all your slides at a glance in the left sidebar with drag-and-drop reordering
-- **Inspector panel**: Edit slide properties, layouts, and design settings in the right sidebar
-- **Multiple themes**: Built-in themes with customizable colors and fonts
-- **Custom themes**: Save your design settings as reusable custom themes with bundled fonts
-- **Google Fonts**: Download and cache fonts locally for offline presentations
-- **HTML export**: Export your presentations as standalone HTML files
-- **Speaker notes**: Regular paragraphs become speaker notes visible only to you
-- **Presentation mode**: Present directly from Obsidian in a frameless window with aspect ratio locking
-- **Presenter view**: See current slide, next slide preview, speaker notes, and timer in one view
-- **Transitions**: Fade and slide transitions between slides
-- **Code highlighting**: Automatic syntax highlighting for code blocks
-- **Kickers**: Small text above headings using `^` syntax
-- **Live sync**: Changes in the editor automatically update the preview with incremental updates
-- **Obsidian image support**: Use `![[image.png]]` wiki-links or standard `![](image.jpg)` syntax
-- **Full-bleed images**: Edge-to-edge images with `object-fit: cover` for cinematic layouts
-- **Header/footer slots**: Customizable header and footer with left, middle, and right positions
-- **Typography control**: Per-slide font selection, size scaling, spacing, and line height adjustments
-- **Semantic colors**: Customizable colors for links, bullets, blockquotes, code, and more
+### 🎨 Presentation Design
 
-## Markdown Syntax
+- **Multiple themes** - Built-in themes (Zurich, Kyoto, Berlin, Minimal) with light/dark mode support
+- **Custom themes** - Save your design settings as reusable themes with bundled fonts
+- **Google Fonts** - Download and cache fonts locally for offline presentations
+- **Typography control** - Font selection, size scaling, weight, spacing, and line height
+- **Semantic colors** - Customizable colors for links, bullets, blockquotes, tables, and code
+- **Per-heading colors** - Different colors for H1, H2, H3, H4 headings
+- **Gradient backgrounds** - Dynamic slide-position-based gradient backgrounds
 
-Perspecta Slides follows iA Presenter's Markdown conventions:
+### 📐 Slide Layouts
 
-### Slide Separators
+- **Auto-detection** - Default layout intelligently detects columns from content structure
+- **Column layouts** - 1, 2, or 3 columns with equal or weighted ratios (1+2, 2+1)
+- **Image layouts** - Full-bleed, half-image (vertical/horizontal split), caption, and grid
+- **Special layouts** - Cover, title, and section divider slides
+- **Content margins** - Customizable header, footer, title, and content positioning
 
-Use `---` (horizontal rule) to separate slides:
+### 🖼️ Images & Media
+
+- **Obsidian integration** - Use `![[image.png]]` wiki-links or standard Markdown `![](image.jpg)`
+- **Full-bleed images** - Edge-to-edge images with `object-fit: cover` for cinematic layouts
+- **Image positioning** - Control focal point with `x` and `y` parameters
+- **Background images** - Per-slide backgrounds with opacity control
+- **Multiple images** - Grid and split layouts for photo-heavy slides
+
+### 📝 Content Features
+
+- **Speaker notes** - Regular paragraphs become notes visible only to you
+- **Kickers** - Small text above headings using `^` syntax
+- **Footnotes** - Reference footnotes with `[^id]` syntax, rendered with hanging numbers
+- **Comments** - Use `//` for hidden comments
+- **Code blocks** - Automatic syntax highlighting
+- **Tables** - Full Markdown table support with styled headers
+
+### 🎭 Presentation Mode
+
+- **Frameless window** - Clean, distraction-free presentation window
+- **Aspect ratio locking** - 16:9, 4:3, or 16:10 with automatic letterboxing
+- **Keyboard navigation** - Arrow keys, space, home/end, escape to exit
+- **Transitions** - Fade, slide, or instant transitions
+
+### 👨‍🏫 Presenter View
+
+- **Current slide** - Large view of what your audience sees
+- **Next slide preview** - See what's coming up
+- **Speaker notes** - Prominently displayed with paragraph navigation
+- **Timer** - Track elapsed time with play/pause/reset controls
+- **Slide focus / Text focus** - Toggle between seeing slides or notes prominently
+
+### 🧭 Editor Integration
+
+- **Thumbnail navigator** - Visual slide overview in the left sidebar
+- **Drag-and-drop reordering** - Rearrange slides visually
+- **Inspector panel** - Edit properties, layouts, and design in the right sidebar
+- **Live preview** - Changes update automatically with debounced refresh
+- **Cursor sync** - Navigator highlights the slide at cursor position
+
+### 📤 Export
+
+- **HTML export** - Standalone HTML with embedded styles and navigation
+- **Keyboard controls** - Exported presentations include full navigation
+- **Theme toggle** - Light/dark mode switch in exported files
+- **Help overlay** - Press `?` for keyboard shortcuts
+- **External images** - Images extracted to separate folder for smaller HTML
+
+---
+
+## Quick Start
+
+### Basic Slide Structure
+
+Separate slides with `---` (horizontal rule):
 
 ```markdown
 # First Slide
@@ -44,49 +90,52 @@ Content here
 More content
 ```
 
-### Speech vs. Text on Slide
+### Speaker Notes vs. Visible Content
 
-- **Regular paragraphs** = Speaker notes (only you see them)
-- **Headings** (`#`, `##`, etc.) = Visible on slide
-- **Tab-indented content** = Visible on slide
-- **Kickers** (`^text`) = Small text above headings
+- **Headings** (`#`, `##`, etc.) → Visible on slide
+- **Tab-indented content** → Visible on slide  
+- **Regular paragraphs** → Speaker notes (only you see them)
+- **Kickers** (`^text`) → Small text above headings
 
 ```markdown
-^Small kicker text
-# Visible Title
+^Opening remarks
+# Welcome
 
-This paragraph is a speaker note - only you see it during presentation.
+This paragraph is a speaker note.
 
-	- This list item appears on the slide (tab-indented)
+	- This list appears on the slide (tab-indented)
 	- So does this one
 
-More speaker notes here.
-```
-
-### Comments
-
-Use `//` at the start of a line for comments that are hidden from everyone:
-
-```markdown
-// This is a comment - hidden from slide and speaker notes
+More notes for the presenter.
 ```
 
 ### Images
-
-Both Obsidian wiki-links and standard Markdown syntax are supported:
 
 ```markdown
 ![[my-image.png]]
 ![[folder/photo.jpg]]
 ![Alt text](path/to/image.png)
-![](https://example.com/image.jpg)
 ```
 
-Images automatically fill their containers using `object-fit: cover` for a cinematic look.
+### Comments
+
+```markdown
+// Hidden from everyone - slide and speaker notes
+```
+
+### Footnotes
+
+```markdown
+This statement needs a citation[^1].
+
+[^1]: Source: Research Paper, 2024
+```
+
+---
 
 ## YAML Frontmatter
 
-Configure your presentation with YAML frontmatter:
+Configure your presentation at the top of the file:
 
 ```yaml
 ---
@@ -99,33 +148,26 @@ titleFont: Helvetica
 titleFontWeight: 700
 bodyFont: Georgia
 bodyFontWeight: 400
-textScale: 1.0           # Multiplier for all text sizes (0.65 = 65%, 1.5 = 150%)
-titleFontSize: 0         # Percentage offset: -20 = 20% smaller, 10 = 10% larger
-bodyFontSize: 0
+textScale: 1.0
 lineHeight: 1.1
 
-# Semantic Colors
+# Colors (optional overrides)
 lightLinkColor: "#0066cc"
 darkLinkColor: "#66b3ff"
-lightBoldColor: "#000000"
-darkBoldColor: "#ffffff"
 
 # Header/Footer
 headerLeft: "Company Name"
-headerMiddle: "Presentation Title"
-headerRight: ""
-footerLeft: ""
-footerMiddle: ""
-footerRight: "Page {{slideNumber}}"
+footerRight: "{{slideNumber}}"
 
 # Settings
 aspectRatio: "16:9"
-lockAspectRatio: false   # Lock aspect ratio with letterbox/pillarbox
-showSlideNumbers: true
-showProgress: true
+lockAspectRatio: true
 transition: fade
+mode: light
 ---
 ```
+
+---
 
 ## Per-Slide Settings
 
@@ -136,7 +178,7 @@ Add metadata at the beginning of any slide:
 
 layout: title
 mode: dark
-background: image.jpg
+background: hero-image.jpg
 opacity: 50%
 
 # Dark Title Slide
@@ -146,26 +188,32 @@ With a background image
 
 ### Available Layouts
 
-- `default` - Standard content slide (auto-detects columns)
-- `title` - Centered title slide
-- `section` - Section divider
-- `cover` - Opening/closing slide
-- `half-image` - Vertical split (image + text side by side)
-- `half-image-horizontal` - Horizontal split (image + text stacked)
-- `caption` - Image with title bar and caption
-- `full-image` - Full-bleed image(s)
-- `grid` - Grid layout for multiple items
+| Layout | Description |
+|--------|-------------|
+| `default` | Auto-detects columns from content |
+| `title` | Centered title slide |
+| `section` | Section divider with accent background |
+| `cover` | Opening/closing slide (no header/footer) |
+| `half-image` | Vertical split (image + text side by side) |
+| `half-image-horizontal` | Horizontal split (stacked) |
+| `caption` | Full image with title bar and caption |
+| `full-image` | Edge-to-edge image(s) |
+| `1-column` | Single column layout |
+| `2-columns` | Two equal columns |
+| `3-columns` | Three equal columns |
+| `2-columns-1+2` | Narrow left, wide right |
+| `2-columns-2+1` | Wide left, narrow right |
+
+---
 
 ## Themes
 
-Perspecta Slides comes with built-in themes you can use or customize:
+### Built-in Themes
 
 - **zurich** - Minimal Swiss design with clean typography
-- **kyoto** - Dynamic gradient theme with soft pastel colors
+- **kyoto** - Dynamic gradient theme with soft pastels
 - **berlin** - Professional theme with deep blue tones
-- **minimal** - Ultra-clean minimal design with generous whitespace
-
-Set your theme in the frontmatter:
+- **minimal** - Ultra-clean with generous whitespace
 
 ```yaml
 ---
@@ -175,56 +223,49 @@ theme: kyoto
 
 ### Custom Themes
 
-Create your own reusable themes from your current presentation settings:
-
-1. Customize your presentation using the Inspector (fonts, colors, typography, margins)
-2. Run **"Perspecta Slides: Save as custom theme"** from the command palette
+1. Customize your presentation using the Inspector panel
+2. Run **"Save as custom theme"** from the command palette
 3. Enter a name for your theme
-4. Your theme is saved to the custom themes folder (default: `perspecta-themes/`)
 
-Custom themes include:
-- Font selections and weights (including cached Google Fonts)
-- All color settings (light/dark mode, accents, per-heading colors)
-- Typography settings (sizes, spacing, line height)
-- Margin settings (header, footer, title, content positions)
+Custom themes include fonts, colors, typography, and margin settings. They appear in dropdowns with a ★ marker.
 
-Custom themes appear in theme dropdowns with a ★ marker. Manage your custom themes in **Settings → Themes**.
-
-## Transitions
-
-Three transition styles are available:
-
-- `fade` - Smooth opacity transition (default)
-- `slide` - Slides move horizontally
-- `none` - Instant transition
-
-```yaml
 ---
-transition: slide
----
-```
 
 ## Commands
 
-- **Open presentation view**: Opens the current file in presentation view
-- **Toggle slide navigator**: Show/hide the thumbnail navigator
-- **Toggle slide inspector**: Show/hide the inspector panel
-- **Export presentation to HTML**: Export as standalone HTML
-- **Start presentation**: Open presentation in a new window (fullscreen)
-- **Insert slide separator**: Insert `---` at cursor
-- **Save as custom theme**: Save current presentation settings as a reusable theme
+| Command | Description |
+|---------|-------------|
+| Open presentation view | Opens current file in presentation view |
+| Toggle slide navigator | Show/hide thumbnail navigator |
+| Toggle slide inspector | Show/hide inspector panel |
+| Start presentation | Fullscreen presentation window |
+| Start presenter view | Speaker view with notes and timer |
+| Export to HTML | Export as standalone HTML |
+| Save as custom theme | Save current settings as theme |
+| Insert slide separator | Insert `---` at cursor |
 
-## Presenter View
+---
 
-The Presenter View gives you a professional presentation experience:
+## Keyboard Shortcuts
 
-- **Current slide**: Large view of what your audience sees
-- **Next slide preview**: See what's coming up
-- **Speaker notes**: Your notes displayed prominently
-- **Timer**: Track elapsed time during your presentation
-- **Navigation**: Controls for moving through slides
+### In Presentation Mode
 
-Access it via the "Presenter View" button in the toolbar.
+| Key | Action |
+|-----|--------|
+| `→` `↓` `Space` `PageDown` | Next slide |
+| `←` `↑` `PageUp` | Previous slide |
+| `Home` | First slide |
+| `End` | Last slide |
+| `Escape` | Exit fullscreen / Close window |
+
+### In Presenter View
+
+| Key | Action |
+|-----|--------|
+| `↑` `↓` | Navigate slides |
+| `←` `→` | Navigate paragraphs |
+
+---
 
 ## Installation
 
@@ -237,29 +278,23 @@ Access it via the "Presenter View" button in the toolbar.
 ### Manual Installation
 
 1. Download the latest release from GitHub
-2. Extract to your vault's `.obsidian/plugins/perspecta-slides/` folder
-3. Enable the plugin in Settings → Community plugins
+2. Extract to `.obsidian/plugins/perspecta-slides/`
+3. Enable in Settings → Community plugins
+
+---
 
 ## Development
 
 ```bash
-# Clone the repository
 git clone https://github.com/owrede/perspecta-slides.git
-
-# Install dependencies
+cd perspecta-slides
 npm install
-
-# Build for development (with watch)
-npm run dev
-
-# Build for production
-npm run build
+npm run dev    # Development build
+npm run build  # Production build
 ```
+
+---
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
-
-## Credits
-
-Inspired by [iA Presenter](https://ia.net/presenter) by iA Inc.

@@ -42,7 +42,9 @@ export interface PresentationFrontmatter {
   footerBottom?: number;    // Distance of footer from bottom edge (default: 2.5em)
   titleTop?: number;        // Distance of title from top edge (default: 5em)
   contentTop?: number;      // Distance of content from top edge (default: 12em)
-  contentWidth?: number;    // Left/right margin for all content including header/footer (default: 5em)
+  contentLeft?: number;     // Left margin for all content including header/footer (default: 5em)
+  contentRight?: number;    // Right margin for all content including header/footer (default: 5em)
+  contentWidth?: number;    // Legacy: Left/right margin (deprecated, use contentLeft/contentRight)
 
   // Legacy: contentTopOffset as percentage (deprecated)
   contentTopOffset?: number;
@@ -232,11 +234,17 @@ export interface SlideElement {
   imageData?: ImageData;
 }
 
+export interface Footnote {
+  id: string;           // e.g., "1", "note1", etc.
+  content: string;      // The footnote text (markdown)
+}
+
 export interface Slide {
   index: number;
   metadata: SlideMetadata;
   elements: SlideElement[];
   speakerNotes: string[];
+  footnotes: Footnote[]; // Footnotes referenced on this slide
   rawContent: string;
 }
 

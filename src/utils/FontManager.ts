@@ -803,6 +803,11 @@ export class FontManager {
     }
 
     debug.log('font-handling', `Generating @font-face CSS for "${fontName}" with ${filesToInclude.length} files`);
+    
+    // Log each file being processed for debugging
+    for (const file of filesToInclude) {
+      debug.log('font-handling', `  File: ${file.localPath}, weight: ${file.weight}, style: ${file.style}`);
+    }
 
     const rules: string[] = [];
     const fileDataCache: Map<string, ArrayBuffer> = new Map(); // Cache file data to avoid re-reading
@@ -824,8 +829,15 @@ export class FontManager {
     
     // For variable fonts with cached weights, use the actual weights from cache (not just file weights)
     // This ensures @font-face declares the full range (e.g., "font-weight: 100 900") even if only 1 file
+    // BUT only do this for actual variable fonts (multiple DIFFERENT weights pointing to the same file)
     for (const group of fileGroups.values()) {
-      if (font.weights && font.weights.length > 0) {
+      // Only expand weight range if this is a true variable font:
+      // - Multiple files in the group with DIFFERENT weights (not just duplicates)
+      // For non-variable fonts (separate file per weight, or duplicate entries), keep single weight
+      const uniqueWeightsInGroup = new Set(group.files.map(f => f.weight));
+      const isVariableFont = uniqueWeightsInGroup.size > 1;
+      
+      if (isVariableFont && font.weights && font.weights.length > 0) {
         group.minWeight = Math.min(...font.weights);
         group.maxWeight = Math.max(...font.weights);
       }
@@ -873,8 +885,9 @@ export class FontManager {
         const mimeType = mimeTypes[firstFile.format] || 'font/woff2';
         const formatString = formatStrings[firstFile.format] || firstFile.format;
 
-        // For variable fonts (multiple weights per file), use weight range; otherwise use single weight
-        const isVariableFont = group.files.length > 1;
+        // For variable fonts (multiple DIFFERENT weights per file), use weight range; otherwise use single weight
+        const uniqueWeightsInGroup = new Set(group.files.map(f => f.weight));
+        const isVariableFont = uniqueWeightsInGroup.size > 1;
         const fontWeightDecl = isVariableFont
           ? `font-weight: ${group.minWeight} ${group.maxWeight};`
           : `font-weight: ${firstFile.weight};`;

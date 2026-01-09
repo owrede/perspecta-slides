@@ -425,6 +425,16 @@ export class ThemeExporter {
     if (fm.contentTop !== undefined) {
       rootVars.push(`  --content-top: ${fm.contentTop};`);
     }
+    // Content margins: Support asymmetric left/right, with contentWidth as legacy fallback
+    const contentLeft = fm.contentLeft ?? fm.contentWidth;
+    const contentRight = fm.contentRight ?? fm.contentWidth;
+    if (contentLeft !== undefined) {
+      rootVars.push(`  --content-left: ${contentLeft};`);
+    }
+    if (contentRight !== undefined) {
+      rootVars.push(`  --content-right: ${contentRight};`);
+    }
+    // Legacy: still output --content-width if defined for backwards compatibility
     if (fm.contentWidth !== undefined) {
       rootVars.push(`  --content-width: ${fm.contentWidth};`);
     }

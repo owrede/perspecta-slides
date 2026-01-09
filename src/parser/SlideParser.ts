@@ -6,7 +6,8 @@ import {
   SlideMetadata,
   SlideLayout,
   ContentMode,
-  ImageData
+  ImageData,
+  Footnote
 } from '../types';
 
 export class SlideParser {
@@ -60,13 +61,85 @@ export class SlideParser {
   parse(source: string): Presentation {
     const { frontmatter, content } = this.extractFrontmatter(source);
     const contentMode = frontmatter.contentMode || this.defaultContentMode;
-    const slides = this.parseSlides(content, contentMode);
+    
+    // Extract all footnote definitions from the entire document
+    const footnoteDefinitions = this.extractFootnoteDefinitions(source);
+    
+    // Parse slides and attach relevant footnotes to each
+    const slides = this.parseSlides(content, contentMode, footnoteDefinitions);
 
     return {
       frontmatter,
       slides,
       source,
     };
+  }
+
+  /**
+   * Extract all footnote definitions from the document
+   * Format: [^id]: footnote text (can span multiple lines if indented)
+   */
+  private extractFootnoteDefinitions(source: string): Map<string, string> {
+    const definitions = new Map<string, string>();
+    
+    // Match footnote definitions: [^id]: content
+    // Footnote content can span multiple lines if subsequent lines are indented
+    const lines = source.split('\n');
+    let currentFootnoteId: string | null = null;
+    let currentFootnoteContent: string[] = [];
+    
+    for (const line of lines) {
+      // Check for new footnote definition
+      const defMatch = line.match(/^\[\^([^\]]+)\]:\s*(.*)$/);
+      
+      if (defMatch) {
+        // Save previous footnote if exists
+        if (currentFootnoteId) {
+          definitions.set(currentFootnoteId, currentFootnoteContent.join('\n').trim());
+        }
+        
+        // Start new footnote
+        currentFootnoteId = defMatch[1];
+        currentFootnoteContent = defMatch[2] ? [defMatch[2]] : [];
+      } else if (currentFootnoteId && (line.startsWith('    ') || line.startsWith('\t'))) {
+        // Continuation of current footnote (indented line)
+        currentFootnoteContent.push(line.replace(/^(\t|    )/, ''));
+      } else if (currentFootnoteId && line.trim() === '') {
+        // Empty line might still be part of footnote, keep collecting
+        currentFootnoteContent.push('');
+      } else if (currentFootnoteId) {
+        // Non-indented, non-empty line ends the footnote
+        definitions.set(currentFootnoteId, currentFootnoteContent.join('\n').trim());
+        currentFootnoteId = null;
+        currentFootnoteContent = [];
+      }
+    }
+    
+    // Save last footnote if exists
+    if (currentFootnoteId) {
+      definitions.set(currentFootnoteId, currentFootnoteContent.join('\n').trim());
+    }
+    
+    this.debugLog('[SlideParser] Found footnote definitions:', Array.from(definitions.keys()));
+    return definitions;
+  }
+
+  /**
+   * Extract footnote references from slide content
+   * Format: [^id]
+   */
+  private extractFootnoteReferences(content: string): string[] {
+    const refs: string[] = [];
+    const refRegex = /\[\^([^\]]+)\](?!:)/g;
+    let match;
+    
+    while ((match = refRegex.exec(content)) !== null) {
+      if (!refs.includes(match[1])) {
+        refs.push(match[1]);
+      }
+    }
+    
+    return refs;
   }
 
   private extractFrontmatter(source: string): { frontmatter: PresentationFrontmatter; content: string } {
@@ -141,6 +214,10 @@ export class SlideParser {
         'contentTop': 'contentTop',
         'content-width': 'contentWidth',
         'contentWidth': 'contentWidth',
+        'content-left': 'contentLeft',
+        'contentLeft': 'contentLeft',
+        'content-right': 'contentRight',
+        'contentRight': 'contentRight',
         'content-top-offset': 'contentTopOffset',
         'contentTopOffset': 'contentTopOffset',
         'header-to-edge': 'headerToEdge',
@@ -296,6 +373,7 @@ export class SlideParser {
           mappedKey === 'footerFontWeight' || mappedKey === 'titleFontSize' ||
           mappedKey === 'bodyFontSize' || mappedKey === 'titleTop' ||
           mappedKey === 'contentTop' || mappedKey === 'contentWidth' ||
+          mappedKey === 'contentLeft' || mappedKey === 'contentRight' ||
           mappedKey === 'headerToEdge' || mappedKey === 'footerToEdge' ||
           mappedKey === 'headerTop' || mappedKey === 'footerBottom' ||
           mappedKey === 'lineHeight' || mappedKey === 'imageOverlayOpacity' ||
@@ -333,18 +411,18 @@ export class SlideParser {
     return frontmatter;
   }
 
-  private parseSlides(content: string, contentMode: ContentMode): Slide[] {
+  private parseSlides(content: string, contentMode: ContentMode, footnoteDefinitions: Map<string, string>): Slide[] {
     // Split by horizontal rule (---)
     // Must be at least 3 dashes on their own line
     const slideDelimiter = /\n---+\s*\n/;
     const rawSlides = content.split(slideDelimiter);
 
     return rawSlides
-      .map((rawContent, index) => this.parseSlide(rawContent.trim(), index, contentMode))
+      .map((rawContent, index) => this.parseSlide(rawContent.trim(), index, contentMode, footnoteDefinitions))
       .filter(slide => slide.elements.length > 0 || slide.speakerNotes.length > 0);
   }
 
-  private parseSlide(rawContent: string, index: number, contentMode: ContentMode): Slide {
+  private parseSlide(rawContent: string, index: number, contentMode: ContentMode, footnoteDefinitions: Map<string, string>): Slide {
     const lines = rawContent.split('\n');
     let elements: SlideElement[] = [];
     const speakerNotes: string[] = [];
@@ -393,11 +471,22 @@ export class SlideParser {
       metadata.layout = 'default';
     }
 
+    // Extract footnotes referenced on this slide
+    const footnoteRefs = this.extractFootnoteReferences(rawContent);
+    const footnotes: Footnote[] = [];
+    for (const ref of footnoteRefs) {
+      const content = footnoteDefinitions.get(ref);
+      if (content !== undefined) {
+        footnotes.push({ id: ref, content });
+      }
+    }
+
     return {
       index,
       metadata,
       elements,
       speakerNotes,
+      footnotes,
       rawContent,
     };
   }

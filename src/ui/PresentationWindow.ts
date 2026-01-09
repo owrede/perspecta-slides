@@ -10,6 +10,7 @@ import {
 } from '../utils/SlideHasher';
 
 // Access Electron from the global require in Obsidian's context
+import { Platform } from 'obsidian';
 declare const require: NodeRequire;
 
 /**
@@ -80,7 +81,12 @@ export class PresentationWindow {
     this.currentSlideIndex = startSlide;
     this.currentTheme = theme;
     this.presentationCache = buildPresentationCache(presentation);
-    
+
+    if (!Platform.isDesktop) {
+      new Notice('External presentation windows are only available on Desktop.');
+      return;
+    }
+
     const electron = require('electron');
     const remote = electron.remote || (require as any)('@electron/remote');
     const { BrowserWindow, screen } = remote;
@@ -119,13 +125,13 @@ export class PresentationWindow {
     await this.loadHTMLContent(html);
 
     const debug = getDebugService();
-    
+
     this.win.once('ready-to-show', () => {
       debug.log('presentation-window', 'ready-to-show event fired');
       this.win.show();
       this.win.focus();
     });
-    
+
     setTimeout(() => {
       if (this.win && !this.win.isDestroyed() && !this.win.isVisible()) {
         debug.log('presentation-window', 'Fallback: showing window after timeout');
@@ -224,22 +230,22 @@ export class PresentationWindow {
   public goToSlide(index: number): void {
     const debug = getDebugService();
     debug.log('presentation-window', `[PresentationWindow.goToSlide] called with index ${index}`);
-    
+
     if (!this.presentation) {
       debug.warn('presentation-window', '[PresentationWindow.goToSlide] No presentation loaded');
       return;
     }
     if (index < 0) index = 0;
     if (index >= this.presentation.slides.length) index = this.presentation.slides.length - 1;
-    
+
     this.currentSlideIndex = index;
-    
+
     // Notify any listeners that slide changed (e.g., presenter window)
     if (this.onSlideChanged) {
       debug.log('presentation-window', `[PresentationWindow.goToSlide] Invoking onSlideChanged callback with index ${index}`);
       this.onSlideChanged(index);
     }
-    
+
     if (this.win && !this.win.isDestroyed()) {
       debug.log('presentation-window', `[PresentationWindow.goToSlide] Executing showSlide(${index}) in window`);
       this.win.webContents.executeJavaScript(`showSlide(${index})`).then(() => {
@@ -262,7 +268,7 @@ export class PresentationWindow {
     try {
       await this.win.loadURL('about:blank');
       const escapedHtml = JSON.stringify(html);
-      
+
       await this.win.webContents.executeJavaScript(`
         (function() {
           document.open();
@@ -281,7 +287,7 @@ export class PresentationWindow {
     const slidesHTML = presentation.slides.map((slide, index) => {
       return renderer.renderPresentationSlideHTML(slide, index);
     });
-    
+
     const themeCSS = theme ? this.generateThemeVariables(theme) : '';
     const lockedAspectRatioCSS = this.getLockedAspectRatioCSS(presentation.frontmatter);
 
@@ -524,7 +530,7 @@ export class PresentationWindow {
     }
 
     const aspectRatio = frontmatter.aspectRatio || '16:9';
-    const ratios: Record<string, {width: number, height: number}> = {
+    const ratios: Record<string, { width: number, height: number }> = {
       '16:9': { width: 16, height: 9 },
       '4:3': { width: 4, height: 3 },
       '16:10': { width: 16, height: 10 },
@@ -638,7 +644,7 @@ export class PresentationWindow {
 
   private async fullReload(presentation: Presentation, theme: Theme | null, currentSlide: number): Promise<void> {
     this.presentation = presentation;
-    
+
     const renderer = this.createRenderer(presentation, theme);
     const html = this.generatePresentationHTML(presentation, renderer, theme, currentSlide);
 

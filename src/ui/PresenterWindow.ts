@@ -10,6 +10,7 @@ import {
 } from '../utils/SlideHasher';
 
 // Access Electron from the global require in Obsidian's context
+import { Platform } from 'obsidian';
 declare const require: NodeRequire;
 
 /**
@@ -70,17 +71,17 @@ export class PresenterWindow {
 
   notifySlideChange(slideIndex: number): void {
     const debug = getDebugService();
-    
+
     if (!this.win || this.win.isDestroyed()) {
       debug.warn('presentation-window', '[PresenterWindow.notifySlideChange] Window is not open');
       return;
     }
 
     debug.log('presentation-window', `[PresenterWindow.notifySlideChange] Updating presenter view to slide ${slideIndex}`);
-    
+
     // Execute the setActiveSlide function in the presenter window
     const jsCode = `setActiveSlide(${slideIndex});`;
-    
+
     this.win.webContents.executeJavaScript(jsCode).catch((e: any) => {
       debug.error('presentation-window', `[PresenterWindow.notifySlideChange] Error: ${e}`);
     });
@@ -89,32 +90,30 @@ export class PresenterWindow {
   private injectCallbacksIntoWindow(): void {
     const debug = getDebugService();
     debug.log('presentation-window', '[PresenterWindow.injectCallbacksIntoWindow] CALLED');
-    
+
     if (!this.win || this.win.isDestroyed()) {
       debug.warn('presentation-window', '[PresenterWindow] Cannot inject callbacks: window is destroyed');
       return;
     }
-    
+
     debug.log('presentation-window', '[PresenterWindow] Setting up callback handlers via direct invocation');
-    
+
     try {
       // Define handlers that will be called from the presenter window
       const slideChangedHandler = (index: number) => {
-        console.log('[Main] Presenter window: slide changed to', index);
         debug.log('presentation-window', `[PresenterWindow] Slide changed to ${index}`);
         if (this.onSlideChanged) {
           this.onSlideChanged(index);
         }
       };
-      
+
       const openPresentationHandler = () => {
-        console.log('[Main] Presenter window: open presentation requested');
         debug.log('presentation-window', '[PresenterWindow] Open presentation requested');
         if (this.onOpenPresentationWindow) {
           this.onOpenPresentationWindow();
         }
       };
-      
+
       // Inject callback definitions into presenter window
       // These will be called by the presenter window's slide navigation code
       this.win.webContents.executeJavaScript(`
@@ -128,7 +127,7 @@ export class PresenterWindow {
           };
         })();
       `);
-      
+
       // Set up a watcher that calls our handlers when values change in the presenter window
       // We'll use setInterval to periodically check
       let pollCount = 0;
@@ -142,12 +141,12 @@ export class PresenterWindow {
                 return {lastChange, lastOpen, hasCallbacks: !!window.__presenterCallbacks};
               })();
             `);
-            
+
             pollCount++;
             if (pollCount % 10 === 0) {
               debug.log('presentation-window', `[Poll] Result: ${JSON.stringify(result)}`);
             }
-            
+
             if (result && result.lastChange && result.lastChange.timestamp > ((this as any).__lastCheckTime || 0)) {
               (this as any).__lastCheckTime = result.lastChange.timestamp;
               debug.log('presentation-window', `[Poll] Detected slide change to ${result.lastChange.index}`);
@@ -166,12 +165,12 @@ export class PresenterWindow {
           clearInterval(checkInterval);
         }
       }, 500);
-      
+
       // Clean up interval when window closes
       this.win.once('closed', () => {
         clearInterval(checkInterval);
       });
-      
+
       debug.log('presentation-window', '[PresenterWindow] Callback monitoring started');
     } catch (e) {
       debug.error('presentation-window', `Failed to inject callbacks: ${e}`);
@@ -186,7 +185,7 @@ export class PresenterWindow {
 
     this.ipcMainRef = ipcMain;
     debug.log('presentation-window', '[PresenterWindow] Setting up IPC handlers');
-    
+
     try {
       // Clean up any existing listeners
       ipcMain.removeAllListeners('presenter:slide-changed');
@@ -194,7 +193,7 @@ export class PresenterWindow {
     } catch (e) {
       debug.warn('presentation-window', `Failed to remove existing listeners: ${e}`);
     }
-    
+
     // Listen for slide changes from the presenter window UI
     ipcMain.on('presenter:slide-changed', (event: any, slideIndex: number) => {
       debug.log('presentation-window', `[PresenterWindow] IPC: slide-changed received with index ${slideIndex}`);
@@ -216,7 +215,7 @@ export class PresenterWindow {
         debug.warn('presentation-window', '[PresenterWindow] onOpenPresentationWindow callback not set');
       }
     });
-    
+
     debug.log('presentation-window', '[PresenterWindow] IPC handlers setup complete');
   }
 
@@ -257,8 +256,13 @@ export class PresenterWindow {
     this.currentTheme = theme;
     this.presentationCache = buildPresentationCache(presentation);
 
+    if (!Platform.isDesktop) {
+      new Notice('External presenter windows are only available on Desktop.');
+      return;
+    }
+
     const electron = require('electron');
-    
+
     // In renderer process, we need to get remote first, then access BrowserWindow/screen from it
     let remote = electron.remote;
     if (!remote) {
@@ -269,12 +273,12 @@ export class PresenterWindow {
         throw new Error('Cannot access Electron remote module');
       }
     }
-    
+
     if (!remote) {
       debug.error('presentation-window', 'Electron remote module is not available');
       throw new Error('Electron remote module not available');
     }
-    
+
     const { BrowserWindow, screen } = remote;
     const { ipcMain } = electron;
     const displays = screen.getAllDisplays();
@@ -334,48 +338,46 @@ export class PresenterWindow {
     }
 
     const renderer = this.createRenderer(presentation, theme);
-     const html = this.generatePresenterHTML(presentation, renderer, theme);
-     await this.loadHTMLContent(html);
-     
-     // After HTML is loaded, inject the callbacks into the presenter window
-     debug.log('presentation-window', '[PresenterWindow] Injecting callbacks into presenter window');
-     try {
-       await this.win.webContents.executeJavaScript(`
+    const html = this.generatePresenterHTML(presentation, renderer, theme);
+    await this.loadHTMLContent(html);
+
+    // After HTML is loaded, inject the callbacks into the presenter window
+    debug.log('presentation-window', '[PresenterWindow] Injecting callbacks into presenter window');
+    try {
+      await this.win.webContents.executeJavaScript(`
          (function() {
-           console.log('[Presenter] Injecting callbacks from Obsidian');
            window.__presenterCallbacks = window.__presenterCallbacks || {};
-           console.log('[Presenter] Callbacks object ready');
          })();
        `);
-     } catch (e) {
-       debug.warn('presentation-window', `Failed to inject callback object: ${e}`);
-     }
+    } catch (e) {
+      debug.warn('presentation-window', `Failed to inject callback object: ${e}`);
+    }
 
-     try {
-       debug.log('presentation-window', '[PresenterWindow] About to register ready-to-show handler');
-       
-       // Register ready-to-show handler
-       const readyHandler = () => {
-         debug.log('presentation-window', '[PresenterWindow] ready-to-show event fired');
-         if (this.win && !this.win.isDestroyed()) {
-           this.win.show();
-           this.win.focus();
-           
-           // After window is shown, inject the actual callbacks
-           debug.log('presentation-window', '[PresenterWindow] Window shown, calling injectCallbacksIntoWindow()');
-           this.injectCallbacksIntoWindow();
-         }
-       };
-       
-       this.win.once('ready-to-show', readyHandler);
-       debug.log('presentation-window', '[PresenterWindow] ready-to-show handler registered');
-       
-       // If window is already ready, call handler immediately
-       // (this can happen if ready-to-show fired before we registered the handler)
-       if (this.win.isReady && this.win.isReady()) {
-         debug.log('presentation-window', '[PresenterWindow] Window already ready, calling handler immediately');
-         readyHandler();
-       }
+    try {
+      debug.log('presentation-window', '[PresenterWindow] About to register ready-to-show handler');
+
+      // Register ready-to-show handler
+      const readyHandler = () => {
+        debug.log('presentation-window', '[PresenterWindow] ready-to-show event fired');
+        if (this.win && !this.win.isDestroyed()) {
+          this.win.show();
+          this.win.focus();
+
+          // After window is shown, inject the actual callbacks
+          debug.log('presentation-window', '[PresenterWindow] Window shown, calling injectCallbacksIntoWindow()');
+          this.injectCallbacksIntoWindow();
+        }
+      };
+
+      this.win.once('ready-to-show', readyHandler);
+      debug.log('presentation-window', '[PresenterWindow] ready-to-show handler registered');
+
+      // If window is already ready, call handler immediately
+      // (this can happen if ready-to-show fired before we registered the handler)
+      if (this.win.isReady && this.win.isReady()) {
+        debug.log('presentation-window', '[PresenterWindow] Window already ready, calling handler immediately');
+        readyHandler();
+      }
 
       this.win.on('closed', () => {
         this.win = null;
@@ -409,7 +411,7 @@ export class PresenterWindow {
         debug.log('presentation-window', 'Fallback: showing window after timeout');
         this.win.show();
         this.win.focus();
-        
+
         // Inject callbacks after window is shown via fallback
         debug.log('presentation-window', '[PresenterWindow] Fallback: calling injectCallbacksIntoWindow()');
         this.injectCallbacksIntoWindow();
@@ -460,21 +462,21 @@ export class PresenterWindow {
     }
 
     try {
-       debug.log('presentation-window', `[PresenterWindow] ipcMain available: ${!!ipcMain}`);
-       
-       if (ipcMain) {
-         debug.log('presentation-window', '[PresenterWindow] Setting up IPC handlers from presenter window');
-         this.setupIPCHandlers(ipcMain, debug);
-       } else {
-         // ipcMain is not available in renderer/plugin process
-         // The presenter window will send messages via ipcRenderer.send()
-         // and the main Obsidian process will receive them via ipcMain.on()
-         // (handlers set up in main.ts onload)
-         debug.log('presentation-window', '[PresenterWindow] ipcMain not available - using ipcRenderer to send messages to main process');
-       }
-     } catch (error) {
-       debug.error('presentation-window', `[PresenterWindow] Error during IPC setup: ${error}`);
-     }
+      debug.log('presentation-window', `[PresenterWindow] ipcMain available: ${!!ipcMain}`);
+
+      if (ipcMain) {
+        debug.log('presentation-window', '[PresenterWindow] Setting up IPC handlers from presenter window');
+        this.setupIPCHandlers(ipcMain, debug);
+      } else {
+        // ipcMain is not available in renderer/plugin process
+        // The presenter window will send messages via ipcRenderer.send()
+        // and the main Obsidian process will receive them via ipcMain.on()
+        // (handlers set up in main.ts onload)
+        debug.log('presentation-window', '[PresenterWindow] ipcMain not available - using ipcRenderer to send messages to main process');
+      }
+    } catch (error) {
+      debug.error('presentation-window', `[PresenterWindow] Error during IPC setup: ${error}`);
+    }
   }
 
   private async loadHTMLContent(html: string): Promise<void> {
@@ -486,7 +488,7 @@ export class PresenterWindow {
 
     try {
       await this.win.loadURL('about:blank');
-      
+
       const escapedHtml = JSON.stringify(html);
       await this.win.webContents.executeJavaScript(`
         (function() {
@@ -502,14 +504,14 @@ export class PresenterWindow {
   }
 
   private generatePresenterHTML(
-     presentation: Presentation,
-     renderer: SlideRenderer,
-     theme: Theme | null
-   ): string {
-     const styles = this.generatePresenterCSS(theme);
-     const content = this.generateSlidesContent(presentation, renderer);
+    presentation: Presentation,
+    renderer: SlideRenderer,
+    theme: Theme | null
+  ): string {
+    const styles = this.generatePresenterCSS(theme);
+    const content = this.generateSlidesContent(presentation, renderer);
 
-     return `
+    return `
        <!DOCTYPE html>
        <html>
        <head>
@@ -670,14 +672,25 @@ export class PresenterWindow {
               btn.classList.add('active');
               
               // Change icon to STOP (square)
-              svg.innerHTML = '<rect fill="currentColor" x="6" y="6" width="12" height="12"/>';
+              svg.innerHTML = '';
+              const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+              rect.setAttribute('fill', 'currentColor');
+              rect.setAttribute('x', '6');
+              rect.setAttribute('y', '6');
+              rect.setAttribute('width', '12');
+              rect.setAttribute('height', '12');
+              svg.appendChild(rect);
             } else {
               clearInterval(window.timerInterval);
               window.timerInterval = null;
               btn.classList.remove('active');
               
               // Change icon back to PLAY (triangle)
-              svg.innerHTML = '<path fill="currentColor" d="M8 5v14l11-7z"/>';
+              svg.innerHTML = '';
+              const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+              path.setAttribute('fill', 'currentColor');
+              path.setAttribute('d', 'M8 5v14l11-7z');
+              svg.appendChild(path);
             }
           });
 
@@ -769,14 +782,14 @@ export class PresenterWindow {
   }
 
   private generateSlidesContent(presentation: Presentation, renderer: SlideRenderer): string {
-     let html = '';
+    let html = '';
 
-     for (let slideIdx = 0; slideIdx < presentation.slides.length; slideIdx++) {
-       const slide = presentation.slides[slideIdx];
-       const slideHTML = renderer.renderPresentationSlideHTML(slide, slideIdx);
-       const isFirst = slideIdx === 0 ? 'active' : '';
+    for (let slideIdx = 0; slideIdx < presentation.slides.length; slideIdx++) {
+      const slide = presentation.slides[slideIdx];
+      const slideHTML = renderer.renderPresentationSlideHTML(slide, slideIdx);
+      const isFirst = slideIdx === 0 ? 'active' : '';
 
-       html += `
+      html += `
          <div class="slide-row ${isFirst}" data-slide-index="${slideIdx}">
            <div class="slide-left">
              <div class="slide-num-circle">${slideIdx + 1}</div>
@@ -792,70 +805,70 @@ export class PresenterWindow {
            </div>
          </div>
        `;
-     }
+    }
 
-     return html;
-   }
+    return html;
+  }
 
   private renderSlideContent(slide: Slide): string {
-     if (!slide.rawContent) return '';
-     
-     const lines = slide.rawContent.split('\n');
-     let html = '';
-     let inList = false;
-     let listItems: string[] = [];
-     
-     for (const line of lines) {
-       const trimmed = line.trim();
-       if (!trimmed) {
-         // Flush any pending list
-         if (inList && listItems.length > 0) {
-           html += `<ul>${listItems.map(item => `<li>${item}</li>`).join('')}</ul>`;
-           listItems = [];
-           inList = false;
-         }
-         continue;
-       }
-       
-       // Skip frontmatter/metadata lines (key: value pattern)
-       if (trimmed.match(/^[a-z]+\s*:/i)) {
-         continue;
-       }
-       
-       if (trimmed.match(/^#+\s/)) {
-         // Flush any pending list
-         if (inList && listItems.length > 0) {
-           html += `<ul>${listItems.map(item => `<li>${item}</li>`).join('')}</ul>`;
-           listItems = [];
-           inList = false;
-         }
-         
-         const match = trimmed.match(/^#+/);
-         const level = match ? match[0].length : 1;
-         const text = trimmed.replace(/^#+\s/, '');
-         html += `<h${level}>${this.renderMarkdown(text)}</h${level}>`;
-       } else if (trimmed.match(/^[-*+]\s/)) {
-         inList = true;
-         const text = trimmed.replace(/^[-*+]\s/, '');
-         listItems.push(this.renderMarkdown(text));
-       } else {
-         // Flush any pending list
-         if (inList && listItems.length > 0) {
-           html += `<ul>${listItems.map(item => `<li>${item}</li>`).join('')}</ul>`;
-           listItems = [];
-           inList = false;
-         }
-         html += `<p>${this.renderMarkdown(trimmed)}</p>`;
-       }
-     }
-     
-     // Flush any remaining list
-     if (inList && listItems.length > 0) {
-       html += `<ul>${listItems.map(item => `<li>${item}</li>`).join('')}</ul>`;
-     }
-     
-     return html;
-   }
+    if (!slide.rawContent) return '';
+
+    const lines = slide.rawContent.split('\n');
+    let html = '';
+    let inList = false;
+    let listItems: string[] = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        // Flush any pending list
+        if (inList && listItems.length > 0) {
+          html += `<ul>${listItems.map(item => `<li>${item}</li>`).join('')}</ul>`;
+          listItems = [];
+          inList = false;
+        }
+        continue;
+      }
+
+      // Skip frontmatter/metadata lines (key: value pattern)
+      if (trimmed.match(/^[a-z]+\s*:/i)) {
+        continue;
+      }
+
+      if (trimmed.match(/^#+\s/)) {
+        // Flush any pending list
+        if (inList && listItems.length > 0) {
+          html += `<ul>${listItems.map(item => `<li>${item}</li>`).join('')}</ul>`;
+          listItems = [];
+          inList = false;
+        }
+
+        const match = trimmed.match(/^#+/);
+        const level = match ? match[0].length : 1;
+        const text = trimmed.replace(/^#+\s/, '');
+        html += `<h${level}>${this.renderMarkdown(text)}</h${level}>`;
+      } else if (trimmed.match(/^[-*+]\s/)) {
+        inList = true;
+        const text = trimmed.replace(/^[-*+]\s/, '');
+        listItems.push(this.renderMarkdown(text));
+      } else {
+        // Flush any pending list
+        if (inList && listItems.length > 0) {
+          html += `<ul>${listItems.map(item => `<li>${item}</li>`).join('')}</ul>`;
+          listItems = [];
+          inList = false;
+        }
+        html += `<p>${this.renderMarkdown(trimmed)}</p>`;
+      }
+    }
+
+    // Flush any remaining list
+    if (inList && listItems.length > 0) {
+      html += `<ul>${listItems.map(item => `<li>${item}</li>`).join('')}</ul>`;
+    }
+
+    return html;
+  }
 
   private renderMarkdown(text: string): string {
     // Escape HTML special characters but preserve markdown formatting
@@ -863,13 +876,13 @@ export class PresenterWindow {
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
-    
+
     // Process markdown: bold **text**, italic *text*, code `text`
     result = result
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
       .replace(/`(.+?)`/g, '<code>$1</code>');
-    
+
     return result;
   }
 
@@ -1334,6 +1347,16 @@ export class PresenterWindow {
 
   close(): void {
     if (this.win && !this.win.isDestroyed()) {
+      // Clean up IPC handlers if we have the reference
+      if (this.ipcMainRef) {
+        try {
+          this.ipcMainRef.removeAllListeners('presenter:slide-changed');
+          this.ipcMainRef.removeAllListeners('presenter:open-presentation');
+          this.ipcMainRef = null;
+        } catch (e) {
+          // Ignore errors during cleanup
+        }
+      }
       this.win.close();
       this.win = null;
     }

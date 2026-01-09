@@ -359,10 +359,20 @@ export class ThumbnailNavigatorView extends ItemView {
     const numberBadge = document.createElement('div');
     numberBadge.className = 'slide-number-badge';
     const num = index + 1;
-    numberBadge.innerHTML = `<svg viewBox="0 0 28 28" width="28" height="28">
-      <circle cx="14" cy="14" r="12" class="badge-circle"/>
-      <text x="14" y="14" text-anchor="middle" dominant-baseline="central" class="badge-text">${num}</text>
-    </svg>`;
+
+    const svg = numberBadge.createSvg('svg', {
+      attr: { viewBox: '0 0 28 28', width: '28', height: '28' }
+    });
+    svg.createSvg('circle', {
+      attr: { cx: '14', cy: '14', r: '12' },
+      cls: 'badge-circle'
+    });
+    const textEl = svg.createSvg('text', {
+      attr: { x: '14', y: '14', 'text-anchor': 'middle', 'dominant-baseline': 'central' },
+      cls: 'badge-text'
+    });
+    textEl.textContent = String(num);
+
     item.appendChild(numberBadge);
 
     // Thumbnail preview - using iframe with actual rendered slide

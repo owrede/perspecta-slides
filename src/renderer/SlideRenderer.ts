@@ -53,16 +53,16 @@ export class SlideRenderer {
     // Weight not available - use fallback logic:
     // Find closest available weight, preferring heavier weights (e.g., if 600 not available, use 700)
     const sorted = availableWeights.sort((a, b) => a - b);
-    
+
     // Try to find weight >= requested weight first, then fallback to closest
     const heavier = sorted.find(w => w >= weight);
     const closest = heavier || sorted.reduce((prev, curr) =>
       Math.abs(curr - weight) < Math.abs(prev - weight) ? curr : prev
     );
-    
+
     // Log warning about weight fallback
     console.warn(`[font-handling] Font weight ${weight} not available for "${fontName}", using ${closest}`);
-    
+
     return closest;
   }
 
@@ -273,7 +273,7 @@ export class SlideRenderer {
     if (this.theme?.themeJsonData) {
       const presets = this.theme.themeJsonData.presets;
       const modePreset = mode === 'light' ? presets.light : presets.dark;
-      
+
       if (layout === 'cover' && modePreset.backgrounds.cover) {
         // Check if it's explicitly set (not just inheriting from general)
         const bg = modePreset.backgrounds.cover;
@@ -330,13 +330,13 @@ export class SlideRenderer {
 
     // Calculate position (0 to 1) based on slide index
     let position: number;
-    
+
     if (frontmatter.dynamicBackgroundRestartAtSection) {
       // Find section boundaries for this slide
       const slides = this.presentation.slides;
       let sectionStart = 0;
       let sectionEnd = totalSlides - 1;
-      
+
       // Find the section slide before or at this index (this is the section start)
       for (let i = slideIndex; i >= 0; i--) {
         if (slides[i].metadata.layout === 'section') {
@@ -344,7 +344,7 @@ export class SlideRenderer {
           break;
         }
       }
-      
+
       // Find the next section slide after this index (the slide before it is section end)
       for (let i = slideIndex + 1; i < totalSlides; i++) {
         if (slides[i].metadata.layout === 'section') {
@@ -352,7 +352,7 @@ export class SlideRenderer {
           break;
         }
       }
-      
+
       // Calculate position within this section
       const sectionLength = sectionEnd - sectionStart;
       position = sectionLength > 0 ? (slideIndex - sectionStart) / sectionLength : 0;
@@ -395,15 +395,27 @@ export class SlideRenderer {
     const customClass = slide.metadata.class || '';
     const isActive = index === 0 ? 'active' : '';
 
+    // Add data-mode attribute if this slide has an explicit per-slide mode override
+    // This prevents the theme toggle from changing this slide's mode
+    const hasExplicitMode = slide.metadata.mode && slide.metadata.mode !== 'system';
+    const dataModeAttr = hasExplicitMode ? ` data-mode="${slide.metadata.mode}"` : '';
+
     // Handle per-slide background image from metadata
     // This sits between the background color/gradient and the overlay
     const slideBackgroundHtml = this.renderSlideBackground(slide);
 
-    // Compute dynamic background color if enabled
+    // Compute dynamic background colors for BOTH modes (for theme toggle in exports)
     // Skip dynamic background if this layout has a specific layout background defined
     const hasLayoutBackground = this.hasLayoutBackground(layout, effectiveMode, frontmatter);
     const dynamicBgColor = hasLayoutBackground ? null : this.getDynamicBackgroundColor(index, this.presentation.slides.length, effectiveMode, frontmatter);
     const slideInlineStyle = dynamicBgColor ? `background-color: ${dynamicBgColor};` : '';
+
+    // Calculate both light and dark dynamic bg colors for export theme toggle
+    const lightDynamicBg = hasLayoutBackground ? null : this.getDynamicBackgroundColor(index, this.presentation.slides.length, 'light', frontmatter);
+    const darkDynamicBg = hasLayoutBackground ? null : this.getDynamicBackgroundColor(index, this.presentation.slides.length, 'dark', frontmatter);
+    const dynamicBgAttrs = (lightDynamicBg || darkDynamicBg)
+      ? ` data-light-bg="${lightDynamicBg || ''}" data-dark-bg="${darkDynamicBg || ''}"`
+      : '';
 
     // For full-image layout, render images as background layer (edge-to-edge)
     let imageBackground = '';
@@ -413,7 +425,7 @@ export class SlideRenderer {
 
     // For half-image layouts, use special split rendering
     if (layout === 'half-image' || layout === 'half-image-horizontal') {
-      return this.renderHalfImageSlide(slide, index, frontmatter, layout, modeClass, containerClass, customClass, isActive, slideBackgroundHtml, renderSpeakerNotes, dynamicBgColor);
+      return this.renderHalfImageSlide(slide, index, frontmatter, layout, modeClass, containerClass, customClass, isActive, slideBackgroundHtml, renderSpeakerNotes, dynamicBgColor, hasExplicitMode ? slide.metadata.mode : undefined, lightDynamicBg, darkDynamicBg);
     }
 
     // Generate overlay if configured (presentation-wide)
@@ -422,9 +434,9 @@ export class SlideRenderer {
     // Layer order: background color/gradient (on section) -> slide background image -> full-image -> overlay -> content
     // Cover layout does not include header/footer slots
     const showHeaderFooter = layout !== 'cover';
-    
+
     return `
-    <section class="slide ${containerClass} ${modeClass} ${customClass} ${isActive}" data-index="${index}"${slideInlineStyle ? ` style="${slideInlineStyle}"` : ''}>
+    <section class="slide ${containerClass} ${modeClass} ${customClass} ${isActive}" data-index="${index}"${dataModeAttr}${dynamicBgAttrs}${slideInlineStyle ? ` style="${slideInlineStyle}"` : ''}>
       ${slideBackgroundHtml}
       ${imageBackground}
       ${overlayHtml}
@@ -433,6 +445,7 @@ export class SlideRenderer {
         <div class="slide-content layout-${layout}">
           ${layout === 'full-image' ? '' : this.renderSlideContent(slide, layout)}
         </div>
+        ${this.renderFootnotes(slide)}
       </div>
       ${showHeaderFooter ? this.renderFooter(frontmatter, index, this.presentation.slides.length) : ''}
       ${renderSpeakerNotes && slide.speakerNotes.length > 0 ? `<aside class="speaker-notes">${slide.speakerNotes.map(n => this.renderMarkdown(n)).join('<br>')}</aside>` : ''}
@@ -455,7 +468,10 @@ export class SlideRenderer {
     isActive: string,
     slideBackgroundHtml: string,
     renderSpeakerNotes: boolean,
-    dynamicBgColor?: string | null
+    dynamicBgColor?: string | null,
+    explicitMode?: string,
+    lightDynamicBg?: string | null,
+    darkDynamicBg?: string | null
   ): string {
     const elements = slide.elements.filter(e => e.visible);
     const images = elements.filter(e => e.type === 'image');
@@ -481,19 +497,28 @@ export class SlideRenderer {
     const contentPanelStyle = dynamicBgColor ? ` style="background-color: ${dynamicBgColor};"` : '';
     const overlayHtml = this.renderOverlay(frontmatter);
 
+    // Add data-mode attribute if this slide has an explicit per-slide mode override
+    const dataModeAttr = explicitMode ? ` data-mode="${explicitMode}"` : '';
+
+    // Add dynamic bg data attributes for export theme toggle
+    const dynamicBgAttrs = (lightDynamicBg || darkDynamicBg)
+      ? ` data-light-bg="${lightDynamicBg || ''}" data-dark-bg="${darkDynamicBg || ''}"`
+      : '';
+
     return `
-    <section class="slide ${containerClass} ${mode} ${customClass} ${isActive} ${directionClass} ${positionClass}" data-index="${index}"${slideInlineStyle ? ` style="${slideInlineStyle}"` : ''}>
+    <section class="slide ${containerClass} ${mode} ${customClass} ${isActive} ${directionClass} ${positionClass}" data-index="${index}"${dataModeAttr}${dynamicBgAttrs}${slideInlineStyle ? ` style="${slideInlineStyle}"` : ''}>
       ${slideBackgroundHtml}
       ${overlayHtml}
       <div class="half-image-panel">
         ${imagePanel}
       </div>
-      <div class="half-content-panel ${mode}"${contentPanelStyle}>
+      <div class="half-content-panel ${mode}"${contentPanelStyle}${dynamicBgAttrs}>
         ${this.renderHeader(frontmatter, index)}
         <div class="slide-body">
           <div class="slide-content">
             ${textContent}
           </div>
+          ${this.renderFootnotes(slide)}
         </div>
         ${this.renderFooter(frontmatter, index, this.presentation.slides.length)}
       </div>
@@ -653,6 +678,28 @@ export class SlideRenderer {
       default:
         return this.renderDefaultLayout(elements);
     }
+  }
+
+  /**
+   * Render footnotes section for a slide
+   * Only renders if the slide has footnotes referenced
+   */
+  private renderFootnotes(slide: Slide): string {
+    if (!slide.footnotes || slide.footnotes.length === 0) {
+      return '';
+    }
+
+    const footnotesHtml = slide.footnotes.map(fn => {
+      const renderedContent = this.renderMarkdown(fn.content);
+      return `<div class="footnote-item"><span class="footnote-number"><sup>${fn.id}</sup></span><span class="footnote-text">${renderedContent}</span></div>`;
+    }).join('\n');
+
+    return `<div class="slide-footnotes">
+      <div class="footnotes-separator"></div>
+      <div class="footnotes-content">
+        ${footnotesHtml}
+      </div>
+    </div>`;
   }
 
   // ==================
@@ -936,18 +983,18 @@ export class SlideRenderer {
 
   private renderList(content: string): string {
     const lines = content.split('\n');
-    
+
     // Parse list structure with indentation levels
     interface ListItem {
       level: number;
       text: string;
       isOrdered: boolean;
     }
-    
+
     const items: ListItem[] = lines.map(line => {
       // Count leading spaces/tabs to determine indentation level
       const leadingWhitespace = line.match(/^(\s*)/)?.[1] || '';
-      
+
       // Count tabs as single units, spaces as pairs (2 spaces = 1 level)
       let indentLevel = 0;
       for (const char of leadingWhitespace) {
@@ -961,48 +1008,48 @@ export class SlideRenderer {
       // Handle remaining spaces (in case there are any)
       const spaceCount = leadingWhitespace.replace(/\t/g, '').length;
       indentLevel += Math.floor(spaceCount / 2);
-      
+
       const isOrdered = /^\d+\./.test(line.trim());
       const text = line.trim().replace(/^[-*+]\s+/, '').replace(/^\d+\.\s+/, '');
-      
+
       return {
         level: indentLevel,
         text,
         isOrdered
       };
     });
-    
+
     // Build nested HTML - properly handle nesting by looking ahead
     const buildListHTML = (items: ListItem[], startIndex: number = 0, parentLevel: number = -1): { html: string; nextIndex: number } => {
       let html = '';
       let i = startIndex;
-      
+
       // Determine the list type from the first item at this level
       let listTag = 'ul';
       if (i < items.length && items[i].level > parentLevel) {
         listTag = items[i].isOrdered ? 'ol' : 'ul';
       }
-      
+
       html += `<${listTag}>`;
-      
+
       while (i < items.length) {
         const item = items[i];
-        
+
         // If item is at a lower level, we're done
         if (item.level <= parentLevel) {
           break;
         }
-        
+
         // If item is deeper than our level, let parent handle recursion
         if (item.level > parentLevel + 1) {
           i++;
           continue;
         }
-        
+
         // Item is at our level (parentLevel + 1)
         if (item.level === parentLevel + 1) {
           html += `<li data-level="${item.level}">${this.renderMarkdown(item.text)}`;
-          
+
           // Look ahead to see if next item is nested
           if (i + 1 < items.length && items[i + 1].level > item.level) {
             // Recursively render nested list
@@ -1012,16 +1059,16 @@ export class SlideRenderer {
           } else {
             i++;
           }
-          
+
           html += `</li>`;
         }
       }
-      
+
       html += `</${listTag}>`;
-      
+
       return { html, nextIndex: i };
     };
-    
+
     const { html } = buildListHTML(items, 0, -1);
     return html;
   }
@@ -1090,6 +1137,10 @@ export class SlideRenderer {
 
   private renderMarkdown(text: string): string {
     let html = this.escapeHtml(text);
+
+    // Footnote references [^id] -> <sup><b>id</b></sup> (must be before link parsing)
+    // Match [^id] but not [^id]: (which is a definition)
+    html = html.replace(/\[\^([^\]]+)\](?!:)/g, '<sup class="footnote-ref"><b>$1</b></sup>');
 
     // Bold
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -1385,8 +1436,8 @@ export class SlideRenderer {
       .slide-header {
         position: absolute;
         top: calc(var(--header-top, 2.5) * var(--slide-unit));
-        left: calc(var(--content-width, 5) * var(--slide-unit));
-        right: calc(var(--content-width, 5) * var(--slide-unit));
+        left: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
+        right: calc(var(--content-right, var(--content-width, 5)) * var(--slide-unit));
         z-index: 10;
         display: flex;
         justify-content: space-between;
@@ -1399,8 +1450,8 @@ export class SlideRenderer {
       .slide-footer {
         position: absolute;
         bottom: calc(var(--footer-bottom, 2.5) * var(--slide-unit));
-        left: calc(var(--content-width, 5) * var(--slide-unit));
-        right: calc(var(--content-width, 5) * var(--slide-unit));
+        left: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
+        right: calc(var(--content-right, var(--content-width, 5)) * var(--slide-unit));
         z-index: 10;
         display: flex;
         justify-content: space-between;
@@ -1433,8 +1484,8 @@ export class SlideRenderer {
          ============================================ */
       .slide-content { 
         position: absolute;
-        left: calc(var(--content-width, 5) * var(--slide-unit));
-        right: calc(var(--content-width, 5) * var(--slide-unit));
+        left: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
+        right: calc(var(--content-right, var(--content-width, 5)) * var(--slide-unit));
         top: 0;
         bottom: 0;
         display: flex; 
@@ -1485,6 +1536,83 @@ export class SlideRenderer {
       .slot-columns.ratio-narrow-wide .column[data-column="2"] { flex: 2; }
       .slot-columns.ratio-wide-narrow .column[data-column="1"] { flex: 2; }
       .slot-columns.ratio-wide-narrow .column[data-column="2"] { flex: 1; }
+      
+      /* ============================================
+         FOOTNOTES - Displayed at bottom of slide content
+         Grows upward from footer, respects content margins
+         Uses hanging numbers (numbers extend left of content edge)
+         ============================================ */
+      .slide-footnotes {
+        position: absolute;
+        /* Position above footer with 2.25em spacing */
+        bottom: calc((var(--footer-bottom, 2.5) + 2.25) * var(--slide-unit) + var(--slide-unit) * 2.5);
+        left: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
+        right: calc(var(--content-right, var(--content-width, 5)) * var(--slide-unit));
+        font-size: calc(var(--slide-unit) * 1.8 * var(--body-font-scale, 1) * var(--font-scale, 1));
+        color: var(--body-text);
+        opacity: 0.75;
+        /* Grow upward using flexbox */
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: flex-end;
+      }
+      
+      .footnotes-separator {
+        /* Short gray line marking end of content */
+        width: calc(var(--slide-unit) * 20);
+        height: 1px;
+        background: currentColor;
+        opacity: 0.3;
+        margin-bottom: calc(var(--slide-unit) * 1);
+      }
+      
+      .footnotes-content {
+        display: flex;
+        flex-direction: column;
+        gap: calc(var(--slide-unit) * 0.5);
+        width: 100%;
+      }
+      
+      .footnote-item {
+        display: flex;
+        align-items: baseline;
+        line-height: 1.3;
+        /* No gap - spacing handled by number width */
+      }
+      
+      .footnote-number {
+        /* Fixed width for number column, right-aligned */
+        width: calc(var(--slide-unit) * 2.5);
+        /* Hang to the left using negative margin */
+        margin-left: calc(var(--slide-unit) * -2.5);
+        text-align: right;
+        padding-right: calc(var(--slide-unit) * 0.5);
+        flex-shrink: 0;
+      }
+      
+      .footnote-number sup {
+        font-size: 0.75em;
+        opacity: 0.8;
+      }
+      
+      .footnote-text {
+        flex: 1;
+      }
+      
+      .footnote-text p {
+        margin: 0;
+        font-size: inherit;
+        display: inline;
+      }
+      
+      /* Footnote references in slide content */
+      .footnote-ref {
+        font-size: 0.65em;
+        vertical-align: super;
+        margin-left: 0.1em;
+        color: var(--link-color);
+      }
       
       /* ============================================
          TYPOGRAPHY - All sizes use --slide-unit
@@ -1767,7 +1895,10 @@ export class SlideRenderer {
       .image-container .slide-content {
         left: 0;
         right: 0;
-        padding: calc(var(--content-width, 5) * var(--slide-unit));
+        padding-top: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
+        padding-right: calc(var(--content-right, var(--content-width, 5)) * var(--slide-unit));
+        padding-bottom: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
+        padding-left: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
       }
       .layout-full-image { 
         padding: 0; 
@@ -1948,8 +2079,8 @@ export class SlideRenderer {
       .half-content-panel .slide-header {
         position: absolute;
         top: calc(var(--header-top, 2.5) * var(--slide-unit));
-        left: calc(var(--content-width, 5) * var(--slide-unit));
-        right: calc(var(--content-width, 5) * var(--slide-unit));
+        left: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
+        right: calc(var(--content-right, var(--content-width, 5)) * var(--slide-unit));
         z-index: 10;
         display: flex;
         justify-content: space-between;
@@ -1960,8 +2091,8 @@ export class SlideRenderer {
       .half-content-panel .slide-footer {
         position: absolute;
         bottom: calc(var(--footer-bottom, 2.5) * var(--slide-unit));
-        left: calc(var(--content-width, 5) * var(--slide-unit));
-        right: calc(var(--content-width, 5) * var(--slide-unit));
+        left: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
+        right: calc(var(--content-right, var(--content-width, 5)) * var(--slide-unit));
         z-index: 10;
         display: flex;
         justify-content: space-between;
@@ -2253,6 +2384,12 @@ ${this.getSlideCSS()}
     if (frontmatter.footerBottom !== undefined) vars.push(`  --footer-bottom: ${frontmatter.footerBottom};`);
     if (frontmatter.titleTop !== undefined) vars.push(`  --title-top: ${frontmatter.titleTop};`);
     if (frontmatter.contentTop !== undefined) vars.push(`  --content-top: ${frontmatter.contentTop};`);
+    // Content margins: Support asymmetric left/right, with contentWidth as legacy fallback
+    const contentLeft = frontmatter.contentLeft ?? frontmatter.contentWidth;
+    const contentRight = frontmatter.contentRight ?? frontmatter.contentWidth;
+    if (contentLeft !== undefined) vars.push(`  --content-left: ${contentLeft};`);
+    if (contentRight !== undefined) vars.push(`  --content-right: ${contentRight};`);
+    // Legacy: still output --content-width if defined for backwards compatibility
     if (frontmatter.contentWidth !== undefined) vars.push(`  --content-width: ${frontmatter.contentWidth};`);
 
     // Semantic colors (light mode)
@@ -2530,12 +2667,17 @@ ${this.getSlideCSS()}
       const nextIndex = index + 1 < totalSlides ? index + 1 : index;
       document.getElementById('next-slide-frame').srcdoc = slidesData[nextIndex].html;
       
-      const notes = slidesData[index].notes;
-      const notesEl = document.getElementById('notes-content');
+      notesEl.innerHTML = '';
       if (notes && notes.length > 0) {
-        notesEl.innerHTML = notes.map(n => '<p>' + n + '</p>').join('');
+        notes.forEach(n => {
+          const p = document.createElement('p');
+          p.textContent = n;
+          notesEl.appendChild(p);
+        });
       } else {
-        notesEl.innerHTML = '<p>No notes for this slide.</p>';
+        const p = document.createElement('p');
+        p.textContent = 'No notes for this slide.';
+        notesEl.appendChild(p);
       }
     }
     

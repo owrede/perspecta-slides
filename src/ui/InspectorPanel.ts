@@ -990,24 +990,43 @@ export class InspectorPanelView extends ItemView {
         .setTooltip('Reset to 24em')
         .onClick(() => this.updateFrontmatter({ contentTop: undefined }, true)));
 
-    // Content (left/right)
+    // Content Left margin
     new Setting(container)
-      .setName('Content (left/right)')
+      .setName('Content Left')
       .addSlider(slider => {
         slider
-          .setLimits(0, 12, 0.2)
-          .setValue(fm.contentWidth ?? 5)
+          .setLimits(0, 18, 0.2)
+          .setValue(fm.contentLeft ?? fm.contentWidth ?? 5)
           .setDynamicTooltip()
-          .onChange(value => this.updateFrontmatter({ contentWidth: value }, false));
+          .onChange(value => this.updateFrontmatter({ contentLeft: value }, false));
         slider.sliderEl.addEventListener('pointerup', () => {
           const val = slider.getValue();
-          this.updateFrontmatter({ contentWidth: val === 5 ? undefined : val }, true);
+          this.updateFrontmatter({ contentLeft: val === 5 ? undefined : val }, true);
         });
       })
       .addExtraButton(btn => btn
         .setIcon('rotate-ccw')
         .setTooltip('Reset to 5em')
-        .onClick(() => this.updateFrontmatter({ contentWidth: undefined }, true)));
+        .onClick(() => this.updateFrontmatter({ contentLeft: undefined }, true)));
+
+    // Content Right margin
+    new Setting(container)
+      .setName('Content Right')
+      .addSlider(slider => {
+        slider
+          .setLimits(0, 18, 0.2)
+          .setValue(fm.contentRight ?? fm.contentWidth ?? 5)
+          .setDynamicTooltip()
+          .onChange(value => this.updateFrontmatter({ contentRight: value }, false));
+        slider.sliderEl.addEventListener('pointerup', () => {
+          const val = slider.getValue();
+          this.updateFrontmatter({ contentRight: val === 5 ? undefined : val }, true);
+        });
+      })
+      .addExtraButton(btn => btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Reset to 5em')
+        .onClick(() => this.updateFrontmatter({ contentRight: undefined }, true)));
   }
 
   /**

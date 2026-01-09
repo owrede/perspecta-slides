@@ -2,6 +2,41 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.6] - 2026-01-09
+
+### New Features
+
+- **New**: Footnote support - reference footnotes with `[^id]` syntax and define with `[^id]: content`
+- **New**: Footnotes render as superscript in slide content with theme link color and bold styling
+- **New**: Per-slide footnotes section with hanging numbers, separator line, and proper content margin alignment
+- **New**: Multi-line footnote definitions supported (indented continuation lines)
+- **New**: Named footnotes supported (e.g., `[^note1]`, `[^reference]`)
+
+### Improvements
+
+- **Improved**: Presentation preview now debounces updates to 1 second, reducing flicker during typing
+- **Improved**: Preview updates only refresh slide content, not the entire view
+- **Improved**: Footnotes grow upward from footer area with 2.25em spacing
+- **Improved**: Footnote numbers "hang" outside content margin for clean text alignment
+
+### Bug Fixes
+
+- **Fix**: PresentationView parser now uses correct content mode from plugin settings
+- **Fix**: Content no longer incorrectly treated as speaker notes in preview when using advanced-slides mode
+- **Fix**: Removed console.log debug messages from inter-window communication
+
+### Technical Details
+
+- **New**: `Footnote` interface added to types.ts with `id` and `content` fields
+- **New**: `footnotes` array added to `Slide` interface
+- **New**: `extractFootnoteDefinitions()` parses all footnote definitions from document
+- **New**: `extractFootnoteReferences()` finds footnote references per slide
+- **New**: `renderFootnotes()` generates footnote HTML with separator and hanging numbers
+- **New**: `.footnote-ref` CSS class for in-content superscript references
+- **New**: `.slide-footnotes`, `.footnotes-separator`, `.footnote-number`, `.footnote-text` CSS classes
+- **Improved**: `PresentationView.setDefaultContentMode()` syncs parser settings with plugin
+- **Improved**: Debounce timer cleanup on view close
+
 ## [0.2.5] - 2026-01-08
 
 ### New Features

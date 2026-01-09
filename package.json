@@ -1,6 +1,6 @@
 {
   "name": "perspecta-slides",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "An Obsidian plugin for creating presentations from Markdown, inspired by iA Presenter",
   "main": "main.js",
   "scripts": {

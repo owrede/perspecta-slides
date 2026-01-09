@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf, Menu, TFile, Notice } from 'obsidian';
-import { Presentation, Slide, Theme, SlideElement } from '../types';
+import { Presentation, Slide, Theme, SlideElement, ContentMode } from '../types';
 import { SlideParser } from '../parser/SlideParser';
 import { SlideRenderer, ImagePathResolver } from '../renderer/SlideRenderer';
 import { getTheme } from '../themes';
@@ -26,15 +26,25 @@ export class PresentationView extends ItemView {
   private onGetFontCSS: ((frontmatter: any) => Promise<string>) | null = null;
   private onStartPresentation: ((file: TFile, slideIndex: number) => void) | null = null;
   private onStartPresenterView: ((file: TFile) => Promise<void>) | null = null;
+  private onExportHTML: ((file: TFile) => Promise<void>) | null = null;
   private fontWeightsCache: Map<string, number[]> = new Map();
   
   // Live update related properties
   private sourceFile: TFile | null = null;
   private fileWatcher: any = null;
+  private updateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingContent: string | null = null;
   
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
     this.parser = new SlideParser();
+  }
+  
+  /**
+   * Set the default content mode for parsing (ia-presenter or advanced-slides)
+   */
+  setDefaultContentMode(mode: ContentMode): void {
+    this.parser.setDefaultContentMode(mode);
   }
   
   /**
@@ -134,7 +144,12 @@ export class PresentationView extends ItemView {
   }
   
   async onClose() {
-    // Cleanup
+    // Cleanup debounce timer
+    if (this.updateDebounceTimer) {
+      clearTimeout(this.updateDebounceTimer);
+      this.updateDebounceTimer = null;
+    }
+    this.pendingContent = null;
   }
   
   async loadFile(file: TFile) {
@@ -159,8 +174,9 @@ export class PresentationView extends ItemView {
     this.currentSlideIndex = 0;
     this.theme = theme || null;
     
-    // Set up live updates if we have a source file
+    // Set the file reference if provided
     if (sourceFile) {
+      this.file = sourceFile;
       this.setupLiveUpdates(sourceFile);
     }
     
@@ -186,6 +202,10 @@ export class PresentationView extends ItemView {
   setOnStartPresenterView(callback: (file: TFile) => Promise<void>) {
     this.onStartPresenterView = callback;
   }
+
+  setOnExportHTML(callback: (file: TFile) => Promise<void>) {
+    this.onExportHTML = callback;
+  }
   
   private setupLiveUpdates(sourceFile: TFile) {
     const debug = getDebugService();
@@ -199,33 +219,58 @@ export class PresentationView extends ItemView {
     
     this.sourceFile = sourceFile;
     
-    // Watch for file changes
+    // Watch for file changes with debouncing (1 second delay to reduce flickering)
     this.fileWatcher = this.registerEvent(
       this.app.vault.on('modify', async (file) => {
         if (file.path === sourceFile.path) {
-          debug.log('presentation-view', 'Source file modified, updating presentation...');
-          try {
-            if (!(file instanceof TFile)) return;
-            const content = await this.app.vault.read(file);
-            const newPresentation = this.parser.parse(content);
-            
-            // Update the presentation while keeping current slide
-            const currentSlide = this.currentSlideIndex;
-            this.presentation = newPresentation;
-            
-            // Make sure we don't go beyond the slide count
-            if (currentSlide >= newPresentation.slides.length) {
-              this.currentSlideIndex = newPresentation.slides.length - 1;
-            }
-            
-            this.render();
-            debug.log('presentation-view', 'Presentation updated successfully');
-          } catch (error) {
-            debug.error('presentation-view', 'Failed to update presentation on file change:', error);
+          if (!(file instanceof TFile)) return;
+          
+          // Read content immediately but debounce the update
+          const content = await this.app.vault.read(file);
+          this.pendingContent = content;
+          
+          // Clear existing timer
+          if (this.updateDebounceTimer) {
+            clearTimeout(this.updateDebounceTimer);
           }
+          
+          // Debounce update to 1 second
+          this.updateDebounceTimer = setTimeout(() => {
+            if (this.pendingContent) {
+              this.applyContentUpdate(this.pendingContent);
+              this.pendingContent = null;
+            }
+          }, 1000);
         }
       })
     );
+  }
+  
+  /**
+   * Apply a content update to the presentation (called after debounce)
+   */
+  private applyContentUpdate(content: string) {
+    const debug = getDebugService();
+    debug.log('presentation-view', 'Applying debounced content update...');
+    
+    try {
+      const newPresentation = this.parser.parse(content);
+      
+      // Update the presentation while keeping current slide
+      const currentSlide = this.currentSlideIndex;
+      this.presentation = newPresentation;
+      
+      // Make sure we don't go beyond the slide count
+      if (currentSlide >= newPresentation.slides.length) {
+        this.currentSlideIndex = newPresentation.slides.length - 1;
+      }
+      
+      // Only update the slide display, not the entire view
+      this.updateSlideDisplay();
+      debug.log('presentation-view', 'Presentation updated successfully');
+    } catch (error) {
+      debug.error('presentation-view', 'Failed to update presentation on file change:', error);
+    }
   }
   
   goToSlide(index: number, triggerCallback: boolean = true) {
@@ -438,7 +483,10 @@ More content here...`
     // Export button
     const exportBtn = actions.createEl('button');
     exportBtn.createSpan({ text: 'Export HTML' });
-    exportBtn.addEventListener('click', () => this.exportHTML());
+    exportBtn.addEventListener('click', () => {
+      console.log('[PresentationView] Export HTML button clicked');
+      this.exportHTML();
+    });
     
     // More options
     const moreBtn = actions.createEl('button');
@@ -1145,18 +1193,41 @@ More content here...`
   }
   
   private async exportHTML() {
-    if (!this.presentation || !this.file) return;
+    try {
+      console.log('[PresentationView] exportHTML() called');
+      console.log('[PresentationView]   file:', this.file?.path || 'null');
+      console.log('[PresentationView]   onExportHTML callback:', this.onExportHTML ? 'set' : 'not set');
+      
+      if (!this.file) {
+        console.warn('[PresentationView] Export aborted: no file');
+        return;
+      }
+      
+      // Use the plugin's export service if available (full-featured export)
+      if (this.onExportHTML) {
+        console.log('[PresentationView] Calling onExportHTML callback...');
+        await this.onExportHTML(this.file);
+        console.log('[PresentationView] onExportHTML callback completed');
+        return;
+      }
+      
+      console.log('[PresentationView] Using fallback local export');
+      // Fallback to simple local export
+      if (!this.presentation) return;
     
-    const theme = this.getThemeByName(this.presentation.frontmatter.theme || '');
-    const renderer = this.createRenderer(theme);
-    const html = renderer.renderHTML();
-    
-    // Save to file
-    const exportPath = this.file.path.replace(/\.md$/, '.html');
-    await this.app.vault.create(exportPath, html);
-    
-    // Notify user
-    new (require('obsidian').Notice)(`Exported to ${exportPath}`);
+      const theme = this.getThemeByName(this.presentation.frontmatter.theme || '');
+      const renderer = this.createRenderer(theme);
+      const html = renderer.renderHTML();
+      
+      // Save to file
+      const exportPath = this.file.path.replace(/\.md$/, '.html');
+      await this.app.vault.create(exportPath, html);
+      
+      // Notify user
+      new (require('obsidian').Notice)(`Exported to ${exportPath}`);
+    } catch (error) {
+      console.error('[PresentationView] Export failed:', error);
+    }
   }
   
   private showOptionsMenu(e: MouseEvent) {

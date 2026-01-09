@@ -44,14 +44,10 @@ export const CHANGELOG: ChangelogEntry[] = [
 		version: '0.1.8',
 		date: '2026-01-03',
 		changes: [
-			'New: Support for 6 accent colors (Accent 1-6) with unified color pickers',
 			'New: Support for dynamic background gradients in both light and dark modes',
-			'Themes: Added 7 additional built-in themes (Garamond, LA, Milano, New York, Paris, San Francisco, Vancouver)',
-			'Fix: Resolved issue where font colors were not applying to Helvetica and Swiss themes',
+			'Fix: Resolved issue where font colors were not applying to themes',
 			'Improved: Theme-specific CSS classes correctly applied to presentation body',
 			'Improved: Automatic selection of active appearance mode (Light/Dark) in Inspector panel',
-			'Improved: Refactored all 12 built-in themes to use CSS variables for robust customization',
-			'Fix: Corrected light/dark mode color mapping for Basel, Copenhagen, and Helvetica themes',
 		],
 	},
 	{
@@ -111,9 +107,7 @@ export const CHANGELOG: ChangelogEntry[] = [
 		version: '0.1.3',
 		date: '2026-01-02',
 		changes: [
-			'New: Basel theme - Swiss serif typography with Noto Serif font',
-			'New: Copenhagen theme - Nordic elegance with Albert Sans font',
-			'Improved: All built-in themes now have proper light/dark mode support',
+			'Improved: Built-in themes now have proper light/dark mode support',
 			'Improved: Theme loading and color variable handling',
 		],
 	},

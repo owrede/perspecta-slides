@@ -623,12 +623,12 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 		const modeInfoBox = containerEl.createDiv({ cls: 'perspecta-slides-info-box' });
 		modeInfoBox.createEl('h4', { text: 'Content Mode Explanation' });
 		
-		const iaInfo = modeInfoBox.createDiv();
-		iaInfo.createEl('strong', { text: 'Perspecta mode:' });
-		const iaList = iaInfo.createEl('ul');
-		iaList.createEl('li', { text: 'Tab-indented content appears on slide' });
-		iaList.createEl('li', { text: 'Regular paragraphs become speaker notes' });
-		iaList.createEl('li', { text: 'Headings always appear on slide' });
+		const perspectaInfo = modeInfoBox.createDiv();
+		perspectaInfo.createEl('strong', { text: 'Perspecta mode:' });
+		const perspectaList = perspectaInfo.createEl('ul');
+		perspectaList.createEl('li', { text: 'Tab-indented content appears on slide' });
+		perspectaList.createEl('li', { text: 'Regular paragraphs become speaker notes' });
+		perspectaList.createEl('li', { text: 'Headings always appear on slide' });
 		
 		const advancedInfo = modeInfoBox.createDiv();
 		advancedInfo.createEl('strong', { text: 'Advanced Slides mode:' });

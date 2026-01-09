@@ -1,6 +1,6 @@
 # Perspecta Slides Theme Specification
 
-Based on iA Presenter theme concepts with extensions for column layouts and enhanced styling controls.
+Theme system specification with extensions for column layouts and enhanced styling controls.
 
 ## Theme Directory Structure
 
@@ -506,7 +506,7 @@ To include custom fonts in a theme:
 
 ## Legacy Format (Custom Themes)
 
-Custom themes loaded from the vault still support the legacy iA Presenter-compatible format with `template.json` and `presets.json`. See the ThemeLoader for conversion logic.
+Custom themes loaded from the vault still support the legacy format with `template.json` and `presets.json`. See the ThemeLoader for conversion logic.
 
 ### Legacy template.json
 

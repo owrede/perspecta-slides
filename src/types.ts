@@ -429,7 +429,7 @@ export const DEFAULT_SETTINGS: PerspecaSlidesSettings = {
   showThumbnailNavigator: true,
   showInspector: true,
   defaultAspectRatio: '16:9',
-  defaultContentMode: 'perspecta',
+  defaultContentMode: 'advanced-slides',
   exportIncludeSpeakerNotes: false,
   customThemesFolder: 'perspecta-themes',
   fontCacheFolder: 'perspecta-fonts',

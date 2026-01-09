@@ -103,7 +103,6 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 			{ id: 'presentation', label: 'Presentation' },
 			{ id: 'themes', label: 'Themes' },
 			{ id: 'fonts', label: 'Fonts' },
-			{ id: 'content', label: 'Content' },
 			{ id: 'export', label: 'Export' },
 			{ id: 'debug', label: 'Debug' },
 		];
@@ -134,9 +133,6 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 				break;
 			case 'fonts':
 				this.displayFontsSettings(content);
-				break;
-			case 'content':
-				this.displayContentSettings(content);
 				break;
 			case 'export':
 				this.displayExportSettings(content);

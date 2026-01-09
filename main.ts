@@ -1047,6 +1047,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
       if (!(view instanceof PresentationView)) continue;
       view.setImagePathResolver(this.imagePathResolver);
       view.setPresentationImagePathResolver(this.presentationImagePathResolver);
+      // Ensure parser uses correct content mode for live updates
+      view.setDefaultContentMode(this.settings.defaultContentMode);
       view.setPresentation(presentation, theme);
       view.goToSlide(currentSlideIndex, false);
     }
@@ -1171,6 +1173,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
       if (this.themeLoader) {
         view.setThemeLoader(this.themeLoader);
       }
+      // Ensure parser uses correct content mode for live updates
+      view.setDefaultContentMode(this.settings.defaultContentMode);
       view.setPresentation(presentation, theme, file);
       // Wire up slide change callback for navigation controls (prev/next buttons)
       view.setOnSlideChange((index) => {

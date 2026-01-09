@@ -6,7 +6,7 @@ A powerful Obsidian plugin for creating beautiful presentations from Markdown. W
 
 ### 🎨 Presentation Design
 
-- **Multiple themes** - Built-in themes (Zurich, Kyoto, Berlin, Minimal) with light/dark mode support
+- **Built-in theme** - Default theme with dynamic gradient backgrounds and light/dark mode support
 - **Custom themes** - Save your design settings as reusable themes with bundled fonts
 - **Google Fonts** - Download and cache fonts locally for offline presentations
 - **Typography control** - Font selection, size scaling, weight, spacing, and line height
@@ -141,7 +141,7 @@ Configure your presentation at the top of the file:
 ---
 title: My Presentation
 author: Your Name
-theme: zurich
+theme: default
 
 # Typography
 titleFont: Helvetica
@@ -208,16 +208,13 @@ With a background image
 
 ## Themes
 
-### Built-in Themes
+### Built-in Theme
 
-- **zurich** - Minimal Swiss design with clean typography
-- **kyoto** - Dynamic gradient theme with soft pastels
-- **berlin** - Professional theme with deep blue tones
-- **minimal** - Ultra-clean with generous whitespace
+- **default** - Clean, professional theme with Inter font and dynamic gradient backgrounds
 
 ```yaml
 ---
-theme: kyoto
+theme: default
 ---
 ```
 

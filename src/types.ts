@@ -1,6 +1,6 @@
 // Core types for Perspecta Slides
 
-export type ContentMode = 'ia-presenter' | 'advanced-slides';
+export type ContentMode = 'perspecta' | 'advanced-slides';
 
 export interface PresentationFrontmatter {
   title?: string;
@@ -154,7 +154,7 @@ export interface SlideMetadata {
 }
 
 /**
- * Slide Layout Types (iA Presenter compatible + column extensions)
+ * Slide Layout Types
  * 
  * STANDARD SLIDES:
  * - cover: Opening/title slide with centered content
@@ -178,7 +178,7 @@ export interface SlideMetadata {
  * - grid: Auto-grid for multiple items (2x2, 2x3, etc.)
  */
 export type SlideLayout =
-  // Standard slides (iA Presenter compatible)
+  // Standard slides
   | 'cover'
   | 'title'
   | 'section'
@@ -255,7 +255,7 @@ export interface Presentation {
 }
 
 // ============================================
-// THEME SYSTEM (iA Presenter compatible)
+// THEME SYSTEM
 // ============================================
 
 /**
@@ -429,7 +429,7 @@ export const DEFAULT_SETTINGS: PerspecaSlidesSettings = {
   showThumbnailNavigator: true,
   showInspector: true,
   defaultAspectRatio: '16:9',
-  defaultContentMode: 'ia-presenter',
+  defaultContentMode: 'perspecta',
   exportIncludeSpeakerNotes: false,
   customThemesFolder: 'perspecta-themes',
   fontCacheFolder: 'perspecta-fonts',

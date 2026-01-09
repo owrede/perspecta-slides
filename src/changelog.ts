@@ -113,12 +113,8 @@ export const CHANGELOG: ChangelogEntry[] = [
 		changes: [
 			'New: Basel theme - Swiss serif typography with Noto Serif font',
 			'New: Copenhagen theme - Nordic elegance with Albert Sans font',
-			'New: Added 2 additional iA Presenter theme translations',
-			'Fix: Fixed Berlin theme heading colors for light/dark mode',
-			'Fix: Fixed Kyoto theme dark mode color contrast',
-			'Fix: Fixed Zurich theme light/dark mode color definitions',
 			'Improved: All built-in themes now have proper light/dark mode support',
-			'Themes: Now includes 7 built-in themes',
+			'Improved: Theme loading and color variable handling',
 		],
 	},
 	{
@@ -146,7 +142,7 @@ export const CHANGELOG: ChangelogEntry[] = [
 			'Fix: Thumbnail iframes no longer cause console warnings',
 			'Improved: Thumbnail Navigator redesigned with integrated SVG circle number badge',
 			'Improved: Dynamic font sizing using --slide-unit CSS variable for responsive scaling',
-			'Improved: PresentationView now uses iA Presenter container class pattern',
+			'Improved: PresentationView now uses container class pattern',
 		],
 	},
 	{
@@ -154,7 +150,7 @@ export const CHANGELOG: ChangelogEntry[] = [
 		date: '2026-01-01',
 		changes: [
 			'Initial release',
-			'iA Presenter-compatible markdown parsing with tab-indented content',
+			'Markdown parsing with tab-indented content for slide visibility',
 			'Advanced Slides compatibility mode (note: marker)',
 			'Thumbnail Navigator with drag-to-reorder slides',
 			'Inspector Panel for slide and presentation settings',
@@ -162,7 +158,7 @@ export const CHANGELOG: ChangelogEntry[] = [
 			'HTML export with standalone presentations',
 			'Present mode with fullscreen browser presentation',
 			'Presenter View with speaker notes',
-			'Built-in themes: Zurich, Kyoto, Berlin, Minimal',
+			'Built-in Default theme with dynamic gradient backgrounds',
 			'Custom theme support from vault folder',
 			'Multiple layout types: cover, title, section, columns, image layouts',
 			'Keyboard navigation in presentation view',

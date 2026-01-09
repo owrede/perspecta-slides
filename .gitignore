@@ -28,3 +28,7 @@ npm-debug.log*
 # Sample Data
 sample-data/*
 examples/*
+
+# Agents
+.amp/
+.claude/

@@ -609,7 +609,7 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 			.setName('Default content mode')
 			.setDesc('How to distinguish slide content from speaker notes.')
 			.addDropdown(dropdown => {
-				dropdown.addOption('ia-presenter', 'iA Presenter (tab = visible)');
+				dropdown.addOption('perspecta', 'Perspecta (tab = visible)');
 				dropdown.addOption('advanced-slides', 'Advanced Slides (note: = notes)');
 				dropdown.setValue(this.plugin.settings.defaultContentMode);
 				dropdown.onChange(async (value: ContentMode) => {
@@ -624,7 +624,7 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 		modeInfoBox.createEl('h4', { text: 'Content Mode Explanation' });
 		
 		const iaInfo = modeInfoBox.createDiv();
-		iaInfo.createEl('strong', { text: 'iA Presenter mode:' });
+		iaInfo.createEl('strong', { text: 'Perspecta mode:' });
 		const iaList = iaInfo.createEl('ul');
 		iaList.createEl('li', { text: 'Tab-indented content appears on slide' });
 		iaList.createEl('li', { text: 'Regular paragraphs become speaker notes' });
@@ -656,14 +656,14 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 
 		const usageEl = containerEl.createDiv({ cls: 'perspecta-slides-usage' });
 		usageEl.createEl('p', { 
-			text: 'Create presentations using Markdown with iA Presenter-style syntax:' 
+			text: 'Create presentations using Markdown:' 
 		});
 
 		const codeEl = usageEl.createEl('pre');
 		codeEl.createEl('code', { 
 			text: `---
 title: My Presentation
-theme: zurich
+theme: default
 ---
 
 # Welcome Slide

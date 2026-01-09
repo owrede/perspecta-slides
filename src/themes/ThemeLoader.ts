@@ -1,6 +1,7 @@
 import { App, TFolder, TFile } from 'obsidian';
 import { Theme, ThemeTemplate, ThemePreset, ThemePresetsFile, DEFAULT_SEMANTIC_COLORS } from '../types';
 import { ThemeJsonFile, DEFAULT_SEMANTIC_COLORS_LIGHT, DEFAULT_SEMANTIC_COLORS_DARK } from './ThemeSchema';
+import { builtInThemes, getBuiltInTheme, getBuiltInThemeNames } from './builtin';
 
 export class ThemeLoader {
   private app: App;
@@ -15,7 +16,12 @@ export class ThemeLoader {
   async loadThemes(): Promise<void> {
     this.themes.clear();
 
-    // Load custom themes from vault only (no built-in themes)
+    // Load built-in themes first
+    for (const [name, theme] of Object.entries(builtInThemes)) {
+      this.themes.set(name, theme);
+    }
+
+    // Load custom themes from vault (may override built-in themes)
     await this.loadCustomThemes();
   }
 
@@ -58,7 +64,7 @@ export class ThemeLoader {
       return this.loadThemeFromThemeJson(folder, themeJsonFile);
     }
 
-    // Fall back to template.json (legacy iA Presenter format)
+    // Fall back to template.json (legacy format)
     const templateFile = folder.children.find(
       f => f instanceof TFile && f.name === 'template.json'
     ) as TFile | undefined;
@@ -266,8 +272,7 @@ export class ThemeLoader {
   }
 
   getBuiltInThemes(): Theme[] {
-    // No built-in themes anymore
-    return [];
+    return Object.values(builtInThemes);
   }
 
   getCustomThemes(): Theme[] {

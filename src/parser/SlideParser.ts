@@ -11,7 +11,7 @@ import {
 } from '../types';
 
 export class SlideParser {
-  private defaultContentMode: ContentMode = 'ia-presenter';
+  private defaultContentMode: ContentMode = 'perspecta';
   private debugMode: boolean = false;
 
   constructor() { }
@@ -44,7 +44,7 @@ export class SlideParser {
    * 
    * Content Mode determines how slide content vs speaker notes are distinguished:
     * 
-    * 'ia-presenter' (iA Presenter style):
+    * 'perspecta' (Perspecta style):
     * - `---` separates slides (horizontal rule)
     * - Regular text = speaker notes (not visible on slide)
     * - Headings (#, ##, etc.) = visible on slide
@@ -428,7 +428,7 @@ export class SlideParser {
     const speakerNotes: string[] = [];
     let metadata: SlideMetadata = {};
 
-    // Check for per-slide metadata at the start (like iA Presenter content blocks)
+    // Check for per-slide metadata at the start
     const { slideMetadata, contentLines } = this.extractSlideMetadata(lines);
     metadata = slideMetadata;
 
@@ -492,7 +492,7 @@ export class SlideParser {
   }
 
   /**
-   * Parse slide content using iA Presenter mode:
+   * Parse slide content using Perspecta mode:
    * - Tab-indented content = visible on slide
    * - Non-indented paragraphs = speaker notes
    * - Headings, images, code blocks = always visible
@@ -700,7 +700,7 @@ export class SlideParser {
         continue;
       }
 
-      // Regular paragraph - speaker notes (not visible in iA Presenter mode)
+      // Regular paragraph - speaker notes (not visible in Perspecta mode)
       speakerNotes.push(line);
       i++;
       lastWasColumnContent = false;
@@ -1008,7 +1008,7 @@ export class SlideParser {
     let startIndex = 0;
 
     // Look for metadata at the start of the slide
-    // Format: key: value (similar to iA Presenter content blocks)
+    // Format: key: value
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
 

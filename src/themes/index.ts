@@ -1,21 +1,21 @@
 import { Theme, DEFAULT_SEMANTIC_COLORS } from '../types';
 import { DEFAULT_SEMANTIC_COLORS_LIGHT, DEFAULT_SEMANTIC_COLORS_DARK } from './ThemeSchema';
+import { getBuiltInTheme, getBuiltInThemeNames } from './builtin';
 
 export { ThemeLoader } from './ThemeLoader';
 
 /**
- * Get a theme by name - now returns undefined for built-in themes
- * since all built-in themes are removed. Themes come from user's custom themes folder.
+ * Get a built-in theme by name
  */
 export function getTheme(name: string): Theme | undefined {
-  return undefined;
+  return getBuiltInTheme(name);
 }
 
 /**
- * Get available theme names - returns empty since no built-in themes
+ * Get available built-in theme names
  */
 export function getThemeNames(): string[] {
-  return [];
+  return getBuiltInThemeNames();
 }
 
 /**

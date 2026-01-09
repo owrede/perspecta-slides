@@ -4,7 +4,7 @@ import { generateThemeCSS } from '../themes';
 /**
  * SlideRenderer-Renders presentations to HTML
  * 
- * Uses iA Presenter-compatible container/layout class pattern:
+ * Uses container/layout class pattern:
  *-Container class (e.g., .cover-container, .section-container) on outer element
  *-Layout class (e.g., .layout-cover, .layout-section) on content
  *-Light/dark appearance classes
@@ -104,7 +104,7 @@ export class SlideRenderer {
   }
 
   /**
-   * Get the container class for a layout (iA Presenter pattern)
+   * Get the container class for a layout
    */
   private getContainerClass(layout: SlideLayout): string {
     switch (layout) {
@@ -763,7 +763,7 @@ export class SlideRenderer {
   // ==================
 
   /**
-   * Cover Layout: Opening slide with centered content (iA Presenter compatible)
+   * Cover Layout: Opening slide with centered content
    * Uses centered flex layout - no slots needed
    */
   private renderCoverLayout(elements: SlideElement[]): string {

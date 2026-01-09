@@ -41,7 +41,7 @@ export class PresentationView extends ItemView {
   }
   
   /**
-   * Set the default content mode for parsing (ia-presenter or advanced-slides)
+   * Set the default content mode for parsing (perspecta or advanced-slides)
    */
   setDefaultContentMode(mode: ContentMode): void {
     this.parser.setDefaultContentMode(mode);
@@ -428,7 +428,7 @@ export class PresentationView extends ItemView {
     helpSection.createEl('pre', { 
       text: `---
 title: My Presentation
-theme: zurich
+theme: default
 ---
 
 # Welcome
@@ -495,7 +495,7 @@ More content here...`
   }
   
   /**
-   * Get the container class for a layout (iA Presenter pattern)
+   * Get the container class for a layout
    */
   private getContainerClass(layout: string): string {
     switch (layout) {
@@ -687,7 +687,7 @@ More content here...`
   // ==================
   
   /**
-   * Cover Layout: Opening slide with centered content (iA Presenter compatible)
+   * Cover Layout: Opening slide with centered content
    */
   private renderCoverLayout(container: HTMLElement, elements: SlideElement[]) {
     elements.forEach(el => this.renderElement(container, el));

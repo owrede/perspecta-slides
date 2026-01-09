@@ -21,11 +21,13 @@ export class SaveThemeModal extends Modal {
   private onSave: (name: string, overwrite: boolean) => Promise<void>;
   private existingThemes: string[];
   private customThemeNames: string[];
+  private customThemesFolder: string;
 
-  constructor(app: App, existingThemes: string[], customThemeNames: string[], onSave: (name: string, overwrite: boolean) => Promise<void>) {
+  constructor(app: App, existingThemes: string[], customThemeNames: string[], customThemesFolder: string, onSave: (name: string, overwrite: boolean) => Promise<void>) {
     super(app);
     this.existingThemes = existingThemes;
     this.customThemeNames = customThemeNames;
+    this.customThemesFolder = customThemesFolder.replace(/\/$/, '') || 'perspecta-themes';
     this.onSave = onSave;
   }
 
@@ -75,7 +77,7 @@ export class SaveThemeModal extends Modal {
 
       // Check if theme folder actually exists right now (re-check, don't rely on cached state)
       const folderName = this.themeName.toLowerCase().replace(/\s+/g, '-');
-      const themeFolderPath = `perspecta-themes/${folderName}`;
+      const themeFolderPath = `${this.customThemesFolder}/${folderName}`;
       const themeFolder = this.app.vault.getAbstractFileByPath(themeFolderPath);
       const folderActuallyExists = themeFolder instanceof TFolder;
       

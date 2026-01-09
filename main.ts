@@ -2027,6 +2027,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       this.app,
       builtInNames,
       customThemeNames,
+      this.settings.customThemesFolder,
       async (themeName: string, overwrite: boolean) => {
         const exporter = new ThemeExporter(
           this.app,

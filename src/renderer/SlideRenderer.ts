@@ -250,11 +250,15 @@ export class SlideRenderer {
   }
 
   /**
-   * Check if a layout has a specific background defined (from frontmatter or theme)
-   * Layout backgrounds take precedence over dynamic backgrounds
+   * Check if a layout has a specific background override defined in frontmatter.
+   * Layout backgrounds take precedence over dynamic backgrounds.
+   * 
+   * Only frontmatter overrides count - theme layout backgrounds are now always overridden
+   * by the CSS generation (falling back to general background when not set in frontmatter).
+   * This ensures dynamic backgrounds work for all layouts unless explicitly overridden.
    */
   private hasLayoutBackground(layout: SlideLayout, mode: 'light' | 'dark', frontmatter: PresentationFrontmatter): boolean {
-    // Check frontmatter first
+    // Only check frontmatter - theme layout backgrounds are handled in CSS
     if (layout === 'cover') {
       if (mode === 'light' && frontmatter.lightBgCover) return true;
       if (mode === 'dark' && frontmatter.darkBgCover) return true;
@@ -264,32 +268,8 @@ export class SlideRenderer {
     } else if (layout === 'section') {
       if (mode === 'light' && frontmatter.lightBgSection) return true;
       if (mode === 'dark' && frontmatter.darkBgSection) return true;
-    } else {
-      // Default and other layouts don't have specific backgrounds
-      return false;
     }
-
-    // Check theme for layout-specific backgrounds
-    if (this.theme?.themeJsonData) {
-      const presets = this.theme.themeJsonData.presets;
-      const modePreset = mode === 'light' ? presets.light : presets.dark;
-
-      if (layout === 'cover' && modePreset.backgrounds.cover) {
-        // Check if it's explicitly set (not just inheriting from general)
-        const bg = modePreset.backgrounds.cover;
-        if (bg.type === 'solid' && bg.color) return true;
-        if ((bg.type === 'gradient' || bg.type === 'dynamic') && bg.colors?.length) return true;
-      } else if (layout === 'title' && modePreset.backgrounds.title) {
-        const bg = modePreset.backgrounds.title;
-        if (bg.type === 'solid' && bg.color) return true;
-        if ((bg.type === 'gradient' || bg.type === 'dynamic') && bg.colors?.length) return true;
-      } else if (layout === 'section' && modePreset.backgrounds.section) {
-        const bg = modePreset.backgrounds.section;
-        if (bg.type === 'solid' && bg.color) return true;
-        if ((bg.type === 'gradient' || bg.type === 'dynamic') && bg.colors?.length) return true;
-      }
-    }
-
+    
     return false;
   }
 
@@ -445,7 +425,7 @@ export class SlideRenderer {
         <div class="slide-content layout-${layout}">
           ${layout === 'full-image' ? '' : this.renderSlideContent(slide, layout)}
         </div>
-        ${this.renderFootnotes(slide)}
+        ${this.renderFootnotes(slide, layout)}
       </div>
       ${showHeaderFooter ? this.renderFooter(frontmatter, index, this.presentation.slides.length) : ''}
       ${renderSpeakerNotes && slide.speakerNotes.length > 0 ? `<aside class="speaker-notes">${slide.speakerNotes.map(n => this.renderMarkdown(n)).join('<br>')}</aside>` : ''}
@@ -681,10 +661,74 @@ export class SlideRenderer {
   }
 
   /**
+   * Get the effective column count for a slide layout
+   * Used to determine footnote width restrictions
+   */
+  private getColumnCount(slide: Slide, layout: string): number {
+    switch (layout) {
+      case '2-columns':
+      case '2-columns-1+2':
+      case '2-columns-2+1':
+        return 2;
+      case '3-columns':
+        return 3;
+      case 'default':
+        // For default layout, auto-detect from columnIndex in elements
+        const columnElements = slide.elements.filter(e => e.columnIndex !== undefined);
+        if (columnElements.length === 0) return 1;
+        const maxColumnIndex = Math.max(...columnElements.map(e => e.columnIndex ?? 0));
+        return Math.min(maxColumnIndex + 1, 3);
+      default:
+        return 1;
+    }
+  }
+
+  /**
+   * Get the first column width CSS calc() for a layout
+   * 
+   * The footnotes container is positioned in .slide-body (full width),
+   * but columns are inside .slide-content which has content margins.
+   * So we must subtract content margins from the calculation.
+   * 
+   * Content area = 100% - content-left - content-right (in slide-units)
+   * Column gaps: 2-col = 3*su, 3-col = 5*su
+   * First column = (content area - gaps) / numColumns * flexRatio
+   */
+  private getFirstColumnWidth(layout: string, columnCount: number): string | null {
+    // Content margins - must be wrapped in parens to subtract both left AND right
+    const contentLeft = 'var(--content-left, var(--content-width, 5)) * var(--slide-unit)';
+    const contentRight = 'var(--content-right, var(--content-width, 5)) * var(--slide-unit)';
+    // Gap sizes from CSS
+    const gap2col = 'var(--slide-unit) * 3';
+    const gap3col = 'var(--slide-unit) * 5';
+    
+    switch (layout) {
+      case '2-columns':
+        // (content area - 1 gap) / 2
+        return `(100% - (${contentLeft}) - (${contentRight}) - (${gap2col})) / 2`;
+      case '3-columns':
+        // (content area - 2 gaps) / 3
+        return `(100% - (${contentLeft}) - (${contentRight}) - 2 * (${gap3col})) / 3`;
+      case '2-columns-1+2':
+        // narrow-wide: flex 1:2, so first column is 1/3 of (content area - gap)
+        return `(100% - (${contentLeft}) - (${contentRight}) - (${gap2col})) / 3`;
+      case '2-columns-2+1':
+        // wide-narrow: flex 2:1, so first column is 2/3 of (content area - gap)
+        return `(100% - (${contentLeft}) - (${contentRight}) - (${gap2col})) * 2 / 3`;
+      case 'default':
+        if (columnCount === 2) return `(100% - (${contentLeft}) - (${contentRight}) - (${gap2col})) / 2`;
+        if (columnCount === 3) return `(100% - (${contentLeft}) - (${contentRight}) - 2 * (${gap3col})) / 3`;
+        return null;
+      default:
+        return null;
+    }
+  }
+
+  /**
    * Render footnotes section for a slide
    * Only renders if the slide has footnotes referenced
    */
-  private renderFootnotes(slide: Slide): string {
+  private renderFootnotes(slide: Slide, layout?: string): string {
     if (!slide.footnotes || slide.footnotes.length === 0) {
       return '';
     }
@@ -694,7 +738,19 @@ export class SlideRenderer {
       return `<div class="footnote-item"><span class="footnote-number"><sup>${fn.id}</sup></span><span class="footnote-text">${renderedContent}</span></div>`;
     }).join('\n');
 
-    return `<div class="slide-footnotes">
+    // Determine column count and first column width for multi-column layouts
+    const columnCount = layout ? this.getColumnCount(slide, layout) : 1;
+    const firstColumnWidth = layout ? this.getFirstColumnWidth(layout, columnCount) : null;
+    const footnoteClass = columnCount > 1 ? `slide-footnotes columns-${columnCount}` : 'slide-footnotes';
+    
+    // For multi-column layouts, limit footnotes to first column width
+    // Must set right:auto to override the base CSS that sets both left and right
+    // The width calc accounts for gaps between columns
+    const footnoteStyle = firstColumnWidth 
+      ? ` style="right: auto; width: calc(${firstColumnWidth});"`
+      : '';
+
+    return `<div class="${footnoteClass}"${footnoteStyle}>
       <div class="footnotes-separator"></div>
       <div class="footnotes-content">
         ${footnotesHtml}
@@ -2103,8 +2159,8 @@ export class SlideRenderer {
       .half-content-panel .slide-body {
         position: absolute;
         top: calc(var(--title-top, 5) * var(--slide-unit));
-        left: calc(var(--content-width, 5) * var(--slide-unit));
-        right: calc(var(--content-width, 5) * var(--slide-unit));
+        left: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
+        right: calc(var(--content-right, var(--content-width, 5)) * var(--slide-unit));
         bottom: calc(var(--footer-bottom, 2.5) * var(--slide-unit) + var(--slide-unit) * 3);
         display: flex;
         flex-direction: column;
@@ -2439,12 +2495,14 @@ ${this.getSlideCSS()}
     if (frontmatter.darkFooterText) vars.push(`  --dark-footer-text: ${frontmatter.darkFooterText};`);
 
     // Layout-specific backgrounds
-    if (frontmatter.lightBgCover) vars.push(`  --light-bg-cover: ${frontmatter.lightBgCover};`);
-    if (frontmatter.lightBgTitle) vars.push(`  --light-bg-title: ${frontmatter.lightBgTitle};`);
-    if (frontmatter.lightBgSection) vars.push(`  --light-bg-section: ${frontmatter.lightBgSection};`);
-    if (frontmatter.darkBgCover) vars.push(`  --dark-bg-cover: ${frontmatter.darkBgCover};`);
-    if (frontmatter.darkBgTitle) vars.push(`  --dark-bg-title: ${frontmatter.darkBgTitle};`);
-    if (frontmatter.darkBgSection) vars.push(`  --dark-bg-section: ${frontmatter.darkBgSection};`);
+    // Always output these to override theme defaults when user removes a custom layout background
+    // If not set in frontmatter, fall back to general background
+    vars.push(`  --light-bg-cover: ${frontmatter.lightBgCover || 'var(--light-background)'};`);
+    vars.push(`  --light-bg-title: ${frontmatter.lightBgTitle || 'var(--light-background)'};`);
+    vars.push(`  --light-bg-section: ${frontmatter.lightBgSection || 'var(--light-background)'};`);
+    vars.push(`  --dark-bg-cover: ${frontmatter.darkBgCover || 'var(--dark-background)'};`);
+    vars.push(`  --dark-bg-title: ${frontmatter.darkBgTitle || 'var(--dark-background)'};`);
+    vars.push(`  --dark-bg-section: ${frontmatter.darkBgSection || 'var(--dark-background)'};`);
 
     if (frontmatter.lightDynamicBackground) {
       vars.push(`  --light-bg-gradient: ${frontmatter.lightDynamicBackground.join(', ')};`);

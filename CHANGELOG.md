@@ -2,6 +2,18 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.7] - 2026-01-09
+
+### New Features
+
+- **New**: Footnotes now respect column layouts - footnote width is automatically limited to first column width on multi-column slides
+- **New**: Smart footnote width calculation accounts for column count, gaps, and content margins for 2-column, 3-column, and ratio layouts (1+2, 2+1)
+
+### Bug Fixes
+
+- **Fix**: Half-image layout content now properly aligns with header and footer when using custom `content-left`/`content-right` frontmatter values
+- **Fix**: `.half-content-panel .slide-body` CSS now uses `--content-left`/`--content-right` variables instead of hardcoded `--content-width`
+
 ## [0.2.6] - 2026-01-09
 
 ### New Features

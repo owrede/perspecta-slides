@@ -1544,6 +1544,11 @@ export class InspectorPanelView extends ItemView {
 
     const theme = this.getThemeByName(fm.theme || '');
     const themePreset = theme?.presets[0];
+    
+    // Get the general background color (frontmatter override > theme > fallback)
+    const generalBgLight = fm.lightBackground || themePreset?.LightBackgroundColor || '#ffffff';
+    const generalBgDark = fm.darkBackground || themePreset?.DarkBackgroundColor || '#1a1a1a';
+    const generalBg = mode === 'light' ? generalBgLight : generalBgDark;
 
     const layoutConfigs = [
       { label: 'Cover Slides', lightKey: 'lightBgCover' as const, darkKey: 'darkBgCover' as const },
@@ -1560,10 +1565,7 @@ export class InspectorPanelView extends ItemView {
     // Show custom layout backgrounds
     for (const config of customLayouts) {
       const key = mode === 'light' ? config.lightKey : config.darkKey;
-      const defaultBg = mode === 'light' 
-        ? (themePreset?.LightBackgroundColor || '#ffffff') 
-        : (themePreset?.DarkBackgroundColor || '#1a1a2e');
-      const value = fm[key] || defaultBg;
+      const value = fm[key] || generalBg;
 
       const row = container.createDiv({ cls: 'layout-bg-row' });
       row.createEl('span', { text: config.label, cls: 'color-label' });
@@ -1600,9 +1602,6 @@ export class InspectorPanelView extends ItemView {
       // If only one layout available, just show a simple button that adds it directly
       if (availableLayouts.length === 1) {
         const config = availableLayouts[0];
-        const defaultBg = mode === 'light' 
-          ? (themePreset?.LightBackgroundColor || '#ffffff') 
-          : (themePreset?.DarkBackgroundColor || '#1a1a2e');
         const addBtn = addRow.createEl('button', {
           cls: 'add-layout-bg-btn',
           text: `+ Add ${config.label}`
@@ -1610,7 +1609,7 @@ export class InspectorPanelView extends ItemView {
         addBtn.addEventListener('click', () => {
           const key = mode === 'light' ? config.lightKey : config.darkKey;
           const update: Partial<PresentationFrontmatter> = {};
-          (update as any)[key] = defaultBg;
+          (update as any)[key] = generalBg;
           this.updateFrontmatter(update);
         });
       } else {
@@ -1640,11 +1639,8 @@ export class InspectorPanelView extends ItemView {
           const config = layoutConfigs.find(c => c.label === dropdown.value);
           if (config) {
             const key = mode === 'light' ? config.lightKey : config.darkKey;
-            const defaultBg = mode === 'light' 
-              ? (themePreset?.LightBackgroundColor || '#ffffff') 
-              : (themePreset?.DarkBackgroundColor || '#1a1a2e');
             const update: Partial<PresentationFrontmatter> = {};
-            (update as any)[key] = defaultBg;
+            (update as any)[key] = generalBg;
             this.updateFrontmatter(update);
           }
         });

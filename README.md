@@ -308,18 +308,6 @@ Custom themes include fonts, colors, typography, and margin settings. They appea
 
 ---
 
-## Development
-
-```bash
-git clone https://github.com/owrede/perspecta-slides.git
-cd perspecta-slides
-npm install
-npm run dev    # Development build
-npm run build  # Production build
-```
-
----
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.

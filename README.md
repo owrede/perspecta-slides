@@ -103,12 +103,14 @@ More content
 ```markdown
 # Welcome
 
-This paragraph is a speaker note.
-
-	- This list appears on the slide (tab-indented)
-	- So does this one
+This is content on the slide!
 
 Notes:
+This paragraph is a speaker note.
+
+- This list appears on the slide (tab-indented)
+- So does this one
+
 More notes for the presenter.
 ```
 

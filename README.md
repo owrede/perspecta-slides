@@ -99,10 +99,8 @@ More content
 - **Headings** (`#`, `##`, etc.) → Visible on slide
 - **Tab-indented content** → Visible on slide  
 - **Regular paragraphs** → Speaker notes (only you see them)
-- **Kickers** (`^text`) → Small text above headings
 
 ```markdown
-^Opening remarks
 # Welcome
 
 This paragraph is a speaker note.

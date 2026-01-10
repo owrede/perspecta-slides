@@ -116,6 +116,7 @@ export class SlideRenderer {
       case 'half-image-horizontal': return 'split-horizontal-container';
       case 'caption': return 'caption-container';
       case 'grid': return 'grid-container';
+      case 'footnotes': return 'footnotes-container';
       case '1-column':
       case '2-columns':
       case '3-columns':
@@ -203,6 +204,23 @@ export class SlideRenderer {
   // ============================================
 
   /**
+   * Get the visible slide number (index) for a given slide index
+   * Returns -1 if the slide is hidden
+   */
+  private getVisibleSlideIndex(slideIndex: number): number {
+    if (slideIndex < 0 || slideIndex >= this.presentation.slides.length) return -1;
+    if (this.presentation.slides[slideIndex].hidden) return -1;
+    
+    let visibleIndex = 0;
+    for (let i = 0; i < slideIndex; i++) {
+      if (!this.presentation.slides[i].hidden) {
+        visibleIndex++;
+      }
+    }
+    return visibleIndex;
+  }
+
+  /**
    * Interpolate between colors in a gradient based on position (0-1)
    */
   private interpolateGradientColor(colors: string[], position: number): string {
@@ -277,71 +295,92 @@ export class SlideRenderer {
    * Get dynamic background color for a slide if enabled
    */
   private getDynamicBackgroundColor(slideIndex: number, totalSlides: number, mode: 'light' | 'dark', frontmatter: PresentationFrontmatter): string | null {
-    const useDynamic = frontmatter.useDynamicBackground;
-    if (!useDynamic || useDynamic === 'none') return null;
-    if (useDynamic !== 'both' && useDynamic !== mode) return null;
+     const useDynamic = frontmatter.useDynamicBackground;
+     if (!useDynamic || useDynamic === 'none') return null;
+     if (useDynamic !== 'both' && useDynamic !== mode) return null;
 
-    // Get gradient colors-priority: frontmatter > theme > fallback
-    let colors: string[] | undefined;
-    if (mode === 'light') {
-      colors = frontmatter.lightDynamicBackground;
-    } else {
-      colors = frontmatter.darkDynamicBackground;
-    }
+     // Get gradient colors-priority: frontmatter > theme > fallback
+     let colors: string[] | undefined;
+     if (mode === 'light') {
+       colors = frontmatter.lightDynamicBackground;
+     } else {
+       colors = frontmatter.darkDynamicBackground;
+     }
 
-    // If no frontmatter colors, try to get from theme
-    if (!colors || colors.length === 0) {
-      const themeName = frontmatter.theme || '';
-      const theme = this.theme;
-      if (theme) {
-        const preset = theme.presets[0];
-        if (preset) {
-          colors = mode === 'light' ? preset.LightBgGradient : preset.DarkBgGradient;
-        }
-      }
-    }
+     // If no frontmatter colors, try to get from theme
+     if (!colors || colors.length === 0) {
+       const themeName = frontmatter.theme || '';
+       const theme = this.theme;
+       if (theme) {
+         const preset = theme.presets[0];
+         if (preset) {
+           colors = mode === 'light' ? preset.LightBgGradient : preset.DarkBgGradient;
+         }
+       }
+     }
 
-    // Fallback gradient
-    if (!colors || colors.length === 0) {
-      colors = mode === 'light'
-        ? ['#ffffff', '#f0f0f0', '#e0e0e0']
-        : ['#1a1a2e', '#2d2d44', '#3d3d5c'];
-    }
+     // Fallback gradient
+     if (!colors || colors.length === 0) {
+       colors = mode === 'light'
+         ? ['#ffffff', '#f0f0f0', '#e0e0e0']
+         : ['#1a1a2e', '#2d2d44', '#3d3d5c'];
+     }
 
-    // Calculate position (0 to 1) based on slide index
-    let position: number;
+     // Calculate position (0 to 1) based on visible slide index
+     // Skip hidden slides in gradient interpolation
+     let position: number;
 
-    if (frontmatter.dynamicBackgroundRestartAtSection) {
-      // Find section boundaries for this slide
-      const slides = this.presentation.slides;
-      let sectionStart = 0;
-      let sectionEnd = totalSlides - 1;
+     if (frontmatter.dynamicBackgroundRestartAtSection) {
+       // Find section boundaries for this slide (only counting visible slides)
+       const slides = this.presentation.slides;
+       let sectionStart = slideIndex;
+       let sectionEnd = slideIndex;
+       
+       // Find the section slide before or at this index (this is the section start)
+       for (let i = slideIndex; i >= 0; i--) {
+         if (!slides[i].hidden && slides[i].metadata.layout === 'section') {
+           sectionStart = i;
+           break;
+         }
+       }
 
-      // Find the section slide before or at this index (this is the section start)
-      for (let i = slideIndex; i >= 0; i--) {
-        if (slides[i].metadata.layout === 'section') {
-          sectionStart = i;
-          break;
-        }
-      }
+       // Find the next section slide after this index (the slide before it is section end)
+       for (let i = slideIndex + 1; i < slides.length; i++) {
+         if (!slides[i].hidden && slides[i].metadata.layout === 'section') {
+           sectionEnd = i - 1;
+           break;
+         }
+       }
 
-      // Find the next section slide after this index (the slide before it is section end)
-      for (let i = slideIndex + 1; i < totalSlides; i++) {
-        if (slides[i].metadata.layout === 'section') {
-          sectionEnd = i - 1;
-          break;
-        }
-      }
+       // Calculate visible slide positions within section (ignoring hidden slides)
+       let visibleIndexInSection = 0;
+       let visibleCountInSection = 0;
+       
+       for (let i = sectionStart; i <= sectionEnd && i < slides.length; i++) {
+         if (!slides[i].hidden) {
+           if (i <= slideIndex) {
+             visibleIndexInSection++;
+           }
+           visibleCountInSection++;
+         }
+       }
 
-      // Calculate position within this section
-      const sectionLength = sectionEnd - sectionStart;
-      position = sectionLength > 0 ? (slideIndex - sectionStart) / sectionLength : 0;
-    } else {
-      position = totalSlides > 1 ? slideIndex / (totalSlides - 1) : 0;
-    }
+       position = visibleCountInSection > 1 ? (visibleIndexInSection - 1) / (visibleCountInSection - 1) : 0;
+     } else {
+       // Use visible slide index and count
+       const visibleIndex = this.getVisibleSlideIndex(slideIndex);
+       const visibleCount = this.getTotalVisibleSlides();
+       
+       if (visibleIndex < 0) {
+         // Slide is hidden - use previous visible slide's position
+         position = 0;
+       } else {
+         position = visibleCount > 1 ? visibleIndex / (visibleCount - 1) : 0;
+       }
+     }
 
-    return this.interpolateGradientColor(colors, position);
-  }
+     return this.interpolateGradientColor(colors, position);
+   }
 
   /**
    * Determine the effective mode for a slide
@@ -385,14 +424,16 @@ export class SlideRenderer {
     const slideBackgroundHtml = this.renderSlideBackground(slide);
 
     // Compute dynamic background colors for BOTH modes (for theme toggle in exports)
-    // Skip dynamic background if this layout has a specific layout background defined
+    // Skip dynamic background if this layout has a specific layout background defined OR if slide is hidden
     const hasLayoutBackground = this.hasLayoutBackground(layout, effectiveMode, frontmatter);
-    const dynamicBgColor = hasLayoutBackground ? null : this.getDynamicBackgroundColor(index, this.presentation.slides.length, effectiveMode, frontmatter);
+    const isHiddenSlide = slide.hidden || false;
+    const dynamicBgColor = (hasLayoutBackground || isHiddenSlide) ? null : this.getDynamicBackgroundColor(index, 0, effectiveMode, frontmatter);
     const slideInlineStyle = dynamicBgColor ? `background-color: ${dynamicBgColor};` : '';
 
     // Calculate both light and dark dynamic bg colors for export theme toggle
-    const lightDynamicBg = hasLayoutBackground ? null : this.getDynamicBackgroundColor(index, this.presentation.slides.length, 'light', frontmatter);
-    const darkDynamicBg = hasLayoutBackground ? null : this.getDynamicBackgroundColor(index, this.presentation.slides.length, 'dark', frontmatter);
+    // (skip for hidden slides)
+    const lightDynamicBg = (hasLayoutBackground || isHiddenSlide) ? null : this.getDynamicBackgroundColor(index, 0, 'light', frontmatter);
+    const darkDynamicBg = (hasLayoutBackground || isHiddenSlide) ? null : this.getDynamicBackgroundColor(index, 0, 'dark', frontmatter);
     const dynamicBgAttrs = (lightDynamicBg || darkDynamicBg)
       ? ` data-light-bg="${lightDynamicBg || ''}" data-dark-bg="${darkDynamicBg || ''}"`
       : '';
@@ -652,6 +693,13 @@ export class SlideRenderer {
       case 'caption':
         return this.renderCaptionLayout(headings, images, bodyElements);
 
+      // ==================
+      // SPECIAL LAYOUTS
+      // ==================
+
+      case 'footnotes':
+        return this.renderFootnotesLayout(slide);
+
       // Note: half-image and half-image-horizontal are handled by renderHalfImageSlide()
       // before this switch is reached
 
@@ -726,10 +774,29 @@ export class SlideRenderer {
 
   /**
    * Render footnotes section for a slide
-   * Only renders if the slide has footnotes referenced
+   * By default, does NOT render footnotes on individual slides (showFootnotesOnSlides defaults to false)
+   * If showFootnotesOnSlides is true, renders on each slide where referenced
+   * Always renders on slides with layout='footnotes'
    */
   private renderFootnotes(slide: Slide, layout?: string): string {
     if (!slide.footnotes || slide.footnotes.length === 0) {
+      return '';
+    }
+
+    // Always render for footnotes layout (footnotes are main content)
+    if (layout === 'footnotes') {
+      return '';
+    }
+
+    // Check if footnotes should be shown on individual slides (default: false - don't show)
+    // Set to true in frontmatter to enable footnotes on regular slides
+    const showFootnotesOnSlides = this.presentation.frontmatter.showFootnotesOnSlides === true;
+
+    // Check if this is the auto-generated footnotes slide (has footnotes but no elements)
+    const isAutoGeneratedFootnotesSlide = slide.elements.length === 0 && slide.footnotes.length > 0;
+
+    // Only render if explicitly enabled OR if this is the auto-generated footnotes slide
+    if (!showFootnotesOnSlides && !isAutoGeneratedFootnotesSlide) {
       return '';
     }
 
@@ -793,6 +860,61 @@ export class SlideRenderer {
   }
 
   /**
+   * Footnotes Layout: Display footnotes as main slide content
+   * Renders footnotes with special styling for presentation
+   * Format: "1: content" or "name: content" (not "[1]" or "[name]")
+   */
+  private renderFootnotesLayout(slide: Slide): string {
+    // Collect all footnotes from the entire presentation
+    const allFootnotesMap = new Map<string, string>();
+    for (const s of this.presentation.slides) {
+      for (const fn of s.footnotes) {
+        if (!allFootnotesMap.has(fn.id)) {
+          allFootnotesMap.set(fn.id, fn.content);
+        }
+      }
+    }
+
+    if (allFootnotesMap.size === 0) {
+      return `
+        <div class="slot-header"></div>
+        <div class="slot-columns columns-1">
+          <div class="column" data-column="1">
+            <p>No footnotes available</p>
+          </div>
+        </div>`;
+    }
+
+    // Separate header elements (headings, kickers) from body
+    const headerElements = slide.elements.filter(e => e.type === 'heading' || e.type === 'kicker');
+
+    const footnotesRows = Array.from(allFootnotesMap.entries()).map(([id, content]) => {
+      const renderedContent = this.renderMarkdown(content);
+      return `<tr class="footnote-entry">
+        <td class="footnote-id">${id}:</td>
+        <td class="footnote-body">${renderedContent}</td>
+      </tr>`;
+    }).join('\n');
+
+    return `
+      <div class="slot-header">
+        ${headerElements.map(e => this.renderElement(e)).join('\n')}
+      </div>
+      <div class="slot-columns columns-1">
+        <div class="column" data-column="1">
+          <div class="footnotes-content">
+            ${headerElements.length === 0 ? '<h2 class="footnotes-title">References</h2>' : ''}
+            <table class="footnotes-list">
+              <tbody>
+                ${footnotesRows}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /**
    * Default Layout: Auto-detects columns based on columnIndex
    * Uses slot-header + slot-columns for proper positioning
    */
@@ -800,9 +922,14 @@ export class SlideRenderer {
     const columnElements = elements.filter(e => e.columnIndex !== undefined);
     const nonColumnElements = elements.filter(e => e.columnIndex === undefined);
 
-    // Separate headings/kickers from body content
-    const headerElements = nonColumnElements.filter(e => e.type === 'heading' || e.type === 'kicker');
-    const bodyElements = nonColumnElements.filter(e => e.type !== 'heading' && e.type !== 'kicker');
+    // Separate slide headers (H1/H2 and kickers) from body content
+    // H3+ are treated as body content (can serve as column separators)
+    const headerElements = nonColumnElements.filter(e => 
+      e.type === 'kicker' || (e.type === 'heading' && (e.level === 1 || e.level === 2))
+    );
+    const bodyElements = nonColumnElements.filter(e => 
+      !(e.type === 'kicker' || (e.type === 'heading' && (e.level === 1 || e.level === 2)))
+    );
 
     // If no column elements, render all body content in a single column
     if (columnElements.length === 0) {
@@ -810,7 +937,7 @@ export class SlideRenderer {
         <div class="slot-header">
           ${headerElements.map(e => this.renderElement(e)).join('\n')}
         </div>
-        <div class="slot-columns columns-1">
+        <div class="slot-columns columns-1 ratio-equal">
           <div class="column" data-column="1">
             ${bodyElements.map(e => this.renderElement(e)).join('\n')}
           </div>
@@ -830,9 +957,9 @@ export class SlideRenderer {
 
     return `
       <div class="slot-header">
-        ${nonColumnElements.map(e => this.renderElement(e)).join('\n')}
+        ${headerElements.map(e => this.renderElement(e)).join('\n')}
       </div>
-      <div class="slot-columns columns-${columnCount}">
+      <div class="slot-columns columns-${columnCount} ratio-equal">
         ${columns.map((col, i) => `
           <div class="column" data-column="${i + 1}">
             ${col.map(e => this.renderElement(e)).join('\n')}
@@ -860,9 +987,14 @@ export class SlideRenderer {
     const columnElements = elements.filter(e => e.columnIndex !== undefined);
     const nonColumnElements = elements.filter(e => e.columnIndex === undefined);
 
-    // Separate headings/kickers from body content
-    const headerElements = nonColumnElements.filter(e => e.type === 'heading' || e.type === 'kicker');
-    const bodyElements = nonColumnElements.filter(e => e.type !== 'heading' && e.type !== 'kicker');
+    // Separate slide headers (H1/H2 and kickers) from body content
+    // H3+ are treated as body content (can serve as column separators)
+    const headerElements = nonColumnElements.filter(e => 
+      e.type === 'kicker' || (e.type === 'heading' && (e.level === 1 || e.level === 2))
+    );
+    const bodyElements = nonColumnElements.filter(e => 
+      !(e.type === 'kicker' || (e.type === 'heading' && (e.level === 1 || e.level === 2)))
+    );
 
     // Find how many data columns exist
     const maxDataColumn = columnElements.reduce((max, e) =>
@@ -1192,31 +1324,63 @@ export class SlideRenderer {
   }
 
   private renderMarkdown(text: string): string {
-    let html = this.escapeHtml(text);
+     let html = this.escapeHtml(text);
 
-    // Footnote references [^id] -> <sup><b>id</b></sup> (must be before link parsing)
-    // Match [^id] but not [^id]: (which is a definition)
-    html = html.replace(/\[\^([^\]]+)\](?!:)/g, '<sup class="footnote-ref"><b>$1</b></sup>');
+     // Footnote references [^id] -> <sup><b>id</b></sup> (must be before link parsing)
+     // Match [^id] but not [^id]: (which is a definition)
+     html = html.replace(/\[\^([^\]]+)\](?!:)/g, '<sup class="footnote-ref"><b>$1</b></sup>');
 
-    // Bold
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+     // Bold
+     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+     html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
 
-    // Italic
-    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+     // Italic
+     html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+     html = html.replace(/_(.+?)_/g, '<em>$1</em>');
 
-    // Highlight
-    html = html.replace(/==(.+?)==/g, '<mark>$1</mark>');
+     // Highlight
+     html = html.replace(/==(.+?)==/g, '<mark>$1</mark>');
 
-    // Inline code
-    html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+     // Inline code
+     html = html.replace(/`(.+?)`/g, '<code>$1</code>');
 
-    // Links - open in new window/tab
-    html = html.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+     // Links handling
+     const enableObsidianLinks = this.presentation.frontmatter.enableObsidianLinks === true;
+     
+     if (enableObsidianLinks) {
+       // Links - open in new window/tab
+       html = html.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+     } else {
+       // Strip markdown links: keep only the link text, remove the URL
+       html = html.replace(/\[(.+?)\]\((.+?)\)/g, '$1');
+       
+       // Strip Obsidian wiki-links: [[text]] or [[text|display]]
+       // [[path/to/page]] -> "page" (extract last component)
+       // [[page|display text]] -> "display text" (use display text if provided)
+       // [[page#heading]] -> strip heading reference
+       html = html.replace(/\[\[([^\]|]+)(\|([^\]]+))?\]\]/g, (match, path, pipe, displayText) => {
+         // If display text is provided, use it
+         if (displayText) {
+           return displayText.trim();
+         }
+         // Otherwise extract the page name from the path (last component)
+         // Remove heading references (#...) and folder paths (...)
+         const cleanPath = path.split('#')[0].trim(); // Remove heading reference
+         const pageName = cleanPath.split('/').pop() || cleanPath; // Get last path component
+         return pageName.trim();
+       });
+     }
 
-    return html;
-  }
+     // Convert newlines to <br /> tags
+     // Preserve escaped backslashes (\\n should display as \n)
+     const ESCAPED_BACKSLASH_PLACEHOLDER = '___ESCAPED_BACKSLASH___';
+     html = html.replace(/\\\\n/g, ESCAPED_BACKSLASH_PLACEHOLDER); // temporarily replace \\n
+     html = html.replace(/\\n/g, '<br />');  // replace unescaped \n with <br />
+     html = html.replace(/\n/g, '<br />');   // replace actual newline characters
+     html = html.replace(new RegExp(ESCAPED_BACKSLASH_PLACEHOLDER, 'g'), '\\n'); // restore escaped backslashes
+
+     return html;
+   }
 
   private escapeHtml(text: string): string {
     return text
@@ -1299,14 +1463,25 @@ export class SlideRenderer {
       </header>`;
   }
 
+  private getVisibleSlideNumber(index: number): number {
+    // Count only non-hidden slides up to and including this index
+    return this.presentation.slides.slice(0, index + 1).filter(s => !s.hidden).length;
+  }
+
+  private getTotalVisibleSlides(): number {
+    return this.presentation.slides.filter(s => !s.hidden).length;
+  }
+
   private renderFooter(frontmatter: PresentationFrontmatter, index: number, total: number): string {
     const showNumbers = frontmatter.showSlideNumbers !== false;
+    const visibleNumber = this.getVisibleSlideNumber(index);
+    const totalVisible = this.getTotalVisibleSlides();
 
     return `
       <footer class="slide-footer">
         <div class="footer-left">${frontmatter.footerLeft ? `<span>${frontmatter.footerLeft}</span>` : ''}</div>
         <div class="footer-middle">${frontmatter.footerMiddle ? `<span>${frontmatter.footerMiddle}</span>` : ''}</div>
-        <div class="footer-right">${showNumbers ? `<span>${index + 1}</span>` : ''}</div>
+        <div class="footer-right">${showNumbers ? `<span>${visibleNumber}</span>` : ''}</div>
       </footer>`;
   }
 
@@ -1632,18 +1807,17 @@ export class SlideRenderer {
       
       .footnote-item {
         display: flex;
-        align-items: baseline;
+        align-items: flex-start;
         line-height: 1.3;
-        /* No gap - spacing handled by number width */
+        gap: calc(var(--slide-unit) * 0.5);
+        /* Negative margin on number handles hanging */
+        margin-left: calc(var(--slide-unit) * -2.5);
       }
       
       .footnote-number {
         /* Fixed width for number column, right-aligned */
         width: calc(var(--slide-unit) * 2.5);
-        /* Hang to the left using negative margin */
-        margin-left: calc(var(--slide-unit) * -2.5);
         text-align: right;
-        padding-right: calc(var(--slide-unit) * 0.5);
         flex-shrink: 0;
       }
       
@@ -1931,7 +2105,67 @@ export class SlideRenderer {
         text-align: center;
         padding: calc(var(--slide-unit) * 5);
       }
-      
+
+      /* ============================================
+         LAYOUT: FOOTNOTES - Display footnotes as main content
+         Uses 0.8em font size and list item spacing
+         ============================================ */
+      .layout-footnotes {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding-top: calc(var(--slide-unit) * 8);
+      }
+      .layout-footnotes .footnotes-content {
+        width: 100%;
+      }
+      .footnotes-title {
+        font-size: calc(var(--slide-unit) * 6 * var(--title-font-scale, 1) * var(--font-scale, 1));
+        font-weight: var(--title-font-weight, 700);
+        font-family: var(--title-font, inherit);
+        color: var(--title-text);
+        margin-bottom: calc(var(--slide-unit) * 4);
+        text-align: left;
+      }
+      .footnotes-list {
+        width: 100%;
+        border-collapse: collapse;
+        border: none;
+        font-size: calc(var(--slide-unit) * 2.5 * 0.8 * var(--body-font-scale, 1) * var(--font-scale, 1));
+        line-height: 1.5;
+      }
+      .footnotes-list tbody {
+        border: none;
+      }
+      .footnote-entry {
+        border: none;
+        padding: 0;
+      }
+      .footnote-entry:last-child {
+        border-bottom: none;
+      }
+      .footnote-id {
+        font-weight: 700;
+        color: var(--link-color);
+        padding: 0;
+        padding-right: calc(var(--slide-unit) * 1);
+        padding-bottom: calc(var(--slide-unit) * 1.5);
+        white-space: nowrap;
+        vertical-align: top;
+        border: none;
+      }
+      .footnote-body {
+        color: var(--body-text);
+        width: 100%;
+        padding: 0;
+        padding-bottom: calc(var(--slide-unit) * 1.5);
+        border: none;
+      }
+      .footnote-body p {
+        margin: 0;
+        display: inline;
+      }
+
       /* ============================================
          LAYOUT: DEFAULT & COLUMN LAYOUTS
          Uses slot-header + slot-columns positioning

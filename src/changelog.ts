@@ -11,6 +11,87 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
 	{
+		version: '0.2.10',
+		date: '2026-01-10',
+		changes: [
+			'New: "Create Demo Presentation" button in Settings → Presentation tab showcasing the default theme',
+			'New: Auto-install Inter font when creating demo presentation for seamless setup',
+			'New: Newline support - \\n and actual newlines in slide content now render as <br /> in HTML',
+			'New: Obsidian wiki-link stripping when links are disabled - [[page]] renders as "page", [[page|text]] renders as "text"',
+			'Improved: H3+ headlines in default layout now treated as slide content (column separators) instead of headers',
+			'Improved: Single-column default layout now uses consistent CSS styling (ratio-equal class) matching 1-column layout',
+			'Added: MIT License file',
+			'Removed: Description text from "Enable Obsidian Links" toggle for cleaner UI',
+		],
+	},
+	{
+		version: '0.2.9',
+		date: '2026-01-10',
+		changes: [
+			'Updated: README with revised slide content and speaker notes sections',
+			'Updated: Removed kickers section from README documentation',
+			'Improved: Added comprehensive notes section for presenter workflow',
+		],
+	},
+	{
+		version: '0.2.8',
+		date: '2026-01-09',
+		changes: [
+			'Changed: Added new "Default" theme as the only built-in theme with Inter font and dynamic gradient backgrounds',
+			'Improved: Cleaner codebase with all third-party references removed',
+			'Improved: Default theme features dynamic slide-position-based gradient backgrounds',
+		],
+	},
+	{
+		version: '0.2.7',
+		date: '2026-01-09',
+		changes: [
+			'New: Footnotes now respect column layouts - footnote width automatically limited to first column width',
+			'New: Smart footnote width calculation for 2-column, 3-column, and ratio layouts (1+2, 2+1)',
+		],
+	},
+	{
+		version: '0.2.6',
+		date: '2026-01-09',
+		changes: [
+			'New: Footnote support - reference footnotes with [^id] syntax and define with [^id]: content',
+			'New: Footnotes render as superscript in slide content with theme link color and bold styling',
+			'New: Per-slide footnotes section with hanging numbers, separator line, and proper content margin alignment',
+			'New: Multi-line footnote definitions supported (indented continuation lines)',
+			'New: Named footnotes supported (e.g., [^note1], [^reference])',
+			'Improved: Presentation preview now debounces updates to 1 second, reducing flicker during typing',
+			'Improved: Preview updates only refresh slide content, not the entire view',
+			'Improved: Footnotes grow upward from footer area with 2.25em spacing',
+			'Improved: Footnote numbers "hang" outside content margin for clean text alignment',
+			'Fix: PresentationView parser now uses correct content mode from plugin settings',
+			'Fix: Content no longer incorrectly treated as speaker notes in preview when using advanced-slides mode',
+			'Fix: Removed console.log debug messages from inter-window communication',
+		],
+	},
+	{
+		version: '0.2.5',
+		date: '2026-01-08',
+		changes: [
+			'New: HTML export functionality - export presentations to standalone HTML with embedded styles and navigation',
+			'New: Export command "Export presentation to HTML" creates folder with index.html and external images',
+			'New: Exported presentations include responsive navigation: keyboard controls, click-based navigation, URL hash support',
+			'New: Speaker notes embedded as HTML comments in exported slides for searching without displaying',
+			'New: Exported presentations include help overlay (press ?) with keyboard shortcut reference',
+			'New: Images extracted as separate files to images/ subdirectory',
+			'New: Theme colors and custom fonts fully embedded in exported HTML',
+			'New: Double-click fullscreen support in exported presentations',
+			'New: Progress bar showing current slide position in exported presentations',
+		],
+	},
+	{
+		version: '0.2.4',
+		date: '2026-01-07',
+		changes: [
+			'Fix: PresenterWindow refactored with improved layout stability',
+			'Improved: Speaker view layout reorganization for better readability',
+		],
+	},
+	{
 		version: '0.2.3',
 		date: '2026-01-07',
 		changes: [
@@ -23,6 +104,20 @@ export const CHANGELOG: ChangelogEntry[] = [
 			'New: Fonts sorted alphabetically in Settings Downloaded Fonts list',
 			'New: Fonts sorted alphabetically in all Inspector font dropdowns',
 			'Improved: Font expansion logic simplified - variable fonts detected by checking weights array from cache',
+		],
+	},
+	{
+		version: '0.2.2',
+		date: '2026-01-07',
+		changes: [
+			'Fix: Unsafe type assertions on view casts - added instanceof checks throughout codebase',
+			'Fix: Image path resolution in presentation window - plain filenames and wiki-link paths now properly resolve',
+			'New: Lock Aspect Ratio toggle in Inspector Presentation tab - maintains slideshow aspect ratio with letterbox/pillarbox',
+			'New: Aspect ratio locking respects 16:9, 4:3, and 16:10 formats with centered slides',
+			'New: Global Text Scale slider in Inspector Typography tab (0.5x to 2.0x)',
+			'New: Typography scaling uses geometric mean approximation for orientation-independent sizing',
+			'New: Bold text color customization with lightBoldColor and darkBoldColor frontmatter properties',
+			'New: Startup view initialization fixed - presentation views load with correct theme colors on Obsidian restart',
 		],
 	},
 	{

@@ -8,9 +8,11 @@ export class ThumbnailNavigatorView extends ItemView {
   private presentation: Presentation | null = null;
   private theme: Theme | null = null;
   private selectedSlideIndex: number = 0;
-  private onSlideSelect: ((index: number) => void) | null = null;
-  private onSlideReorder: ((fromIndex: number, toIndex: number) => void) | null = null;
-  private onStartPresentation: ((index: number) => void) | null = null;
+   private onSlideSelect: ((index: number) => void) | null = null;
+   private onSlideReorder: ((fromIndex: number, toIndex: number) => void) | null = null;
+   private onStartPresentation: ((index: number) => void) | null = null;
+   private onAddSlide: (() => void) | null = null;
+   private onSlideHiddenChanged: ((index: number, hidden: boolean) => void) | null = null;
   private draggedIndex: number = -1;
   private currentFile: TFile | null = null;
   private imagePathResolver: ImagePathResolver | null = null;
@@ -142,11 +144,19 @@ export class ThumbnailNavigatorView extends ItemView {
     this.onSlideReorder = callback;
   }
 
-  setOnStartPresentation(callback: (index: number) => void) {
-    this.onStartPresentation = callback;
-  }
+   setOnStartPresentation(callback: (index: number) => void) {
+     this.onStartPresentation = callback;
+   }
 
-  selectSlide(index: number) {
+   setOnAddSlide(callback: () => void) {
+      this.onAddSlide = callback;
+    }
+
+   setOnSlideHiddenChanged(callback: (index: number, hidden: boolean) => void) {
+      this.onSlideHiddenChanged = callback;
+    }
+
+   selectSlide(index: number) {
     this.selectedSlideIndex = index;
     this.updateSelection();
   }
@@ -160,66 +170,112 @@ export class ThumbnailNavigatorView extends ItemView {
    * Returns true if the update was successful, false if a full re-render is needed.
    */
   updateSlide(index: number, slide: Slide): boolean {
-    if (!this.presentation) return false;
+     if (!this.presentation) return false;
 
-    const items = this.containerEl.querySelectorAll('.thumbnail-item');
-    const item = items[index] as HTMLElement | undefined;
-    if (!item) return false;
+     const items = this.containerEl.querySelectorAll('.thumbnail-item');
+     const item = items[index] as HTMLElement | undefined;
+     if (!item) return false;
 
-    // Update the slide in the presentation
-    this.presentation.slides[index] = slide;
+     // Update the slide in the presentation
+     this.presentation.slides[index] = slide;
 
-    // Find and update the iframe
-    const iframe = item.querySelector('.thumbnail-iframe') as HTMLIFrameElement;
-    if (!iframe) return false;
+     // Find and update the iframe
+     const iframe = item.querySelector('.thumbnail-iframe') as HTMLIFrameElement;
+     if (!iframe) return false;
 
-    // Create renderer and update the iframe content
-    const renderer = this.createRenderer();
+     // Create renderer and update the iframe content
+     const renderer = this.createRenderer();
 
-    iframe.srcdoc = renderer.renderThumbnailHTML(slide, index);
+     iframe.srcdoc = renderer.renderThumbnailHTML(slide, index);
 
-    // Update the layout class on the item if needed
-    const layoutClass = `layout-${slide.metadata.layout || 'default'}`;
-    item.className = item.className.replace(/layout-\S+/g, '').trim();
-    item.classList.add(layoutClass);
+     // Update the layout class on the item if needed
+     const layoutClass = `layout-${slide.metadata.layout || 'default'}`;
+     item.className = item.className.replace(/layout-\S+/g, '').trim();
+     item.classList.add(layoutClass);
 
-    return true;
-  }
+     // Update the hidden state class
+     item.classList.toggle('hidden-slide', slide.hidden || false);
+
+     // Update the visibility toggle button
+     const visibilityToggle = item.querySelector('.slide-visibility-toggle') as HTMLElement | null;
+     if (visibilityToggle) {
+       visibilityToggle.classList.toggle('hidden', slide.hidden || false);
+       visibilityToggle.setAttribute('aria-label', slide.hidden ? 'Show slide' : 'Hide slide');
+       visibilityToggle.innerHTML = slide.hidden
+         ? `<svg class="icon-permanent" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
+         : `<svg class="icon-permanent" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>`;
+     }
+
+     // Update the slide number badge
+     const numberBadge = item.querySelector('.badge-text') as SVGTextElement | null;
+     if (numberBadge && this.presentation) {
+       let visibleNumber = '-';
+       if (!slide.hidden) {
+         visibleNumber = String((this.presentation.slides.slice(0, index + 1).filter(s => !s.hidden).length));
+       }
+       numberBadge.textContent = visibleNumber;
+     }
+
+     return true;
+   }
 
   /**
    * Update multiple slides by their indices (for incremental updates)
    */
   updateSlides(indices: number[], slides: Slide[]): boolean {
-    if (!this.presentation) return false;
+     if (!this.presentation) return false;
 
-    const renderer = this.createRenderer();
+     const renderer = this.createRenderer();
 
-    const items = this.containerEl.querySelectorAll('.thumbnail-item');
+     const items = this.containerEl.querySelectorAll('.thumbnail-item');
 
-    for (let i = 0; i < indices.length; i++) {
-      const index = indices[i];
-      const slide = slides[i];
-      const item = items[index] as HTMLElement | undefined;
+     for (let i = 0; i < indices.length; i++) {
+       const index = indices[i];
+       const slide = slides[i];
+       const item = items[index] as HTMLElement | undefined;
 
-      if (!item) return false;
+       if (!item) return false;
 
-      // Update the slide in the presentation
-      this.presentation.slides[index] = slide;
+       // Update the slide in the presentation
+       this.presentation.slides[index] = slide;
 
-      // Find and update the iframe
-      const iframe = item.querySelector('.thumbnail-iframe') as HTMLIFrameElement;
-      if (!iframe) return false;
+       // Find and update the iframe
+       const iframe = item.querySelector('.thumbnail-iframe') as HTMLIFrameElement;
+       if (!iframe) return false;
 
-      iframe.srcdoc = renderer.renderThumbnailHTML(slide, index);
+       iframe.srcdoc = renderer.renderThumbnailHTML(slide, index);
 
-      // Update the layout class
-      const layoutClass = `layout-${slide.metadata.layout || 'default'}`;
-      item.className = item.className.replace(/layout-\S+/g, '').trim();
-      item.classList.add(layoutClass);
-    }
+       // Update the layout class
+       const layoutClass = `layout-${slide.metadata.layout || 'default'}`;
+       item.className = item.className.replace(/layout-\S+/g, '').trim();
+       item.classList.add(layoutClass);
 
-    return true;
-  }
+       // Update the hidden state class
+       item.classList.toggle('hidden-slide', slide.hidden || false);
+
+       // Update the visibility toggle button
+       const visibilityToggle = item.querySelector('.slide-visibility-toggle') as HTMLElement | null;
+       if (visibilityToggle) {
+         visibilityToggle.classList.toggle('hidden', slide.hidden || false);
+         visibilityToggle.setAttribute('aria-label', slide.hidden ? 'Show slide' : 'Hide slide');
+         visibilityToggle.innerHTML = slide.hidden
+           ? `<svg class="icon-permanent" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
+           : `<svg class="icon-permanent" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>`;
+       }
+
+       // Update the slide number badge
+       const numberBadge = item.querySelector('.badge-text') as SVGTextElement | null;
+       if (numberBadge && this.presentation) {
+         let visibleNumber = '-';
+         if (!slide.hidden) {
+           visibleNumber = String((this.presentation.slides.slice(0, index + 1).filter(s => !s.hidden).length));
+         }
+         numberBadge.textContent = visibleNumber;
+       }
+     }
+
+     return true;
+   }
 
   /**
    * Remove a slide at the given index
@@ -227,7 +283,10 @@ export class ThumbnailNavigatorView extends ItemView {
   removeSlideAt(index: number): boolean {
     if (!this.presentation) return false;
 
-    const items = this.containerEl.querySelectorAll('.thumbnail-item');
+    const list = this.containerEl.querySelector('.thumbnail-list');
+    if (!list) return false;
+
+    const items = list.querySelectorAll('.thumbnail-item');
     const item = items[index] as HTMLElement | undefined;
     if (!item) return false;
 
@@ -272,7 +331,10 @@ export class ThumbnailNavigatorView extends ItemView {
    * Renumber all slide badges without re-rendering iframes
    */
   renumberSlides(): void {
-    const items = this.containerEl.querySelectorAll('.thumbnail-item');
+    const list = this.containerEl.querySelector('.thumbnail-list');
+    if (!list) return;
+
+    const items = list.querySelectorAll('.thumbnail-item');
     items.forEach((item, index) => {
       // Update data-index attribute
       (item as HTMLElement).dataset.index = String(index);
@@ -325,10 +387,14 @@ export class ThumbnailNavigatorView extends ItemView {
     // Create renderer for thumbnails
     const renderer = this.createRenderer();
 
-    this.presentation.slides.forEach((slide, index) => {
-      const item = this.createThumbnailItem(slide, index, renderer);
-      list.appendChild(item);
-    });
+     this.presentation.slides.forEach((slide, index) => {
+       const item = this.createThumbnailItem(slide, index, renderer);
+       list.appendChild(item);
+     });
+
+     // Add slide button
+     const addSlideItem = this.createAddSlideItem();
+     list.appendChild(addSlideItem);
   }
 
   private renderEmptyState(container: HTMLElement) {
@@ -351,14 +417,20 @@ export class ThumbnailNavigatorView extends ItemView {
 
   private createThumbnailItem(slide: Slide, index: number, renderer: SlideRenderer): HTMLElement {
     const item = document.createElement('div');
-    item.className = `thumbnail-item ${index === this.selectedSlideIndex ? 'selected' : ''}`;
+    item.className = `thumbnail-item ${index === this.selectedSlideIndex ? 'selected' : ''} ${slide.hidden ? 'hidden-slide' : ''}`;
     item.dataset.index = String(index);
     item.draggable = true;
 
     // Slide number badge (SVG circle with number - also serves as drag handle)
     const numberBadge = document.createElement('div');
     numberBadge.className = 'slide-number-badge';
-    const num = index + 1;
+    
+    // Calculate visible slide number (count only non-hidden slides up to this one)
+    let visibleNumber = '-';
+    if (!slide.hidden && this.presentation) {
+      visibleNumber = String((this.presentation.slides.slice(0, index + 1).filter(s => !s.hidden).length));
+    }
+    const num = visibleNumber;
 
     const svg = numberBadge.createSvg('svg', {
       attr: { viewBox: '0 0 28 28', width: '28', height: '28' }
@@ -373,7 +445,34 @@ export class ThumbnailNavigatorView extends ItemView {
     });
     textEl.textContent = String(num);
 
-    item.appendChild(numberBadge);
+    // Wrapper for badge and toggle (stacked vertically)
+    const badgeWrapper = document.createElement('div');
+    badgeWrapper.className = 'badge-toggle-wrapper';
+    badgeWrapper.appendChild(numberBadge);
+
+    // Visibility toggle button
+    const visibilityToggle = document.createElement('button');
+    visibilityToggle.className = `slide-visibility-toggle ${slide.hidden ? 'hidden' : ''}`;
+    visibilityToggle.setAttribute('type', 'button');
+    visibilityToggle.setAttribute('aria-label', slide.hidden ? 'Show slide' : 'Hide slide');
+    
+    // For hidden slides, show eye-closed icon permanently; on hover show toggle icons
+    visibilityToggle.innerHTML = slide.hidden
+      ? `<svg class="icon-permanent" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
+      : `<svg class="icon-permanent" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>`;
+    
+    visibilityToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const newHiddenState = !slide.hidden;
+      // Emit event to save changes to file - this will trigger updateSidebars
+      // which will handle all UI updates (no need to render here)
+      if (this.onSlideHiddenChanged) {
+        this.onSlideHiddenChanged(index, newHiddenState);
+      }
+    });
+
+    badgeWrapper.appendChild(visibilityToggle);
+    item.appendChild(badgeWrapper);
 
     // Thumbnail preview - using iframe with actual rendered slide
     const previewContainer = document.createElement('div');
@@ -443,6 +542,23 @@ export class ThumbnailNavigatorView extends ItemView {
       } else {
         item.classList.add('drop-after');
       }
+
+      // Auto-scroll the thumbnail list when dragging near edges
+      const list = this.containerEl.querySelector('.thumbnail-list') as HTMLElement;
+      if (list) {
+        const scrollThreshold = 80; // pixels from edge to trigger scroll
+        const scrollSpeed = 5; // pixels to scroll
+        const listRect = list.getBoundingClientRect();
+
+        // Scroll down if dragging near the top
+        if (e.clientY < listRect.top + scrollThreshold) {
+          list.scrollTop = Math.max(0, list.scrollTop - scrollSpeed);
+        }
+        // Scroll up if dragging near the bottom
+        else if (e.clientY > listRect.bottom - scrollThreshold) {
+          list.scrollTop = Math.min(list.scrollHeight - list.clientHeight, list.scrollTop + scrollSpeed);
+        }
+      }
     });
 
     item.addEventListener('dragleave', () => {
@@ -472,11 +588,44 @@ export class ThumbnailNavigatorView extends ItemView {
       this.draggedIndex = -1;
     });
 
-    return item;
-  }
+     return item;
+   }
 
-  private updateSelection() {
-    const items = this.containerEl.querySelectorAll('.thumbnail-item');
+   private createAddSlideItem(): HTMLElement {
+     const container = document.createElement('div');
+     container.className = 'add-slide-item-container';
+
+     const item = document.createElement('div');
+     item.className = 'add-slide-item';
+
+     // Invisible placeholder for badge spacing (to match thumbnail layout)
+     const badgePlaceholder = document.createElement('div');
+     badgePlaceholder.className = 'badge-placeholder';
+     item.appendChild(badgePlaceholder);
+
+     // Preview container (same size as thumbnail preview) with centered + sign
+     const previewContainer = document.createElement('div');
+     previewContainer.className = 'add-slide-preview';
+     previewContainer.textContent = '+';
+     item.appendChild(previewContainer);
+
+     container.appendChild(item);
+
+     // Click handler
+     item.addEventListener('click', () => {
+       if (this.onAddSlide) {
+         this.onAddSlide();
+       }
+     });
+
+     return container;
+   }
+
+   private updateSelection() {
+    const list = this.containerEl.querySelector('.thumbnail-list');
+    if (!list) return;
+
+    const items = list.querySelectorAll('.thumbnail-item');
     items.forEach((item, index) => {
       const isSelected = index === this.selectedSlideIndex;
       item.classList.toggle('selected', isSelected);
@@ -486,5 +635,5 @@ export class ThumbnailNavigatorView extends ItemView {
         item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     });
-  }
+   }
 }

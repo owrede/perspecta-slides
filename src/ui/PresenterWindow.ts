@@ -563,7 +563,7 @@ export class PresenterWindow {
                    <path fill="currentColor" d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/>
                  </svg>
                </button>
-               <span id="slideCounter">Slide 1 of ${presentation.slides.length}</span>
+               <span id="slideCounter">Slide 1 of ${presentation.slides.filter(s => !s.hidden).length}</span>
              </div>
            </div>
 
@@ -629,8 +629,12 @@ export class PresenterWindow {
              // Scroll into view at top of viewport
              slides[index].scrollIntoView({ behavior: 'smooth', block: 'start' });
              
-             // Update counter
-             document.getElementById('slideCounter').textContent = 'Slide ' + (index + 1) + ' of ${presentation.slides.length}';
+             // Update counter - calculate visible slide number
+             const slideRow = slides[index];
+             if (slideRow && slideRow.dataset.hidden === 'false') {
+               const visibleIndex = Array.from(slides).slice(0, index + 1).filter(s => s.dataset.hidden === 'false').length;
+               document.getElementById('slideCounter').textContent = 'Slide ' + visibleIndex + ' of ${presentation.slides.filter(s => !s.hidden).length}';
+             }
              
              window.currentSlideIndex = index;
              
@@ -788,11 +792,18 @@ export class PresenterWindow {
       const slide = presentation.slides[slideIdx];
       const slideHTML = renderer.renderPresentationSlideHTML(slide, slideIdx);
       const isFirst = slideIdx === 0 ? 'active' : '';
+      
+      // Calculate visible slide number (count only non-hidden slides up to this one)
+      const visibleNumber = presentation.slides.slice(0, slideIdx + 1).filter(s => !s.hidden).length;
+      
+      // If slide is hidden, render it but with display: none
+      const hiddenClass = slide.hidden ? 'hidden' : '';
+      const displayStyle = slide.hidden ? 'style="display: none;"' : '';
 
       html += `
-         <div class="slide-row ${isFirst}" data-slide-index="${slideIdx}">
+         <div class="slide-row ${isFirst} ${hiddenClass}" ${displayStyle} data-slide-index="${slideIdx}" data-hidden="${slide.hidden ? 'true' : 'false'}">
            <div class="slide-left">
-             <div class="slide-num-circle">${slideIdx + 1}</div>
+             <div class="slide-num-circle">${slide.hidden ? '-' : visibleNumber}</div>
              <div class="slide-thumb-wrapper">
                <iframe class="slide-thumb" srcdoc="${this.escapeAttr(slideHTML)}"></iframe>
              </div>

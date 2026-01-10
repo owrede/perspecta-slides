@@ -61,18 +61,97 @@ export class SlideParser {
   parse(source: string): Presentation {
     const { frontmatter, content } = this.extractFrontmatter(source);
     const contentMode = frontmatter.contentMode || this.defaultContentMode;
-    
+
     // Extract all footnote definitions from the entire document
     const footnoteDefinitions = this.extractFootnoteDefinitions(source);
-    
+
+    // Remove footnote definitions from content before parsing slides
+    // This prevents footnote definitions from being parsed as slide content
+    const contentWithoutFootnotes = this.removeFootnoteDefinitions(content);
+
     // Parse slides and attach relevant footnotes to each
-    const slides = this.parseSlides(content, contentMode, footnoteDefinitions);
+    let slides = this.parseSlides(contentWithoutFootnotes, contentMode, footnoteDefinitions);
+
+    // If showFootnotesOnSlides is not true, create an auto-generated footnotes slide at the end
+    // (default: false - don't show footnotes on individual slides, only on auto-generated footnotes slide)
+    // BUT: skip if there's already an explicit layout: footnotes slide in the presentation
+    const showFootnotesOnSlides = frontmatter.showFootnotesOnSlides === true;
+    const hasExplicitFootnotesSlide = slides.some(slide => slide.metadata.layout === 'footnotes');
+    
+    if (!showFootnotesOnSlides && !hasExplicitFootnotesSlide && footnoteDefinitions.size > 0) {
+      // Collect all footnotes that were actually referenced in the presentation
+      const allReferencedFootnotes: Map<string, string> = new Map();
+      for (const slide of slides) {
+        for (const footnote of slide.footnotes) {
+          if (!allReferencedFootnotes.has(footnote.id)) {
+            allReferencedFootnotes.set(footnote.id, footnote.content);
+          }
+        }
+      }
+
+      // Create auto-generated footnotes slide if there are any referenced footnotes
+      if (allReferencedFootnotes.size > 0) {
+        const footnotesArray: Footnote[] = Array.from(allReferencedFootnotes.entries())
+          .map(([id, content]) => ({ id, content }));
+
+        const footnotesSlide: Slide = {
+          index: slides.length,
+          metadata: { layout: 'footnotes' },
+          elements: [],
+          speakerNotes: [],
+          footnotes: footnotesArray,
+          rawContent: '(Auto-generated footnotes slide)',
+        };
+
+        slides.push(footnotesSlide);
+      }
+    }
 
     return {
       frontmatter,
       slides,
       source,
     };
+  }
+
+  /**
+   * Remove all footnote definitions from content
+   * Format: [^id]: footnote text (can span multiple lines if indented)
+   * Returns content with all footnote definition blocks removed
+   */
+  private removeFootnoteDefinitions(content: string): string {
+    const lines = content.split('\n');
+    const filteredLines: string[] = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+      const defMatch = line.match(/^\[\^([^\]]+)\]:\s*(.*)$/);
+
+      if (defMatch) {
+        // Skip this footnote definition line
+        i++;
+        // Skip any indented continuation lines
+        while (i < lines.length) {
+          const nextLine = lines[i];
+          if (nextLine.startsWith('    ') || nextLine.startsWith('\t')) {
+            i++;
+          } else if (nextLine.trim() === '') {
+            // Empty line might be part of footnote, keep checking
+            i++;
+          } else {
+            // Non-indented, non-empty line - footnote definition ends
+            break;
+          }
+        }
+      } else {
+        // Not a footnote definition, keep this line
+        filteredLines.push(line);
+        i++;
+      }
+    }
+
+    return filteredLines.join('\n');
   }
 
   /**
@@ -432,11 +511,26 @@ export class SlideParser {
     const { slideMetadata, contentLines } = this.extractSlideMetadata(lines);
     metadata = slideMetadata;
 
+    // Check if slide is hidden (indicated by "(hidden)" in layout field)
+    let isHidden = false;
+    let layoutValue = metadata.layout as string | undefined;
+    if (layoutValue && layoutValue.includes('(hidden)')) {
+      isHidden = true;
+      // Remove "(hidden)" from layout value
+      const cleanLayout = layoutValue.replace(/\s*\(hidden\)\s*/, '').trim();
+      if (cleanLayout) {
+        metadata.layout = cleanLayout as any;
+      } else {
+        // If layout was only "(hidden)", remove the layout field entirely
+        delete metadata.layout;
+      }
+      layoutValue = cleanLayout;
+    }
+
     // Check if we have an explicit column layout BEFORE extracting metadata
     const hasExplicitColumnLayout = this.hasExplicitColumnLayout(lines);
 
     // Check for no-autocolumn modifier
-    const layoutValue = metadata.layout as string;
     const isNoAutocolumn = layoutValue === 'default;no-autocolumn' || layoutValue === 'no-autocolumn';
 
     // Use different parsing strategies based on content mode
@@ -488,6 +582,7 @@ export class SlideParser {
       speakerNotes,
       footnotes,
       rawContent,
+      hidden: isHidden,
     };
   }
 

@@ -2,6 +2,25 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.10] - 2026-01-10
+
+### New Features
+
+- **New**: "Create Demo Presentation" button in Settings → Presentation tab showcasing the default theme
+- **New**: Auto-install Inter font when creating demo presentation for seamless setup
+- **New**: Newline support - `\n` and actual newlines in slide content now render as `<br />` in HTML
+- **New**: Obsidian wiki-link stripping when links are disabled - `[[page]]` renders as "page", `[[page|text]]` renders as "text"
+
+### Improvements
+
+- **Improved**: H3+ headlines in default layout now treated as slide content (column separators) instead of headers
+- **Improved**: Single-column default layout now uses consistent CSS styling (ratio-equal class) matching 1-column layout
+- **Improved**: Cleaner UI with description text removed from "Enable Obsidian Links" toggle
+
+### Other
+
+- **Added**: MIT License file
+
 ## [0.2.8] - 2026-01-09
 
 ### Breaking Changes

@@ -62,8 +62,9 @@ export function hashSlide(slide: Slide): SlideFingerprint {
   contentParts.push('notes:' + slide.speakerNotes.join('|'));
   const contentHash = hashString(contentParts.join('||'));
   
-  // Hash the metadata
-  const metadataHash = hashString(JSON.stringify(slide.metadata));
+  // Hash the metadata (including hidden state)
+  const metadataWithHidden = { ...slide.metadata, hidden: slide.hidden };
+  const metadataHash = hashString(JSON.stringify(metadataWithHidden));
   
   // Combined hash for quick comparison
   const combinedHash = hashString(contentHash + '::' + metadataHash);

@@ -73,13 +73,64 @@ class RenameFontModal extends Modal {
 	}
 }
 
+/**
+ * Modal dialog for confirming demo presentation creation
+ */
+export class CreateDemoModal extends Modal {
+	private onOk: () => void;
+	private onGoToDemo: () => void;
+
+	constructor(
+		app: App,
+		onOk: () => void,
+		onGoToDemo: () => void
+	) {
+		super(app);
+		this.onOk = onOk;
+		this.onGoToDemo = onGoToDemo;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.addClass('perspecta-create-demo-modal');
+
+		contentEl.createEl('h2', { text: 'Demo Presentation Created' });
+		contentEl.createEl('p', { text: 'The default theme demo presentation has been created in "Perspecta Slides Demo" folder.' });
+
+		// Buttons
+		const footer = contentEl.createDiv({ cls: 'modal-button-container' });
+		
+		const gotoBtn = footer.createEl('button', { text: 'Go to demo', cls: 'mod-default' });
+		gotoBtn.addEventListener('click', () => {
+			this.onGoToDemo();
+			this.close();
+		});
+
+		const okBtn = footer.createEl('button', { text: 'OK', cls: 'mod-cta' });
+		okBtn.addEventListener('click', () => {
+			this.onOk();
+			this.close();
+		});
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
+
 export class PerspectaSlidesSettingTab extends PluginSettingTab {
 	plugin: PerspectaSlidesPlugin;
 	private currentTab: SettingsTabId = 'changelog';
+	private onCreateDemo: ((modalOnOk: () => void, modalOnGoToDemo: () => void) => Promise<void>) | null = null;
 
 	constructor(app: App, plugin: PerspectaSlidesPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
+	}
+
+	setOnCreateDemo(callback: (modalOnOk: () => void, modalOnGoToDemo: () => void) => Promise<void>) {
+		this.onCreateDemo = callback;
 	}
 
 	display(): void {
@@ -207,6 +258,26 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.showInspector = value;
 					await this.plugin.saveSettings();
+				}));
+
+		containerEl.createEl('h2', { text: 'Demo Presentation' });
+
+		new Setting(containerEl)
+			.setName('Create Demo Presentation')
+			.setDesc('Creates a sample presentation showcasing the default theme')
+			.addButton(btn => btn
+				.setButtonText('Create')
+				.onClick(async () => {
+					if (!this.onCreateDemo) return;
+					
+					await this.onCreateDemo(
+						() => {
+							// OK button clicked - just close
+						},
+						() => {
+							// Go to demo button clicked - open the demo
+						}
+					);
 				}));
 	}
 

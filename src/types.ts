@@ -128,10 +128,12 @@ export interface PresentationFrontmatter {
   lockAspectRatio?: boolean;        // When true, maintain aspect ratio with letterbox/pillarbox
   showProgress?: boolean;
   showSlideNumbers?: boolean;
-  transition?: 'none' | 'fade' | 'slide';
+   transition?: 'none' | 'fade' | 'slide';
+   showFootnotesOnSlides?: boolean;  // When true, footnotes on each slide; when false (default), all footnotes on separate slide at end
+   enableObsidianLinks?: boolean;    // When true, preserve Obsidian links; when false (default), strip to link text only
 
-  // Appearance mode (default for all slides, can be overridden per-slide)
-  mode?: 'light' | 'dark' | 'system';
+   // Appearance mode (default for all slides, can be overridden per-slide)
+   mode?: 'light' | 'dark' | 'system';
 
   // Image overlay settings
   imageOverlay?: string;           // Path to overlay image
@@ -155,27 +157,30 @@ export interface SlideMetadata {
 
 /**
  * Slide Layout Types
- * 
+ *
  * STANDARD SLIDES:
  * - cover: Opening/title slide with centered content
  * - title: Title slide with large heading
  * - section: Chapter/section divider
  * - default: Standard text slide, auto-detects columns
- * 
+ *
  * COLUMN SLIDES (explicit column control):
  * - 1-column: Single column, no auto-detection
  * - 2-columns: Two equal width columns (50/50)
  * - 3-columns: Three equal width columns (33/33/33)
  * - 2-columns-1+2: Left narrow (1/3), right wide (2/3)
  * - 2-columns-2+1: Left wide (2/3), right narrow (1/3)
- * 
+ *
  * IMAGE SLIDES:
  * - full-image: Image fills entire slide
  * - half-image: Half for image(s), half for text (v-split)
  * - caption: Full image with title bar and caption
- * 
+ *
  * GRID SLIDES:
  * - grid: Auto-grid for multiple items (2x2, 2x3, etc.)
+ *
+ * SPECIAL LAYOUTS:
+ * - footnotes: Display footnotes as main slide content with special styling
  */
 export type SlideLayout =
   // Standard slides
@@ -195,7 +200,9 @@ export type SlideLayout =
   | 'half-image-horizontal'
   | 'caption'
   // Grid slides
-  | 'grid';
+  | 'grid'
+  // Special layouts
+  | 'footnotes';
 
 /**
  * Image metadata for positioning and styling
@@ -246,6 +253,7 @@ export interface Slide {
   speakerNotes: string[];
   footnotes: Footnote[]; // Footnotes referenced on this slide
   rawContent: string;
+  hidden?: boolean; // If true, slide is not shown in presentations, not counted in page numbers
 }
 
 export interface Presentation {

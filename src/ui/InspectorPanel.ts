@@ -508,6 +508,18 @@ export class InspectorPanelView extends ItemView {
         .setValue(fm.showSlideNumbers !== false)
         .onChange(value => this.updateFrontmatter({ showSlideNumbers: value })));
 
+    new Setting(container)
+      .setName('Show Footnotes on Slides')
+      .addToggle(toggle => toggle
+        .setValue(fm.showFootnotesOnSlides !== false)
+        .onChange(value => this.updateFrontmatter({ showFootnotesOnSlides: value })));
+
+    new Setting(container)
+      .setName('Enable Obsidian Links')
+      .addToggle(toggle => toggle
+        .setValue(fm.enableObsidianLinks === true)
+        .onChange(value => this.updateFrontmatter({ enableObsidianLinks: value || undefined })));
+
     // Section: IMAGE OVERLAY
     this.createSectionHeader(container, 'IMAGE OVERLAY');
 
@@ -1858,6 +1870,30 @@ export class InspectorPanelView extends ItemView {
     imageLayouts.forEach(layout => {
       const isActive = this.currentSlide?.metadata.layout === layout.id;
       const btn = imageGrid.createDiv({
+        cls: `layout-option ${isActive ? 'active' : ''}`
+      });
+      const iconEl = btn.createDiv({ cls: 'layout-icon' });
+      setIcon(iconEl, layout.icon);
+      btn.createDiv({ cls: 'layout-label', text: layout.label });
+
+      btn.addEventListener('click', () => {
+        this.updateSlideMetadata({ layout: layout.id });
+      });
+    });
+
+    // SPECIAL SLIDES
+    const specialSection = container.createDiv({ cls: 'inspector-section' });
+    specialSection.createEl('h5', { text: 'Special Slides' });
+
+    const specialGrid = specialSection.createDiv({ cls: 'layout-picker' });
+
+    const specialLayouts: { id: SlideLayout; label: string; icon: string }[] = [
+      { id: 'footnotes', label: 'Footnotes', icon: 'list-ordered' },
+    ];
+
+    specialLayouts.forEach(layout => {
+      const isActive = this.currentSlide?.metadata.layout === layout.id;
+      const btn = specialGrid.createDiv({
         cls: `layout-option ${isActive ? 'active' : ''}`
       });
       const iconEl = btn.createDiv({ cls: 'layout-icon' });

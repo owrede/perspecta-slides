@@ -219,12 +219,22 @@ export class PresentationWindow {
 
   private nextSlide(): void {
     if (!this.presentation) return;
-    this.goToSlide(this.currentSlideIndex + 1);
+    let nextIndex = this.currentSlideIndex + 1;
+    // Skip hidden slides
+    while (nextIndex < this.presentation.slides.length && this.presentation.slides[nextIndex].hidden) {
+      nextIndex++;
+    }
+    this.goToSlide(nextIndex);
   }
 
   private previousSlide(): void {
     if (!this.presentation) return;
-    this.goToSlide(this.currentSlideIndex - 1);
+    let prevIndex = this.currentSlideIndex - 1;
+    // Skip hidden slides
+    while (prevIndex >= 0 && this.presentation.slides[prevIndex].hidden) {
+      prevIndex--;
+    }
+    this.goToSlide(prevIndex);
   }
 
   public goToSlide(index: number): void {
@@ -237,6 +247,17 @@ export class PresentationWindow {
     }
     if (index < 0) index = 0;
     if (index >= this.presentation.slides.length) index = this.presentation.slides.length - 1;
+    
+    // If the target slide is hidden, skip to next non-hidden slide
+    while (index < this.presentation.slides.length && this.presentation.slides[index].hidden) {
+      index++;
+    }
+    // If we went past the end, find the last non-hidden slide
+    if (index >= this.presentation.slides.length) {
+      while (index > 0 && this.presentation.slides[index].hidden) {
+        index--;
+      }
+    }
 
     this.currentSlideIndex = index;
 
@@ -285,6 +306,10 @@ export class PresentationWindow {
 
   private generatePresentationHTML(presentation: Presentation, renderer: SlideRenderer, theme: Theme | null, startSlide: number = 0): string {
     const slidesHTML = presentation.slides.map((slide, index) => {
+      // Skip hidden slides in presentation
+      if (slide.hidden) {
+        return `<div class="slide" id="slide-${index}" style="display: none;"></div>`;
+      }
       return renderer.renderPresentationSlideHTML(slide, index);
     });
 
@@ -296,7 +321,7 @@ export class PresentationWindow {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${this.escapeHtml(presentation.frontmatter.title || 'Presentation')}</title>
+  <title>Presenting... ${this.escapeHtml(presentation.frontmatter.title || 'Presentation')}</title>
   <style>
     ${this.getPresentationWindowStyles()}
     ${themeCSS}
@@ -318,7 +343,7 @@ export class PresentationWindow {
       `).join('')}
     </div>
     <div class="slide-counter" id="slideCounter">
-      <span id="currentSlide">${startSlide + 1}</span> / <span id="totalSlides">${presentation.slides.length}</span>
+      <span id="currentSlide">${startSlide + 1}</span> / <span id="totalSlides">${presentation.slides.filter(s => !s.hidden).length}</span>
     </div>
   </div>
   <script>
@@ -420,9 +445,16 @@ export class PresentationWindow {
   }
 
   private getPresentationWindowScript(totalSlides: number, startSlide: number = 0): string {
+    // Count non-hidden slides
+    const visibleCount = this.presentation?.slides.filter(s => !s.hidden).length || totalSlides;
+    
     return `
       window.currentSlide = ${startSlide};
       window.totalSlides = ${totalSlides};
+      window.visibleSlidesCount = ${visibleCount};
+      
+      // Array to map visible slide numbers to actual indices
+      window.visibleSlideIndices = [${(this.presentation?.slides || []).map((s, i) => !s.hidden ? i : null).filter(i => i !== null).join(', ')}];
       
       function showSlide(index) {
         if (index < 0) index = 0;
@@ -434,7 +466,9 @@ export class PresentationWindow {
         });
         
         window.currentSlide = index;
-        document.getElementById('currentSlide').textContent = window.currentSlide + 1;
+        // Calculate visible slide number (count non-hidden slides up to current)
+        const visibleNumber = window.visibleSlideIndices.indexOf(index) + 1;
+        document.getElementById('currentSlide').textContent = visibleNumber > 0 ? visibleNumber : (index + 1);
       }
       
       // Show/hide drag zone based on mouse position and activity

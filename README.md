@@ -216,6 +216,7 @@ With a background image
 | `3-columns` | Three equal columns |
 | `2-columns-1+2` | Narrow left, wide right |
 | `2-columns-2+1` | Wide left, narrow right |
+| `footnotes` | Slide with footnotes section at bottom |
 
 ---
 
@@ -279,17 +280,31 @@ Custom themes include fonts, colors, typography, and margin settings. They appea
 
 ## Installation
 
-### From Obsidian Community Plugins
+> **Note**: Perspecta Slides is currently in early development. Installation via the BRAT plugin is required until it reaches the Obsidian Community Plugins registry.
 
-1. Open Settings → Community plugins
-2. Click "Browse" and search for "Perspecta Slides"
-3. Install and enable the plugin
+### Install via BRAT (Recommended)
+
+1. Install the [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat) if you haven't already:
+   - Open Settings → Community plugins
+   - Click "Browse" and search for "BRAT"
+   - Install and enable BRAT
+
+2. Add Perspecta Slides to BRAT:
+   - Open the BRAT plugin settings
+   - Click "Add Beta Plugin"
+   - Paste the repository URL: `https://github.com/owrede/perspecta-slides`
+   - Click "Add Plugin"
+
+3. Enable the plugin:
+   - Go to Settings → Community plugins
+   - Search for "Perspecta Slides"
+   - Click the toggle to enable
 
 ### Manual Installation
 
-1. Download the latest release from GitHub
-2. Extract to `.obsidian/plugins/perspecta-slides/`
-3. Enable in Settings → Community plugins
+1. Download the latest release from [GitHub Releases](https://github.com/owrede/perspecta-slides/releases)
+2. Extract the files to `.obsidian/plugins/perspecta-slides/`
+3. Reload Obsidian or go to Settings → Community plugins and enable "Perspecta Slides"
 
 ---
 

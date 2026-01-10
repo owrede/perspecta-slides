@@ -48,14 +48,6 @@ A powerful Obsidian plugin for creating beautiful presentations from Markdown. W
 - **Keyboard navigation** - Arrow keys, space, home/end, escape to exit
 - **Transitions** - Fade, slide, or instant transitions
 
-### 👨‍🏫 Presenter View
-
-- **Current slide** - Large view of what your audience sees
-- **Next slide preview** - See what's coming up
-- **Speaker notes** - Prominently displayed with paragraph navigation
-- **Timer** - Track elapsed time with play/pause/reset controls
-- **Slide focus / Text focus** - Toggle between seeing slides or notes prominently
-
 ### 🧭 Editor Integration
 
 - **Thumbnail navigator** - Visual slide overview in the left sidebar
@@ -71,6 +63,16 @@ A powerful Obsidian plugin for creating beautiful presentations from Markdown. W
 - **Theme toggle** - Light/dark mode switch in exported files
 - **Help overlay** - Press `?` for keyboard shortcuts
 - **External images** - Images extracted to separate folder for smaller HTML
+
+### 👨‍🏫 Presenter View
+
+- **Current slide** - Large view of what your audience sees
+- **Next slide preview** - See what's coming up
+- **Speaker notes** - Prominently displayed with paragraph navigation
+- **Timer** - Track elapsed time with play/pause/reset controls
+- **Slide focus / Text focus** - Toggle between seeing slides or notes prominently
+
+<img width="600" height="420" alt="Presenter View" src="https://github.com/user-attachments/assets/1c53b40c-1ab5-4d0f-a6c7-9f234480cb4b" />
 
 ---
 

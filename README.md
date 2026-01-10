@@ -108,6 +108,7 @@ This paragraph is a speaker note.
 	- This list appears on the slide (tab-indented)
 	- So does this one
 
+Notes:
 More notes for the presenter.
 ```
 

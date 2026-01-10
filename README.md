@@ -6,7 +6,7 @@ A powerful Obsidian plugin for creating beautiful presentations from Markdown. W
 
 ## Features
 
-### 🎨 Presentation Design
+### Presentation Design
 
 - **Built-in theme** - Default theme with dynamic gradient backgrounds and light/dark mode support
 - **Custom themes** - Save your design settings as reusable themes with bundled fonts
@@ -15,62 +15,70 @@ A powerful Obsidian plugin for creating beautiful presentations from Markdown. W
 - **Semantic colors** - Customizable colors for links, bullets, blockquotes, tables, and code
 - **Per-heading colors** - Different colors for H1, H2, H3, H4 headings
 - **Gradient backgrounds** - Dynamic slide-position-based gradient backgrounds
+- **Global text scale** - Scale all typography 0.5x to 2.0x without changing theme defaults
 
-### 📐 Slide Layouts
+### Slide Layouts
 
 - **Auto-detection** - Default layout intelligently detects columns from content structure
 - **Column layouts** - 1, 2, or 3 columns with equal or weighted ratios (1+2, 2+1)
 - **Image layouts** - Full-bleed, half-image (vertical/horizontal split), caption, and grid
 - **Special layouts** - Cover, title, and section divider slides
 - **Content margins** - Customizable header, footer, title, and content positioning
+- **Layout backgrounds** - Per-layout background colors or gradients
 
-### 🖼️ Images & Media
+### Images & Media
 
 - **Obsidian integration** - Use `![[image.png]]` wiki-links or standard Markdown `![](image.jpg)`
 - **Full-bleed images** - Edge-to-edge images with `object-fit: cover` for cinematic layouts
 - **Image positioning** - Control focal point with `x` and `y` parameters
 - **Background images** - Per-slide backgrounds with opacity control
 - **Multiple images** - Grid and split layouts for photo-heavy slides
+- **Image filters** - Darken, lighten, blur, grayscale, and sepia effects
 
-### 📝 Content Features
+### Content Features
 
 - **Speaker notes** - Regular paragraphs become notes visible only to you
-- **Kickers** - Small text above headings using `^` syntax
 - **Footnotes** - Reference footnotes with `[^id]` syntax, rendered with hanging numbers
+- **Wiki-link stripping** - `[[page]]` renders as "page" when links are disabled
+- **Newline support** - `\n` and actual newlines render as `<br />` in HTML
 - **Comments** - Use `//` for hidden comments
 - **Code blocks** - Automatic syntax highlighting
 - **Tables** - Full Markdown table support with styled headers
+- **Nested lists** - Multi-level lists with visual hierarchy
 
-### 🎭 Presentation Mode
+### Presentation Mode
 
 - **Frameless window** - Clean, distraction-free presentation window
 - **Aspect ratio locking** - 16:9, 4:3, or 16:10 with automatic letterboxing
 - **Keyboard navigation** - Arrow keys, space, home/end, escape to exit
-- **Transitions** - Fade, slide, or instant transitions
+- **Click navigation** - Click left/right thirds to navigate slides
+- **Smooth transitions** - Fade, slide, or instant transitions
 
-### 🧭 Editor Integration
+### Editor Integration
 
 - **Thumbnail navigator** - Visual slide overview in the left sidebar
 - **Drag-and-drop reordering** - Rearrange slides visually
 - **Inspector panel** - Edit properties, layouts, and design in the right sidebar
 - **Live preview** - Changes update automatically with debounced refresh
 - **Cursor sync** - Navigator highlights the slide at cursor position
+- **Demo presentation** - Create demo presentation button for quick setup with auto font installation
 
-### 📤 Export
+### Export
 
 - **HTML export** - Standalone HTML with embedded styles and navigation
 - **Keyboard controls** - Exported presentations include full navigation
 - **Theme toggle** - Light/dark mode switch in exported files
 - **Help overlay** - Press `?` for keyboard shortcuts
 - **External images** - Images extracted to separate folder for smaller HTML
+- **Progress bar** - Visual slide position indicator in exported presentations
 
-### 👨‍🏫 Presenter View
+### Presenter View
 
 - **Current slide** - Large view of what your audience sees
-- **Next slide preview** - See what's coming up
 - **Speaker notes** - Prominently displayed with paragraph navigation
 - **Timer** - Track elapsed time with play/pause/reset controls
 - **Slide focus / Text focus** - Toggle between seeing slides or notes prominently
+- **Dual-monitor support** - Electron-based presenter window for external displays
 
 <img width="600" height="420" alt="Presenter View" src="https://github.com/user-attachments/assets/1c53b40c-1ab5-4d0f-a6c7-9f234480cb4b" />
 

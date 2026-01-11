@@ -119,15 +119,19 @@ export class ExcalidrawRenderer {
 
       // Convert SVG to data URL
       const svgString = svg.outerHTML;
+      console.log(`[Perspecta] SVG string length: ${svgString.length}`);
+      console.log(`[Perspecta] SVG preview (first 200 chars): ${svgString.substring(0, 200)}`);
+      
       const base64 = btoa(unescape(encodeURIComponent(svgString)));
       const dataUrl = `data:image/svg+xml;base64,${base64}`;
 
+      console.log(`[Perspecta] Data URL length: ${dataUrl.length}`);
+      console.log(`[Perspecta] Data URL preview: ${dataUrl.substring(0, 100)}...`);
+
       // Cache it for SlideRenderer
       this.svgCache.set(file.path, dataUrl);
-
-      console.log(
-        `[Perspecta] ✅ Converted Excalidraw to SVG: ${file.path}`
-      );
+      console.log(`[Perspecta] ✅ Cached SVG for: ${file.path}`);
+      console.log(`[Perspecta] Cache now contains: ${this.svgCache.size} items`);
 
       return dataUrl;
     } catch (e) {

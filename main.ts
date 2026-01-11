@@ -1869,17 +1869,22 @@ export default class PerspectaSlidesPlugin extends Plugin {
    * Re-parses and re-renders the current slide with updated cache
    */
   private async rerenderPresentationWindow() {
+    console.log(`[Perspecta] rerenderPresentationWindow() called`);
     if (!this.presentationWindow || !this.presentationWindow.isOpen()) {
+      console.log(`[Perspecta] ❌ Presentation window not open`);
       return;
     }
     if (!this.currentPresentationFile) {
+      console.log(`[Perspecta] ❌ No current presentation file`);
       return;
     }
+    console.log(`[Perspecta] ✅ Triggering re-render for: ${this.currentPresentationFile.path}`);
     // Re-read the file to ensure we have latest content
     const content = await this.app.vault.read(this.currentPresentationFile);
     // Update with current content - this will trigger a re-render
     // which will now pick up the cached SVGs from excalidrawRenderer
     await this.updatePresentationWindowWithContent(this.currentPresentationFile, content);
+    console.log(`[Perspecta] ✅ Re-render complete`);
   }
 
   async reorderSlides(file: TFile, fromIndex: number, toIndex: number) {

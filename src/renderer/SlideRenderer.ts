@@ -133,13 +133,20 @@ export class SlideRenderer {
     // Check if this is an excalidraw:// URL that was converted and cached
     if (src.startsWith('excalidraw://')) {
       const filePath = src.substring('excalidraw://'.length);
+      console.log(`[Perspecta] Looking up Excalidraw cache for: ${filePath}`);
       if (this.excalidrawSvgCache) {
+        console.log(`[Perspecta] Cache has ${this.excalidrawSvgCache.size} items`);
         const cachedSvg = this.excalidrawSvgCache.get(filePath);
         if (cachedSvg) {
+          console.log(`[Perspecta] ✅ Found cached SVG for: ${filePath}`);
           return cachedSvg;
         }
+        console.log(`[Perspecta] ❌ SVG not in cache for: ${filePath}`);
+      } else {
+        console.log(`[Perspecta] ❌ Cache is null/undefined`);
       }
       // If not cached, return subtle loading spinner
+      console.log(`[Perspecta] Returning loading spinner for: ${filePath}`);
       return this.getLoadingSpinnerSvg();
     }
 

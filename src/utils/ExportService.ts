@@ -1,7 +1,9 @@
-import { App, Notice, TFile, TFolder, FileSystemAdapter, Modal, Setting } from 'obsidian';
-import { Presentation, Theme } from '../types';
-import { SlideRenderer, ImagePathResolver } from '../renderer/SlideRenderer';
-import { FontManager } from './FontManager';
+import type { App } from 'obsidian';
+import { Notice, TFile, TFolder, FileSystemAdapter, Modal, Setting } from 'obsidian';
+import type { Presentation, Theme } from '../types';
+import type { ImagePathResolver } from '../renderer/SlideRenderer';
+import { SlideRenderer } from '../renderer/SlideRenderer';
+import type { FontManager } from './FontManager';
 
 /**
  * Confirmation modal for overwriting export folder
@@ -10,33 +12,38 @@ class OverwriteConfirmModal extends Modal {
   private confirmed: boolean = false;
   private resolvePromise: ((value: boolean) => void) | null = null;
 
-  constructor(app: App, private folderName: string) {
+  constructor(
+    app: App,
+    private folderName: string
+  ) {
     super(app);
   }
 
   onOpen() {
     const { contentEl } = this;
-    
+
     contentEl.createEl('h2', { text: 'Overwrite Export?' });
-    contentEl.createEl('p', { 
-      text: `The folder "${this.folderName}" already exists. Do you want to overwrite its contents?` 
+    contentEl.createEl('p', {
+      text: `The folder "${this.folderName}" already exists. Do you want to overwrite its contents?`,
     });
-    
+
     new Setting(contentEl)
-      .addButton(btn => btn
-        .setButtonText('Cancel')
-        .onClick(() => {
+      .addButton((btn) =>
+        btn.setButtonText('Cancel').onClick(() => {
           this.confirmed = false;
           this.close();
-        }))
-      .addButton(btn => btn
-        .setButtonText('Overwrite')
-        .setWarning()
-        .setCta()
-        .onClick(() => {
-          this.confirmed = true;
-          this.close();
-        }));
+        })
+      )
+      .addButton((btn) =>
+        btn
+          .setButtonText('Overwrite')
+          .setWarning()
+          .setCta()
+          .onClick(() => {
+            this.confirmed = true;
+            this.close();
+          })
+      );
   }
 
   onClose() {
@@ -88,13 +95,13 @@ export class ExportService {
       const folderName = `${sourceFile.basename.replace(/\.md$/, '')}-export`;
       const parentPath = sourceFile.parent?.path || '';
       const exportPath = parentPath ? `${parentPath}/${folderName}` : folderName;
-      
+
       console.log('[Export] Checking for existing folder:', exportPath);
-      
+
       // Check using adapter.exists for more reliable detection
       const folderExists = await this.app.vault.adapter.exists(exportPath);
       console.log('[Export] Folder exists:', folderExists);
-      
+
       if (folderExists) {
         // Folder exists - ask for confirmation
         const modal = new OverwriteConfirmModal(this.app, folderName);
@@ -104,7 +111,7 @@ export class ExportService {
           return;
         }
       }
-      
+
       // Create export folder (or use existing)
       const exportFolder = await this.getOrCreateExportFolder(exportPath);
 
@@ -115,11 +122,11 @@ export class ExportService {
       const slides = await Promise.all(
         presentation.slides.map(async (slide, idx) => {
           let html = renderer.renderPresentationSlideHTML(slide, idx);
-          
+
           // Inject theme CSS variables and toggle CSS into each slide's HTML
           html = this.injectThemeCSSVariables(html, theme);
           html = this.injectThemeToggleCSS(html);
-          
+
           const { html: processedHtml, images } = await this.extractImagesFromHTML(
             html,
             exportPath
@@ -127,14 +134,14 @@ export class ExportService {
           extractedImages.push(...images);
           return {
             html: processedHtml,
-            speakerNotes: slide.speakerNotes || []
+            speakerNotes: slide.speakerNotes || [],
           };
         })
       );
 
       // Copy unique images to export folder
-      const uniqueImages = extractedImages.filter((img, idx, arr) => 
-        arr.findIndex(i => i.originalPath === img.originalPath) === idx
+      const uniqueImages = extractedImages.filter(
+        (img, idx, arr) => arr.findIndex((i) => i.originalPath === img.originalPath) === idx
       );
       await this.copyImages(uniqueImages);
 
@@ -155,15 +162,14 @@ export class ExportService {
       );
 
       // Write index.html
-      await this.app.vault.adapter.write(
-        `${exportPath}/index.html`,
-        html
-      );
+      await this.app.vault.adapter.write(`${exportPath}/index.html`, html);
 
       new Notice(`Presentation exported to ${folderName}/`);
     } catch (error) {
       console.error('Export failed:', error);
-      new Notice(`Failed to export presentation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      new Notice(
+        `Failed to export presentation: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -173,15 +179,17 @@ export class ExportService {
   async exportTestPage(theme: Theme | null): Promise<void> {
     try {
       const html = this.generateThemeTestHTML(theme);
-      
+
       // Write to Obsidian vault root
       const testFile = 'perspecta-theme-test.html';
       await this.app.vault.adapter.write(testFile, html);
-      
+
       new Notice(`Theme test page exported to ${testFile}`);
     } catch (error) {
       console.error('Test export failed:', error);
-      new Notice(`Failed to export test page: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      new Notice(
+        `Failed to export test page: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -202,7 +210,7 @@ export class ExportService {
       console.log('[Export] Folder exists on disk but not in vault cache, creating via adapter');
       // Folder exists on disk, just ensure we have a reference
       // Try to get it from vault after a small delay for cache sync
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       const folder = this.app.vault.getAbstractFileByPath(folderPath);
       if (folder instanceof TFolder) {
         return folder;
@@ -226,18 +234,22 @@ export class ExportService {
    * Includes per-heading colors and layout backgrounds from theme.json if available
    */
   private injectThemeCSSVariables(html: string, theme: Theme | null): string {
-    if (!theme) return html;
+    if (!theme) {
+      return html;
+    }
 
     const preset = theme.presets[0];
-    if (!preset) return html;
+    if (!preset) {
+      return html;
+    }
 
     const themeJson = theme.themeJsonData;
-    
+
     // FIX: Replace .slide.light and .slide.dark selectors with html.light and html.dark
     // because in exported iframes, there's no .slide container - the html element acts as the root
     html = html.replace(/\.slide\.light\b/g, 'html.light');
     html = html.replace(/\.slide\.dark\b/g, 'html.dark');
-    
+
     // Ensure the <html> element has the dark class for iframes (default to dark mode)
     // This ensures CSS rules for html.dark match on initial iframe load
     if (!html.includes('<html') && !html.includes('<HTML')) {
@@ -254,14 +266,22 @@ export class ExportService {
         return match;
       });
     }
-    
+
     // Helper function to convert color array to CSS value
     const colorToCss = (colors: string[] | string | undefined): string => {
-      if (!colors) return 'inherit';
-      if (typeof colors === 'string') return colors;
+      if (!colors) {
+        return 'inherit';
+      }
+      if (typeof colors === 'string') {
+        return colors;
+      }
       if (Array.isArray(colors)) {
-        if (colors.length === 0) return 'inherit';
-        if (colors.length === 1) return colors[0];
+        if (colors.length === 0) {
+          return 'inherit';
+        }
+        if (colors.length === 1) {
+          return colors[0];
+        }
         return `linear-gradient(to right, ${colors.join(', ')})`;
       }
       return 'inherit';
@@ -297,12 +317,24 @@ export class ExportService {
     let lightBgSection = 'inherit';
     if (themeJson?.presets.light.backgrounds) {
       const bg = themeJson.presets.light.backgrounds;
-      lightBgCover = bg.cover?.type === 'solid' && bg.cover.color ? bg.cover.color : 
-                     (bg.cover?.colors ? `linear-gradient(135deg, ${bg.cover.colors.join(', ')})` : 'inherit');
-      lightBgTitle = bg.title?.type === 'solid' && bg.title.color ? bg.title.color : 
-                     (bg.title?.colors ? `linear-gradient(135deg, ${bg.title.colors.join(', ')})` : 'inherit');
-      lightBgSection = bg.section?.type === 'solid' && bg.section.color ? bg.section.color : 
-                       (bg.section?.colors ? `linear-gradient(135deg, ${bg.section.colors.join(', ')})` : 'inherit');
+      lightBgCover =
+        bg.cover?.type === 'solid' && bg.cover.color
+          ? bg.cover.color
+          : bg.cover?.colors
+            ? `linear-gradient(135deg, ${bg.cover.colors.join(', ')})`
+            : 'inherit';
+      lightBgTitle =
+        bg.title?.type === 'solid' && bg.title.color
+          ? bg.title.color
+          : bg.title?.colors
+            ? `linear-gradient(135deg, ${bg.title.colors.join(', ')})`
+            : 'inherit';
+      lightBgSection =
+        bg.section?.type === 'solid' && bg.section.color
+          ? bg.section.color
+          : bg.section?.colors
+            ? `linear-gradient(135deg, ${bg.section.colors.join(', ')})`
+            : 'inherit';
     }
 
     // Build layout backgrounds (dark mode)
@@ -311,12 +343,24 @@ export class ExportService {
     let darkBgSection = 'inherit';
     if (themeJson?.presets.dark.backgrounds) {
       const bg = themeJson.presets.dark.backgrounds;
-      darkBgCover = bg.cover?.type === 'solid' && bg.cover.color ? bg.cover.color : 
-                    (bg.cover?.colors ? `linear-gradient(135deg, ${bg.cover.colors.join(', ')})` : 'inherit');
-      darkBgTitle = bg.title?.type === 'solid' && bg.title.color ? bg.title.color : 
-                    (bg.title?.colors ? `linear-gradient(135deg, ${bg.title.colors.join(', ')})` : 'inherit');
-      darkBgSection = bg.section?.type === 'solid' && bg.section.color ? bg.section.color : 
-                      (bg.section?.colors ? `linear-gradient(135deg, ${bg.section.colors.join(', ')})` : 'inherit');
+      darkBgCover =
+        bg.cover?.type === 'solid' && bg.cover.color
+          ? bg.cover.color
+          : bg.cover?.colors
+            ? `linear-gradient(135deg, ${bg.cover.colors.join(', ')})`
+            : 'inherit';
+      darkBgTitle =
+        bg.title?.type === 'solid' && bg.title.color
+          ? bg.title.color
+          : bg.title?.colors
+            ? `linear-gradient(135deg, ${bg.title.colors.join(', ')})`
+            : 'inherit';
+      darkBgSection =
+        bg.section?.type === 'solid' && bg.section.color
+          ? bg.section.color
+          : bg.section?.colors
+            ? `linear-gradient(135deg, ${bg.section.colors.join(', ')})`
+            : 'inherit';
     }
 
     const variablesCSS = `
@@ -413,7 +457,7 @@ export class ExportService {
    * All rules use !important to override inline styles and ensure toggle works reliably
    */
   private injectThemeToggleCSS(html: string): string {
-   const themeToggleCSS = `
+    const themeToggleCSS = `
    <style>
      /* Color scheme helpers for browser defaults */
      html.dark {
@@ -776,7 +820,7 @@ export class ExportService {
       html.dark .slide.light .half-content-panel { background-color: var(--light-background, #fff) !important; color: var(--light-body-text, #000) !important; }
     </style>
     `;
-    
+
     // Inject the CSS before the closing </head> tag
     return html.replace('</head>', `${themeToggleCSS}</head>`);
   }
@@ -845,7 +889,7 @@ export class ExportService {
       return {
         originalPath: filePath,
         exportPath: relativeExportPath,
-        file
+        file,
       };
     } catch (e) {
       console.warn(`Failed to process image reference: ${src}`, e);
@@ -867,14 +911,14 @@ export class ExportService {
     for (const img of images) {
       try {
         const data = await this.app.vault.readBinary(img.file);
-        
+
         // Extract filename from export path
         const filename = img.exportPath.split('/').pop() || img.file.name;
-        
+
         // Get the export folder name from the last created folder
         // For now, we'll write relative to the vault root with a convention
         const fullPath = `${basePath}/${img.exportPath}`;
-        
+
         // Create images folder if needed
         const imagesDir = fullPath.split('/').slice(0, -1).join('/');
         try {
@@ -882,7 +926,7 @@ export class ExportService {
         } catch (e) {
           // Folder might already exist
         }
-        
+
         await this.app.vault.adapter.writeBinary(fullPath, data);
       } catch (e) {
         console.warn(`Failed to copy image: ${img.originalPath}`, e);
@@ -895,13 +939,13 @@ export class ExportService {
    */
   private getMimeType(ext: string): string {
     const mimeTypes: Record<string, string> = {
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
-      'svg': 'image/svg+xml',
-      'webp': 'image/webp',
-      'ico': 'image/x-icon',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
+      svg: 'image/svg+xml',
+      webp: 'image/webp',
+      ico: 'image/x-icon',
     };
     return mimeTypes[ext] || 'image/png';
   }
@@ -928,17 +972,27 @@ export class ExportService {
     }
 
     const preset = theme.presets[0];
-    if (!preset) return '';
+    if (!preset) {
+      return '';
+    }
 
     const themeJson = theme.themeJsonData;
 
     // Helper function to convert color array to CSS value
     const colorToCss = (colors: string[] | string | undefined): string => {
-      if (!colors) return 'inherit';
-      if (typeof colors === 'string') return colors;
+      if (!colors) {
+        return 'inherit';
+      }
+      if (typeof colors === 'string') {
+        return colors;
+      }
       if (Array.isArray(colors)) {
-        if (colors.length === 0) return 'inherit';
-        if (colors.length === 1) return colors[0];
+        if (colors.length === 0) {
+          return 'inherit';
+        }
+        if (colors.length === 1) {
+          return colors[0];
+        }
         return `linear-gradient(to right, ${colors.join(', ')})`;
       }
       return 'inherit';
@@ -977,21 +1031,45 @@ export class ExportService {
 
     if (themeJson?.presets.light.backgrounds) {
       const bg = themeJson.presets.light.backgrounds;
-      lightBgCover = bg.cover?.type === 'solid' && bg.cover.color ? bg.cover.color : 
-                     (bg.cover?.colors ? `linear-gradient(135deg, ${bg.cover.colors.join(', ')})` : 'inherit');
-      lightBgTitle = bg.title?.type === 'solid' && bg.title.color ? bg.title.color : 
-                     (bg.title?.colors ? `linear-gradient(135deg, ${bg.title.colors.join(', ')})` : 'inherit');
-      lightBgSection = bg.section?.type === 'solid' && bg.section.color ? bg.section.color : 
-                       (bg.section?.colors ? `linear-gradient(135deg, ${bg.section.colors.join(', ')})` : 'inherit');
+      lightBgCover =
+        bg.cover?.type === 'solid' && bg.cover.color
+          ? bg.cover.color
+          : bg.cover?.colors
+            ? `linear-gradient(135deg, ${bg.cover.colors.join(', ')})`
+            : 'inherit';
+      lightBgTitle =
+        bg.title?.type === 'solid' && bg.title.color
+          ? bg.title.color
+          : bg.title?.colors
+            ? `linear-gradient(135deg, ${bg.title.colors.join(', ')})`
+            : 'inherit';
+      lightBgSection =
+        bg.section?.type === 'solid' && bg.section.color
+          ? bg.section.color
+          : bg.section?.colors
+            ? `linear-gradient(135deg, ${bg.section.colors.join(', ')})`
+            : 'inherit';
     }
     if (themeJson?.presets.dark.backgrounds) {
       const bg = themeJson.presets.dark.backgrounds;
-      darkBgCover = bg.cover?.type === 'solid' && bg.cover.color ? bg.cover.color : 
-                    (bg.cover?.colors ? `linear-gradient(135deg, ${bg.cover.colors.join(', ')})` : 'inherit');
-      darkBgTitle = bg.title?.type === 'solid' && bg.title.color ? bg.title.color : 
-                    (bg.title?.colors ? `linear-gradient(135deg, ${bg.title.colors.join(', ')})` : 'inherit');
-      darkBgSection = bg.section?.type === 'solid' && bg.section.color ? bg.section.color : 
-                      (bg.section?.colors ? `linear-gradient(135deg, ${bg.section.colors.join(', ')})` : 'inherit');
+      darkBgCover =
+        bg.cover?.type === 'solid' && bg.cover.color
+          ? bg.cover.color
+          : bg.cover?.colors
+            ? `linear-gradient(135deg, ${bg.cover.colors.join(', ')})`
+            : 'inherit';
+      darkBgTitle =
+        bg.title?.type === 'solid' && bg.title.color
+          ? bg.title.color
+          : bg.title?.colors
+            ? `linear-gradient(135deg, ${bg.title.colors.join(', ')})`
+            : 'inherit';
+      darkBgSection =
+        bg.section?.type === 'solid' && bg.section.color
+          ? bg.section.color
+          : bg.section?.colors
+            ? `linear-gradient(135deg, ${bg.section.colors.join(', ')})`
+            : 'inherit';
     }
 
     return `
@@ -1086,10 +1164,11 @@ export class ExportService {
     const title = presentation.frontmatter.title || 'Presentation';
     const slidesHTML = slides
       .map((slide, idx) => {
-        const speakerNotesComment = slide.speakerNotes && slide.speakerNotes.length > 0
-          ? `<!-- SPEAKER NOTES:\n${slide.speakerNotes.map(n => `  ${n}`).join('\n')}\n-->\n`
-          : '';
-        
+        const speakerNotesComment =
+          slide.speakerNotes && slide.speakerNotes.length > 0
+            ? `<!-- SPEAKER NOTES:\n${slide.speakerNotes.map((n) => `  ${n}`).join('\n')}\n-->\n`
+            : '';
+
         return `
         ${speakerNotesComment}
         <div class="slide${idx === 0 ? ' active' : ''}" data-slide-index="${idx}">
@@ -1182,11 +1261,11 @@ export class ExportService {
     }
 
     const ratioStr = aspectRatio || '16:9';
-    const ratios: Record<string, {width: number, height: number}> = {
+    const ratios: Record<string, { width: number; height: number }> = {
       '16:9': { width: 16, height: 9 },
       '4:3': { width: 4, height: 3 },
       '16:10': { width: 16, height: 10 },
-      'auto': { width: 0, height: 0 }
+      auto: { width: 0, height: 0 },
     };
 
     const ratio = ratios[ratioStr] || ratios['16:9'];
@@ -1833,14 +1912,22 @@ export class ExportService {
   private generateThemeTestHTML(theme: Theme | null): string {
     const preset = theme?.presets[0];
     const themeJson = theme?.themeJsonData;
-    
+
     // Helper function to convert color array to CSS value
     const colorToCss = (colors: string[] | string | undefined): string => {
-      if (!colors) return 'inherit';
-      if (typeof colors === 'string') return colors;
+      if (!colors) {
+        return 'inherit';
+      }
+      if (typeof colors === 'string') {
+        return colors;
+      }
       if (Array.isArray(colors)) {
-        if (colors.length === 0) return 'inherit';
-        if (colors.length === 1) return colors[0];
+        if (colors.length === 0) {
+          return 'inherit';
+        }
+        if (colors.length === 1) {
+          return colors[0];
+        }
         return `linear-gradient(to right, ${colors.join(', ')})`;
       }
       return 'inherit';
@@ -1855,7 +1942,7 @@ export class ExportService {
     let darkH2 = preset?.DarkTitleTextColor || '#fff';
     let darkH3 = preset?.DarkBodyTextColor || '#ddd';
     let darkH4 = preset?.DarkBodyTextColor || '#ddd';
-    
+
     if (themeJson?.presets.light.text) {
       lightH1 = colorToCss(themeJson.presets.light.text.h1);
       lightH2 = colorToCss(themeJson.presets.light.text.h2);
@@ -1876,27 +1963,52 @@ export class ExportService {
     let darkBgCover = 'inherit';
     let darkBgTitle = 'inherit';
     let darkBgSection = 'inherit';
-    
+
     if (themeJson?.presets.light.backgrounds) {
       const bg = themeJson.presets.light.backgrounds;
-      lightBgCover = bg.cover?.type === 'solid' && bg.cover.color ? bg.cover.color : 
-                     (bg.cover?.colors ? `linear-gradient(135deg, ${bg.cover.colors.join(', ')})` : 'inherit');
-      lightBgTitle = bg.title?.type === 'solid' && bg.title.color ? bg.title.color : 
-                     (bg.title?.colors ? `linear-gradient(135deg, ${bg.title.colors.join(', ')})` : 'inherit');
-      lightBgSection = bg.section?.type === 'solid' && bg.section.color ? bg.section.color : 
-                       (bg.section?.colors ? `linear-gradient(135deg, ${bg.section.colors.join(', ')})` : 'inherit');
+      lightBgCover =
+        bg.cover?.type === 'solid' && bg.cover.color
+          ? bg.cover.color
+          : bg.cover?.colors
+            ? `linear-gradient(135deg, ${bg.cover.colors.join(', ')})`
+            : 'inherit';
+      lightBgTitle =
+        bg.title?.type === 'solid' && bg.title.color
+          ? bg.title.color
+          : bg.title?.colors
+            ? `linear-gradient(135deg, ${bg.title.colors.join(', ')})`
+            : 'inherit';
+      lightBgSection =
+        bg.section?.type === 'solid' && bg.section.color
+          ? bg.section.color
+          : bg.section?.colors
+            ? `linear-gradient(135deg, ${bg.section.colors.join(', ')})`
+            : 'inherit';
     }
     if (themeJson?.presets.dark.backgrounds) {
       const bg = themeJson.presets.dark.backgrounds;
-      darkBgCover = bg.cover?.type === 'solid' && bg.cover.color ? bg.cover.color : 
-                    (bg.cover?.colors ? `linear-gradient(135deg, ${bg.cover.colors.join(', ')})` : 'inherit');
-      darkBgTitle = bg.title?.type === 'solid' && bg.title.color ? bg.title.color : 
-                    (bg.title?.colors ? `linear-gradient(135deg, ${bg.title.colors.join(', ')})` : 'inherit');
-      darkBgSection = bg.section?.type === 'solid' && bg.section.color ? bg.section.color : 
-                      (bg.section?.colors ? `linear-gradient(135deg, ${bg.section.colors.join(', ')})` : 'inherit');
+      darkBgCover =
+        bg.cover?.type === 'solid' && bg.cover.color
+          ? bg.cover.color
+          : bg.cover?.colors
+            ? `linear-gradient(135deg, ${bg.cover.colors.join(', ')})`
+            : 'inherit';
+      darkBgTitle =
+        bg.title?.type === 'solid' && bg.title.color
+          ? bg.title.color
+          : bg.title?.colors
+            ? `linear-gradient(135deg, ${bg.title.colors.join(', ')})`
+            : 'inherit';
+      darkBgSection =
+        bg.section?.type === 'solid' && bg.section.color
+          ? bg.section.color
+          : bg.section?.colors
+            ? `linear-gradient(135deg, ${bg.section.colors.join(', ')})`
+            : 'inherit';
     }
-    
-    const variables = preset ? `
+
+    const variables = preset
+      ? `
       :root {
         --light-background: ${preset.LightBackgroundColor};
         --dark-background: ${preset.DarkBackgroundColor};
@@ -1969,7 +2081,8 @@ export class ExportService {
         --bg-title: var(--light-bg-title);
         --bg-section: var(--light-bg-section);
       }
-    ` : '';
+    `
+      : '';
 
     const toggleCSS = this.injectThemeToggleCSS('').match(/<style>[\s\S]*<\/style>/)?.[0] || '';
 

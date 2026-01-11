@@ -1,0 +1,10 @@
+node_modules
+package-lock.json
+*.js
+*.mjs
+main.js
+preload.js
+dist
+build
+.obsidian
+CHANGELOG.md

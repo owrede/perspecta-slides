@@ -1,9 +1,18 @@
-import { Presentation, Slide, SlideElement, PresentationFrontmatter, Theme, SlideLayout, ImageData } from '../types';
+import type {
+  Presentation,
+  Slide,
+  SlideElement,
+  PresentationFrontmatter,
+  Theme,
+  SlideLayout,
+} from '../types';
+import { ImageData } from '../types';
 import { generateThemeCSS } from '../themes';
+import { getDebugService } from '../utils/DebugService';
 
 /**
  * SlideRenderer-Renders presentations to HTML
- * 
+ *
  * Uses container/layout class pattern:
  *-Container class (e.g., .cover-container, .section-container) on outer element
  *-Layout class (e.g., .layout-cover, .layout-section) on content
@@ -21,6 +30,8 @@ export class SlideRenderer {
   private customFontCSS: string = '';
   private systemColorScheme: 'light' | 'dark' = 'light';
   private fontWeightsCache: Map<string, number[]> = new Map(); // Cache of font name -> available weights
+  private excalidrawSvgCache: Map<string, string> | null = null; // Reference to ExcalidrawRenderer's cache
+  private failedDecompressionFiles: Set<string> = new Set(); // Files that couldn't be auto-decompressed
 
   constructor(presentation: Presentation, theme?: Theme, resolveImagePath?: ImagePathResolver) {
     this.presentation = presentation;
@@ -41,27 +52,40 @@ export class SlideRenderer {
    * Returns the weight if valid, or the closest valid weight (with fallback warning), or undefined
    * This implements the APPLY STAGE weight fallback from the font handling concept
    */
-  private validateFontWeight(fontName: string | undefined, weight: number | undefined): number | undefined {
-    if (!weight || !fontName) return undefined;
+  private validateFontWeight(
+    fontName: string | undefined,
+    weight: number | undefined
+  ): number | undefined {
+    if (!weight || !fontName) {
+      return undefined;
+    }
 
     const availableWeights = this.fontWeightsCache.get(fontName);
-    if (!availableWeights || availableWeights.length === 0) return undefined;
+    if (!availableWeights || availableWeights.length === 0) {
+      return undefined;
+    }
 
     // If weight is available, use it directly
-    if (availableWeights.includes(weight)) return weight;
+    if (availableWeights.includes(weight)) {
+      return weight;
+    }
 
     // Weight not available - use fallback logic:
     // Find closest available weight, preferring heavier weights (e.g., if 600 not available, use 700)
     const sorted = availableWeights.sort((a, b) => a - b);
 
     // Try to find weight >= requested weight first, then fallback to closest
-    const heavier = sorted.find(w => w >= weight);
-    const closest = heavier || sorted.reduce((prev, curr) =>
-      Math.abs(curr - weight) < Math.abs(prev - weight) ? curr : prev
-    );
+    const heavier = sorted.find((w) => w >= weight);
+    const closest =
+      heavier ||
+      sorted.reduce((prev, curr) =>
+        Math.abs(curr - weight) < Math.abs(prev - weight) ? curr : prev
+      );
 
     // Log warning about weight fallback
-    console.warn(`[font-handling] Font weight ${weight} not available for "${fontName}", using ${closest}`);
+    console.warn(
+      `[font-handling] Font weight ${weight} not available for "${fontName}", using ${closest}`
+    );
 
     return closest;
   }
@@ -90,6 +114,22 @@ export class SlideRenderer {
   }
 
   /**
+   * Set reference to ExcalidrawRenderer's SVG cache
+   * This allows us to look up asynchronously-converted SVGs
+   */
+  setExcalidrawSvgCache(cache: Map<string, string>): void {
+    this.excalidrawSvgCache = cache;
+  }
+
+  /**
+   * Set reference to files that failed decompression
+   * These files need manual decompression via the Obsidian Excalidraw plugin
+   */
+  setFailedDecompressionFiles(files: Set<string>): void {
+    this.failedDecompressionFiles = files;
+  }
+
+  /**
    * Resolve an image path, using the resolver if available
    */
   private resolveImageSrc(element: SlideElement): string {
@@ -100,7 +140,85 @@ export class SlideRenderer {
       src = this.resolveImagePath(src, imageData?.isWikiLink || false);
     }
 
+    // Check if this is an excalidraw:// URL that was converted and cached
+    if (src.startsWith('excalidraw://')) {
+      const filePath = src.substring('excalidraw://'.length);
+      const debug = getDebugService();
+      debug.log('excalidraw', `Looking up cache for: ${filePath}`);
+      
+      // Check if this file failed decompression
+      if (this.failedDecompressionFiles.has(filePath)) {
+        debug.log('excalidraw', `File needs manual decompression: ${filePath}`);
+        return this.getDecompressionNeededSvg();
+      }
+      
+      if (this.excalidrawSvgCache) {
+        debug.log('excalidraw', `Cache has ${this.excalidrawSvgCache.size} items`);
+        if (this.excalidrawSvgCache.size > 0) {
+          debug.log('excalidraw', `Cache keys:`, Array.from(this.excalidrawSvgCache.keys()));
+        }
+        const cachedSvg = this.excalidrawSvgCache.get(filePath);
+        if (cachedSvg) {
+          debug.log('excalidraw', `✅ Found cached SVG for: ${filePath}`);
+          return cachedSvg;
+        }
+        debug.log('excalidraw', `❌ SVG not in cache for: ${filePath}`);
+      } else {
+        debug.log('excalidraw', `❌ Cache is null/undefined`);
+      }
+      // If not cached, return subtle loading spinner
+      debug.log('excalidraw', `Returning loading spinner for: ${filePath}`);
+      return this.getLoadingSpinnerSvg();
+    }
+
     return src;
+  }
+
+  /**
+   * Generate a subtle loading spinner SVG as data URL
+   * Small, light gray spinner that indicates loading without being intrusive
+   */
+  private getLoadingSpinnerSvg(): string {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+      <defs>
+        <style>
+          @keyframes spin { to { transform: rotate(360deg); } }
+          .spinner { animation: spin 2s linear infinite; transform-origin: center; }
+        </style>
+      </defs>
+      <circle cx="50" cy="50" r="40" fill="none" stroke="#e0e0e0" stroke-width="3"/>
+      <circle cx="50" cy="50" r="40" fill="none" stroke="#999999" stroke-width="3" stroke-dasharray="20 150" class="spinner"/>
+    </svg>`;
+    const encoded = btoa(unescape(encodeURIComponent(svg)));
+    return `data:image/svg+xml;base64,${encoded}`;
+  }
+
+  /**
+   * Generate a "manual decompression needed" placeholder SVG
+   * Shows a helpful message that the file needs manual decompression
+   */
+  private getDecompressionNeededSvg(): string {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+      <defs>
+        <style>
+          .bg { fill: #f5f5f5; }
+          .border { stroke: #ccc; stroke-width: 2; fill: none; }
+          .title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; font-weight: bold; fill: #333; }
+          .text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; fill: #666; }
+        </style>
+      </defs>
+      <rect class="bg" width="400" height="200"/>
+      <rect class="border" x="10" y="10" width="380" height="180" rx="4"/>
+      <text class="title" x="20" y="35">Excalidraw File</text>
+      <text class="text" x="20" y="60">This file uses a compressed format</text>
+      <text class="text" x="20" y="80">that requires manual decompression.</text>
+      <text class="text" x="20" y="105">Please decompress using the Obsidian</text>
+      <text class="text" x="20" y="125">Excalidraw plugin:</text>
+      <text class="text" x="20" y="150" font-style="italic">Cmd+P → "Decompress current Excalidraw file"</text>
+      <text class="text" x="20" y="170" font-size="11">Then Perspecta Slides will render it.</text>
+    </svg>`;
+    const encoded = btoa(unescape(encodeURIComponent(svg)));
+    return `data:image/svg+xml;base64,${encoded}`;
   }
 
   /**
@@ -108,22 +226,34 @@ export class SlideRenderer {
    */
   private getContainerClass(layout: SlideLayout): string {
     switch (layout) {
-      case 'cover': return 'cover-container';
-      case 'title': return 'title-container';
-      case 'section': return 'section-container';
-      case 'full-image': return 'image-container';
-      case 'half-image': return 'split-container';
-      case 'half-image-horizontal': return 'split-horizontal-container';
-      case 'caption': return 'caption-container';
-      case 'grid': return 'grid-container';
-      case 'footnotes': return 'footnotes-container';
+      case 'cover':
+        return 'cover-container';
+      case 'title':
+        return 'title-container';
+      case 'section':
+        return 'section-container';
+      case 'full-image':
+      case 'full-image-contained':
+        return 'image-container';
+      case 'half-image':
+        return 'split-container';
+      case 'half-image-horizontal':
+        return 'split-horizontal-container';
+      case 'caption':
+      case 'caption-contained':
+        return 'caption-container';
+      case 'grid':
+        return 'grid-container';
+      case 'footnotes':
+        return 'footnotes-container';
       case '1-column':
       case '2-columns':
       case '3-columns':
       case '2-columns-1+2':
       case '2-columns-2+1':
         return 'columns-container';
-      default: return 'default-container';
+      default:
+        return 'default-container';
     }
   }
 
@@ -144,7 +274,12 @@ export class SlideRenderer {
   /**
    * Render a single slide to standalone HTML (for thumbnails/iframes)
    */
-  renderSingleSlideHTML(slide: Slide, index: number, frontmatter: PresentationFrontmatter, context: 'thumbnail' | 'preview' | 'presentation' = 'thumbnail'): string {
+  renderSingleSlideHTML(
+    slide: Slide,
+    index: number,
+    frontmatter: PresentationFrontmatter,
+    context: 'thumbnail' | 'preview' | 'presentation' = 'thumbnail'
+  ): string {
     const themeClasses = this.theme?.template.CssClasses || '';
     const themeCSS = this.theme ? generateThemeCSS(this.theme, context) : '';
     const bodyClass = context === 'thumbnail' ? 'perspecta-thumbnail' : 'perspecta-preview';
@@ -208,9 +343,13 @@ export class SlideRenderer {
    * Returns -1 if the slide is hidden
    */
   private getVisibleSlideIndex(slideIndex: number): number {
-    if (slideIndex < 0 || slideIndex >= this.presentation.slides.length) return -1;
-    if (this.presentation.slides[slideIndex].hidden) return -1;
-    
+    if (slideIndex < 0 || slideIndex >= this.presentation.slides.length) {
+      return -1;
+    }
+    if (this.presentation.slides[slideIndex].hidden) {
+      return -1;
+    }
+
     let visibleIndex = 0;
     for (let i = 0; i < slideIndex; i++) {
       if (!this.presentation.slides[i].hidden) {
@@ -224,8 +363,12 @@ export class SlideRenderer {
    * Interpolate between colors in a gradient based on position (0-1)
    */
   private interpolateGradientColor(colors: string[], position: number): string {
-    if (colors.length === 0) return '#ffffff';
-    if (colors.length === 1) return colors[0];
+    if (colors.length === 0) {
+      return '#ffffff';
+    }
+    if (colors.length === 1) {
+      return colors[0];
+    }
 
     // Clamp position to 0-1
     position = Math.max(0, Math.min(1, position));
@@ -235,7 +378,9 @@ export class SlideRenderer {
     const index = Math.floor(segment);
     const t = segment - index;
 
-    if (index >= colors.length - 1) return colors[colors.length - 1];
+    if (index >= colors.length - 1) {
+      return colors[colors.length - 1];
+    }
 
     const color1 = this.parseColor(colors[index]);
     const color2 = this.parseColor(colors[index + 1]);
@@ -270,117 +415,142 @@ export class SlideRenderer {
   /**
    * Check if a layout has a specific background override defined in frontmatter.
    * Layout backgrounds take precedence over dynamic backgrounds.
-   * 
+   *
    * Only frontmatter overrides count - theme layout backgrounds are now always overridden
    * by the CSS generation (falling back to general background when not set in frontmatter).
    * This ensures dynamic backgrounds work for all layouts unless explicitly overridden.
    */
-  private hasLayoutBackground(layout: SlideLayout, mode: 'light' | 'dark', frontmatter: PresentationFrontmatter): boolean {
+  private hasLayoutBackground(
+    layout: SlideLayout,
+    mode: 'light' | 'dark',
+    frontmatter: PresentationFrontmatter
+  ): boolean {
     // Only check frontmatter - theme layout backgrounds are handled in CSS
     if (layout === 'cover') {
-      if (mode === 'light' && frontmatter.lightBgCover) return true;
-      if (mode === 'dark' && frontmatter.darkBgCover) return true;
+      if (mode === 'light' && frontmatter.lightBgCover) {
+        return true;
+      }
+      if (mode === 'dark' && frontmatter.darkBgCover) {
+        return true;
+      }
     } else if (layout === 'title') {
-      if (mode === 'light' && frontmatter.lightBgTitle) return true;
-      if (mode === 'dark' && frontmatter.darkBgTitle) return true;
+      if (mode === 'light' && frontmatter.lightBgTitle) {
+        return true;
+      }
+      if (mode === 'dark' && frontmatter.darkBgTitle) {
+        return true;
+      }
     } else if (layout === 'section') {
-      if (mode === 'light' && frontmatter.lightBgSection) return true;
-      if (mode === 'dark' && frontmatter.darkBgSection) return true;
+      if (mode === 'light' && frontmatter.lightBgSection) {
+        return true;
+      }
+      if (mode === 'dark' && frontmatter.darkBgSection) {
+        return true;
+      }
     }
-    
+
     return false;
   }
 
   /**
    * Get dynamic background color for a slide if enabled
    */
-  private getDynamicBackgroundColor(slideIndex: number, totalSlides: number, mode: 'light' | 'dark', frontmatter: PresentationFrontmatter): string | null {
-     const useDynamic = frontmatter.useDynamicBackground;
-     if (!useDynamic || useDynamic === 'none') return null;
-     if (useDynamic !== 'both' && useDynamic !== mode) return null;
+  private getDynamicBackgroundColor(
+    slideIndex: number,
+    totalSlides: number,
+    mode: 'light' | 'dark',
+    frontmatter: PresentationFrontmatter
+  ): string | null {
+    const useDynamic = frontmatter.useDynamicBackground;
+    if (!useDynamic || useDynamic === 'none') {
+      return null;
+    }
+    if (useDynamic !== 'both' && useDynamic !== mode) {
+      return null;
+    }
 
-     // Get gradient colors-priority: frontmatter > theme > fallback
-     let colors: string[] | undefined;
-     if (mode === 'light') {
-       colors = frontmatter.lightDynamicBackground;
-     } else {
-       colors = frontmatter.darkDynamicBackground;
-     }
+    // Get gradient colors-priority: frontmatter > theme > fallback
+    let colors: string[] | undefined;
+    if (mode === 'light') {
+      colors = frontmatter.lightDynamicBackground;
+    } else {
+      colors = frontmatter.darkDynamicBackground;
+    }
 
-     // If no frontmatter colors, try to get from theme
-     if (!colors || colors.length === 0) {
-       const themeName = frontmatter.theme || '';
-       const theme = this.theme;
-       if (theme) {
-         const preset = theme.presets[0];
-         if (preset) {
-           colors = mode === 'light' ? preset.LightBgGradient : preset.DarkBgGradient;
-         }
-       }
-     }
+    // If no frontmatter colors, try to get from theme
+    if (!colors || colors.length === 0) {
+      const themeName = frontmatter.theme || '';
+      const theme = this.theme;
+      if (theme) {
+        const preset = theme.presets[0];
+        if (preset) {
+          colors = mode === 'light' ? preset.LightBgGradient : preset.DarkBgGradient;
+        }
+      }
+    }
 
-     // Fallback gradient
-     if (!colors || colors.length === 0) {
-       colors = mode === 'light'
-         ? ['#ffffff', '#f0f0f0', '#e0e0e0']
-         : ['#1a1a2e', '#2d2d44', '#3d3d5c'];
-     }
+    // Fallback gradient
+    if (!colors || colors.length === 0) {
+      colors =
+        mode === 'light' ? ['#ffffff', '#f0f0f0', '#e0e0e0'] : ['#1a1a2e', '#2d2d44', '#3d3d5c'];
+    }
 
-     // Calculate position (0 to 1) based on visible slide index
-     // Skip hidden slides in gradient interpolation
-     let position: number;
+    // Calculate position (0 to 1) based on visible slide index
+    // Skip hidden slides in gradient interpolation
+    let position: number;
 
-     if (frontmatter.dynamicBackgroundRestartAtSection) {
-       // Find section boundaries for this slide (only counting visible slides)
-       const slides = this.presentation.slides;
-       let sectionStart = slideIndex;
-       let sectionEnd = slideIndex;
-       
-       // Find the section slide before or at this index (this is the section start)
-       for (let i = slideIndex; i >= 0; i--) {
-         if (!slides[i].hidden && slides[i].metadata.layout === 'section') {
-           sectionStart = i;
-           break;
-         }
-       }
+    if (frontmatter.dynamicBackgroundRestartAtSection) {
+      // Find section boundaries for this slide (only counting visible slides)
+      const slides = this.presentation.slides;
+      let sectionStart = slideIndex;
+      let sectionEnd = slideIndex;
 
-       // Find the next section slide after this index (the slide before it is section end)
-       for (let i = slideIndex + 1; i < slides.length; i++) {
-         if (!slides[i].hidden && slides[i].metadata.layout === 'section') {
-           sectionEnd = i - 1;
-           break;
-         }
-       }
+      // Find the section slide before or at this index (this is the section start)
+      for (let i = slideIndex; i >= 0; i--) {
+        if (!slides[i].hidden && slides[i].metadata.layout === 'section') {
+          sectionStart = i;
+          break;
+        }
+      }
 
-       // Calculate visible slide positions within section (ignoring hidden slides)
-       let visibleIndexInSection = 0;
-       let visibleCountInSection = 0;
-       
-       for (let i = sectionStart; i <= sectionEnd && i < slides.length; i++) {
-         if (!slides[i].hidden) {
-           if (i <= slideIndex) {
-             visibleIndexInSection++;
-           }
-           visibleCountInSection++;
-         }
-       }
+      // Find the next section slide after this index (the slide before it is section end)
+      for (let i = slideIndex + 1; i < slides.length; i++) {
+        if (!slides[i].hidden && slides[i].metadata.layout === 'section') {
+          sectionEnd = i - 1;
+          break;
+        }
+      }
 
-       position = visibleCountInSection > 1 ? (visibleIndexInSection - 1) / (visibleCountInSection - 1) : 0;
-     } else {
-       // Use visible slide index and count
-       const visibleIndex = this.getVisibleSlideIndex(slideIndex);
-       const visibleCount = this.getTotalVisibleSlides();
-       
-       if (visibleIndex < 0) {
-         // Slide is hidden - use previous visible slide's position
-         position = 0;
-       } else {
-         position = visibleCount > 1 ? visibleIndex / (visibleCount - 1) : 0;
-       }
-     }
+      // Calculate visible slide positions within section (ignoring hidden slides)
+      let visibleIndexInSection = 0;
+      let visibleCountInSection = 0;
 
-     return this.interpolateGradientColor(colors, position);
-   }
+      for (let i = sectionStart; i <= sectionEnd && i < slides.length; i++) {
+        if (!slides[i].hidden) {
+          if (i <= slideIndex) {
+            visibleIndexInSection++;
+          }
+          visibleCountInSection++;
+        }
+      }
+
+      position =
+        visibleCountInSection > 1 ? (visibleIndexInSection - 1) / (visibleCountInSection - 1) : 0;
+    } else {
+      // Use visible slide index and count
+      const visibleIndex = this.getVisibleSlideIndex(slideIndex);
+      const visibleCount = this.getTotalVisibleSlides();
+
+      if (visibleIndex < 0) {
+        // Slide is hidden - use previous visible slide's position
+        position = 0;
+      } else {
+        position = visibleCount > 1 ? visibleIndex / (visibleCount - 1) : 0;
+      }
+    }
+
+    return this.interpolateGradientColor(colors, position);
+  }
 
   /**
    * Determine the effective mode for a slide
@@ -405,7 +575,12 @@ export class SlideRenderer {
     return mode;
   }
 
-  private renderSlide(slide: Slide, index: number, frontmatter: PresentationFrontmatter, renderSpeakerNotes: boolean = true): string {
+  private renderSlide(
+    slide: Slide,
+    index: number,
+    frontmatter: PresentationFrontmatter,
+    renderSpeakerNotes: boolean = true
+  ): string {
     const effectiveMode = this.getEffectiveMode(slide, frontmatter);
     // Mode is now always 'light' or 'dark' (system is resolved)
     const modeClass = effectiveMode;
@@ -427,26 +602,51 @@ export class SlideRenderer {
     // Skip dynamic background if this layout has a specific layout background defined OR if slide is hidden
     const hasLayoutBackground = this.hasLayoutBackground(layout, effectiveMode, frontmatter);
     const isHiddenSlide = slide.hidden || false;
-    const dynamicBgColor = (hasLayoutBackground || isHiddenSlide) ? null : this.getDynamicBackgroundColor(index, 0, effectiveMode, frontmatter);
+    const dynamicBgColor =
+      hasLayoutBackground || isHiddenSlide
+        ? null
+        : this.getDynamicBackgroundColor(index, 0, effectiveMode, frontmatter);
     const slideInlineStyle = dynamicBgColor ? `background-color: ${dynamicBgColor};` : '';
 
     // Calculate both light and dark dynamic bg colors for export theme toggle
     // (skip for hidden slides)
-    const lightDynamicBg = (hasLayoutBackground || isHiddenSlide) ? null : this.getDynamicBackgroundColor(index, 0, 'light', frontmatter);
-    const darkDynamicBg = (hasLayoutBackground || isHiddenSlide) ? null : this.getDynamicBackgroundColor(index, 0, 'dark', frontmatter);
-    const dynamicBgAttrs = (lightDynamicBg || darkDynamicBg)
-      ? ` data-light-bg="${lightDynamicBg || ''}" data-dark-bg="${darkDynamicBg || ''}"`
-      : '';
+    const lightDynamicBg =
+      hasLayoutBackground || isHiddenSlide
+        ? null
+        : this.getDynamicBackgroundColor(index, 0, 'light', frontmatter);
+    const darkDynamicBg =
+      hasLayoutBackground || isHiddenSlide
+        ? null
+        : this.getDynamicBackgroundColor(index, 0, 'dark', frontmatter);
+    const dynamicBgAttrs =
+      lightDynamicBg || darkDynamicBg
+        ? ` data-light-bg="${lightDynamicBg || ''}" data-dark-bg="${darkDynamicBg || ''}"`
+        : '';
 
-    // For full-image layout, render images as background layer (edge-to-edge)
+    // For full-image layouts, render images as background layer (edge-to-edge)
     let imageBackground = '';
-    if (layout === 'full-image') {
-      imageBackground = this.renderFullImageBackground(slide);
+    if (layout === 'full-image' || layout === 'full-image-contained') {
+      imageBackground = this.renderFullImageBackground(slide, layout === 'full-image-contained');
     }
 
     // For half-image layouts, use special split rendering
     if (layout === 'half-image' || layout === 'half-image-horizontal') {
-      return this.renderHalfImageSlide(slide, index, frontmatter, layout, modeClass, containerClass, customClass, isActive, slideBackgroundHtml, renderSpeakerNotes, dynamicBgColor, hasExplicitMode ? slide.metadata.mode : undefined, lightDynamicBg, darkDynamicBg);
+      return this.renderHalfImageSlide(
+        slide,
+        index,
+        frontmatter,
+        layout,
+        modeClass,
+        containerClass,
+        customClass,
+        isActive,
+        slideBackgroundHtml,
+        renderSpeakerNotes,
+        dynamicBgColor,
+        hasExplicitMode ? slide.metadata.mode : undefined,
+        lightDynamicBg,
+        darkDynamicBg
+      );
     }
 
     // Generate overlay if configured (presentation-wide)
@@ -464,12 +664,12 @@ export class SlideRenderer {
       ${showHeaderFooter ? this.renderHeader(frontmatter, index) : ''}
       <div class="slide-body">
         <div class="slide-content layout-${layout}">
-          ${layout === 'full-image' ? '' : this.renderSlideContent(slide, layout)}
+          ${layout === 'full-image' || layout === 'full-image-contained' ? '' : this.renderSlideContent(slide, layout)}
         </div>
         ${this.renderFootnotes(slide, layout)}
       </div>
       ${showHeaderFooter ? this.renderFooter(frontmatter, index, this.presentation.slides.length) : ''}
-      ${renderSpeakerNotes && slide.speakerNotes.length > 0 ? `<aside class="speaker-notes">${slide.speakerNotes.map(n => this.renderMarkdown(n)).join('<br>')}</aside>` : ''}
+      ${renderSpeakerNotes && slide.speakerNotes.length > 0 ? `<aside class="speaker-notes">${slide.speakerNotes.map((n) => this.renderMarkdown(n)).join('<br>')}</aside>` : ''}
     </section>`;
   }
 
@@ -494,9 +694,9 @@ export class SlideRenderer {
     lightDynamicBg?: string | null,
     darkDynamicBg?: string | null
   ): string {
-    const elements = slide.elements.filter(e => e.visible);
-    const images = elements.filter(e => e.type === 'image');
-    const textElements = elements.filter(e => e.type !== 'image');
+    const elements = slide.elements.filter((e) => e.visible);
+    const images = elements.filter((e) => e.type === 'image');
+    const textElements = elements.filter((e) => e.type !== 'image');
 
     // Determine position based on content order
     const firstElement = elements[0];
@@ -506,13 +706,17 @@ export class SlideRenderer {
     const imagePanel = this.renderHalfImagePanel(images);
 
     // Render the content panel (like a normal slide but in half space)
-    const textContent = textElements.map(e => this.renderElement(e)).join('\n');
+    const textContent = textElements.map((e) => this.renderElement(e)).join('\n');
 
     const isHorizontal = layout === 'half-image-horizontal';
     const directionClass = isHorizontal ? 'split-horizontal' : 'split-vertical';
     const positionClass = imageFirst
-      ? (isHorizontal ? 'image-top' : 'image-left')
-      : (isHorizontal ? 'image-bottom' : 'image-right');
+      ? isHorizontal
+        ? 'image-top'
+        : 'image-left'
+      : isHorizontal
+        ? 'image-bottom'
+        : 'image-right';
 
     const slideInlineStyle = dynamicBgColor ? `background-color: ${dynamicBgColor};` : '';
     const contentPanelStyle = dynamicBgColor ? ` style="background-color: ${dynamicBgColor};"` : '';
@@ -522,9 +726,10 @@ export class SlideRenderer {
     const dataModeAttr = explicitMode ? ` data-mode="${explicitMode}"` : '';
 
     // Add dynamic bg data attributes for export theme toggle
-    const dynamicBgAttrs = (lightDynamicBg || darkDynamicBg)
-      ? ` data-light-bg="${lightDynamicBg || ''}" data-dark-bg="${darkDynamicBg || ''}"`
-      : '';
+    const dynamicBgAttrs =
+      lightDynamicBg || darkDynamicBg
+        ? ` data-light-bg="${lightDynamicBg || ''}" data-dark-bg="${darkDynamicBg || ''}"`
+        : '';
 
     return `
     <section class="slide ${containerClass} ${mode} ${customClass} ${isActive} ${directionClass} ${positionClass}" data-index="${index}"${dataModeAttr}${dynamicBgAttrs}${slideInlineStyle ? ` style="${slideInlineStyle}"` : ''}>
@@ -543,7 +748,7 @@ export class SlideRenderer {
         </div>
         ${this.renderFooter(frontmatter, index, this.presentation.slides.length)}
       </div>
-      ${renderSpeakerNotes && slide.speakerNotes.length > 0 ? `<aside class="speaker-notes">${slide.speakerNotes.map(n => this.renderMarkdown(n)).join('<br>')}</aside>` : ''}
+      ${renderSpeakerNotes && slide.speakerNotes.length > 0 ? `<aside class="speaker-notes">${slide.speakerNotes.map((n) => this.renderMarkdown(n)).join('<br>')}</aside>` : ''}
     </section>`;
   }
 
@@ -551,7 +756,9 @@ export class SlideRenderer {
    * Render the image panel for half-image layouts (edge-to-edge)
    */
   private renderHalfImagePanel(images: SlideElement[]): string {
-    if (images.length === 0) return '';
+    if (images.length === 0) {
+      return '';
+    }
 
     if (images.length === 1) {
       const img = images[0];
@@ -565,22 +772,27 @@ export class SlideRenderer {
     }
 
     // Multiple images-stack them
-    return images.map(img => {
-      const imageData = img.imageData;
-      const src = this.escapeHtml(this.resolveImageSrc(img));
-      const x = imageData?.x || 'center';
-      const y = imageData?.y || 'center';
-      const objectFit = imageData?.size || 'cover';
-      return `<div class="image-slot"><img src="${src}" style="width: 100%; height: 100%; object-fit: ${objectFit}; object-position: ${x} ${y};" /></div>`;
-    }).join('\n');
+    return images
+      .map((img) => {
+        const imageData = img.imageData;
+        const src = this.escapeHtml(this.resolveImageSrc(img));
+        const x = imageData?.x || 'center';
+        const y = imageData?.y || 'center';
+        const objectFit = imageData?.size || 'cover';
+        return `<div class="image-slot"><img src="${src}" style="width: 100%; height: 100%; object-fit: ${objectFit}; object-position: ${x} ${y};" /></div>`;
+      })
+      .join('\n');
   }
 
   /**
    * Render full-image layout as a background layer (edge-to-edge, no padding)
+   * @param contained If true, use object-fit: contain instead of cover
    */
-  private renderFullImageBackground(slide: Slide): string {
-    const images = slide.elements.filter(e => e.visible && e.type === 'image');
-    if (images.length === 0) return '';
+  private renderFullImageBackground(slide: Slide, contained: boolean = false): string {
+    const images = slide.elements.filter((e) => e.visible && e.type === 'image');
+    if (images.length === 0) {
+      return '';
+    }
 
     // For single image, fill the entire slide
     if (images.length === 1) {
@@ -590,12 +802,16 @@ export class SlideRenderer {
       const x = imageData?.x || 'center';
       const y = imageData?.y || 'center';
 
-      // Build styles
-      const objectFit = imageData?.size || 'cover';
+      // Build styles - use contain for contained layouts, otherwise respect imageData or default to cover
+      const objectFit = contained ? 'contain' : (imageData?.size || 'cover');
       const styles: string[] = [
         'position: absolute',
-        'top: 0', 'left: 0', 'right: 0', 'bottom: 0',
-        'width: 100%', 'height: 100%',
+        'top: 0',
+        'left: 0',
+        'right: 0',
+        'bottom: 0',
+        'width: 100%',
+        'height: 100%',
         `object-fit: ${objectFit}`,
         `object-position: ${x} ${y}`,
       ];
@@ -606,14 +822,16 @@ export class SlideRenderer {
 
       if (imageData?.filter && imageData.filter !== 'none') {
         const filterMap: Record<string, string> = {
-          'darken': 'brightness(0.6)',
-          'lighten': 'brightness(1.4)',
-          'blur': 'blur(4px)',
-          'grayscale': 'grayscale(100%)',
-          'sepia': 'sepia(100%)',
+          darken: 'brightness(0.6)',
+          lighten: 'brightness(1.4)',
+          blur: 'blur(4px)',
+          grayscale: 'grayscale(100%)',
+          sepia: 'sepia(100%)',
         };
         const filterValue = filterMap[imageData.filter];
-        if (filterValue) styles.push(`filter: ${filterValue}`);
+        if (filterValue) {
+          styles.push(`filter: ${filterValue}`);
+        }
       }
 
       return `<div class="slide-image-background"><img src="${src}" style="${styles.join('; ')}" /></div>`;
@@ -625,14 +843,16 @@ export class SlideRenderer {
     const layoutClass = imageCount === 2 ? 'dual-image' : `multi-image count-${imageCount}`;
 
     return `<div class="slide-image-background ${layoutClass}">
-      ${images.map((img, idx) => {
-      const imageData = img.imageData;
-      const src = this.escapeHtml(this.resolveImageSrc(img));
-      const x = imageData?.x || 'center';
-      const y = imageData?.y || 'center';
-      const objectFit = imageData?.size || 'cover';
-      return `<div class="image-panel image-${idx + 1}"><img src="${src}" style="object-fit: ${objectFit}; object-position: ${x} ${y};" /></div>`;
-    }).join('\n')}
+      ${images
+        .map((img, idx) => {
+          const imageData = img.imageData;
+          const src = this.escapeHtml(this.resolveImageSrc(img));
+          const x = imageData?.x || 'center';
+          const y = imageData?.y || 'center';
+          const objectFit = contained ? 'contain' : (imageData?.size || 'cover');
+          return `<div class="image-panel image-${idx + 1}"><img src="${src}" style="object-fit: ${objectFit}; object-position: ${x} ${y};" /></div>`;
+        })
+        .join('\n')}
     </div>`;
   }
 
@@ -641,11 +861,13 @@ export class SlideRenderer {
   // ============================================
 
   private renderSlideContent(slide: Slide, layout: string): string {
-    const elements = slide.elements.filter(e => e.visible);
-    const images = elements.filter(e => e.type === 'image');
-    const textElements = elements.filter(e => e.type !== 'image');
-    const headings = elements.filter(e => e.type === 'heading' || e.type === 'kicker');
-    const bodyElements = elements.filter(e => e.type !== 'heading' && e.type !== 'kicker' && e.type !== 'image');
+    const elements = slide.elements.filter((e) => e.visible);
+    const images = elements.filter((e) => e.type === 'image');
+    const textElements = elements.filter((e) => e.type !== 'image');
+    const headings = elements.filter((e) => e.type === 'heading' || e.type === 'kicker');
+    const bodyElements = elements.filter(
+      (e) => e.type !== 'heading' && e.type !== 'kicker' && e.type !== 'image'
+    );
 
     switch (layout as SlideLayout) {
       // ==================
@@ -688,10 +910,16 @@ export class SlideRenderer {
       // ==================
 
       case 'full-image':
-        return this.renderFullImageLayout(images);
+        return this.renderFullImageLayout(images, false);
+
+      case 'full-image-contained':
+        return this.renderFullImageLayout(images, true);
 
       case 'caption':
-        return this.renderCaptionLayout(headings, images, bodyElements);
+        return this.renderCaptionLayout(headings, images, bodyElements, false);
+
+      case 'caption-contained':
+        return this.renderCaptionLayout(headings, images, bodyElements, true);
 
       // ==================
       // SPECIAL LAYOUTS
@@ -722,9 +950,11 @@ export class SlideRenderer {
         return 3;
       case 'default':
         // For default layout, auto-detect from columnIndex in elements
-        const columnElements = slide.elements.filter(e => e.columnIndex !== undefined);
-        if (columnElements.length === 0) return 1;
-        const maxColumnIndex = Math.max(...columnElements.map(e => e.columnIndex ?? 0));
+        const columnElements = slide.elements.filter((e) => e.columnIndex !== undefined);
+        if (columnElements.length === 0) {
+          return 1;
+        }
+        const maxColumnIndex = Math.max(...columnElements.map((e) => e.columnIndex ?? 0));
         return Math.min(maxColumnIndex + 1, 3);
       default:
         return 1;
@@ -733,11 +963,11 @@ export class SlideRenderer {
 
   /**
    * Get the first column width CSS calc() for a layout
-   * 
+   *
    * The footnotes container is positioned in .slide-body (full width),
    * but columns are inside .slide-content which has content margins.
    * So we must subtract content margins from the calculation.
-   * 
+   *
    * Content area = 100% - content-left - content-right (in slide-units)
    * Column gaps: 2-col = 3*su, 3-col = 5*su
    * First column = (content area - gaps) / numColumns * flexRatio
@@ -749,7 +979,7 @@ export class SlideRenderer {
     // Gap sizes from CSS
     const gap2col = 'var(--slide-unit) * 3';
     const gap3col = 'var(--slide-unit) * 5';
-    
+
     switch (layout) {
       case '2-columns':
         // (content area - 1 gap) / 2
@@ -764,8 +994,12 @@ export class SlideRenderer {
         // wide-narrow: flex 2:1, so first column is 2/3 of (content area - gap)
         return `(100% - (${contentLeft}) - (${contentRight}) - (${gap2col})) * 2 / 3`;
       case 'default':
-        if (columnCount === 2) return `(100% - (${contentLeft}) - (${contentRight}) - (${gap2col})) / 2`;
-        if (columnCount === 3) return `(100% - (${contentLeft}) - (${contentRight}) - 2 * (${gap3col})) / 3`;
+        if (columnCount === 2) {
+          return `(100% - (${contentLeft}) - (${contentRight}) - (${gap2col})) / 2`;
+        }
+        if (columnCount === 3) {
+          return `(100% - (${contentLeft}) - (${contentRight}) - 2 * (${gap3col})) / 3`;
+        }
         return null;
       default:
         return null;
@@ -800,20 +1034,23 @@ export class SlideRenderer {
       return '';
     }
 
-    const footnotesHtml = slide.footnotes.map(fn => {
-      const renderedContent = this.renderMarkdown(fn.content);
-      return `<div class="footnote-item"><span class="footnote-number"><sup>${fn.id}</sup></span><span class="footnote-text">${renderedContent}</span></div>`;
-    }).join('\n');
+    const footnotesHtml = slide.footnotes
+      .map((fn) => {
+        const renderedContent = this.renderMarkdown(fn.content);
+        return `<div class="footnote-item"><span class="footnote-number"><sup>${fn.id}</sup></span><span class="footnote-text">${renderedContent}</span></div>`;
+      })
+      .join('\n');
 
     // Determine column count and first column width for multi-column layouts
     const columnCount = layout ? this.getColumnCount(slide, layout) : 1;
     const firstColumnWidth = layout ? this.getFirstColumnWidth(layout, columnCount) : null;
-    const footnoteClass = columnCount > 1 ? `slide-footnotes columns-${columnCount}` : 'slide-footnotes';
-    
+    const footnoteClass =
+      columnCount > 1 ? `slide-footnotes columns-${columnCount}` : 'slide-footnotes';
+
     // For multi-column layouts, limit footnotes to first column width
     // Must set right:auto to override the base CSS that sets both left and right
     // The width calc accounts for gaps between columns
-    const footnoteStyle = firstColumnWidth 
+    const footnoteStyle = firstColumnWidth
       ? ` style="right: auto; width: calc(${firstColumnWidth});"`
       : '';
 
@@ -835,7 +1072,7 @@ export class SlideRenderer {
    */
   private renderCoverLayout(elements: SlideElement[]): string {
     return `<div class="cover-content">
-      ${elements.map(e => this.renderElement(e)).join('\n')}
+      ${elements.map((e) => this.renderElement(e)).join('\n')}
     </div>`;
   }
 
@@ -845,7 +1082,7 @@ export class SlideRenderer {
    */
   private renderTitleLayout(elements: SlideElement[]): string {
     return `<div class="title-content">
-      ${elements.map(e => this.renderElement(e)).join('\n')}
+      ${elements.map((e) => this.renderElement(e)).join('\n')}
     </div>`;
   }
 
@@ -855,7 +1092,7 @@ export class SlideRenderer {
    */
   private renderSectionLayout(elements: SlideElement[]): string {
     return `<div class="section-content">
-      ${elements.map(e => this.renderElement(e)).join('\n')}
+      ${elements.map((e) => this.renderElement(e)).join('\n')}
     </div>`;
   }
 
@@ -886,19 +1123,23 @@ export class SlideRenderer {
     }
 
     // Separate header elements (headings, kickers) from body
-    const headerElements = slide.elements.filter(e => e.type === 'heading' || e.type === 'kicker');
+    const headerElements = slide.elements.filter(
+      (e) => e.type === 'heading' || e.type === 'kicker'
+    );
 
-    const footnotesRows = Array.from(allFootnotesMap.entries()).map(([id, content]) => {
-      const renderedContent = this.renderMarkdown(content);
-      return `<tr class="footnote-entry">
+    const footnotesRows = Array.from(allFootnotesMap.entries())
+      .map(([id, content]) => {
+        const renderedContent = this.renderMarkdown(content);
+        return `<tr class="footnote-entry">
         <td class="footnote-id">${id}:</td>
         <td class="footnote-body">${renderedContent}</td>
       </tr>`;
-    }).join('\n');
+      })
+      .join('\n');
 
     return `
       <div class="slot-header">
-        ${headerElements.map(e => this.renderElement(e)).join('\n')}
+        ${headerElements.map((e) => this.renderElement(e)).join('\n')}
       </div>
       <div class="slot-columns columns-1">
         <div class="column" data-column="1">
@@ -919,52 +1160,56 @@ export class SlideRenderer {
    * Uses slot-header + slot-columns for proper positioning
    */
   private renderDefaultLayout(elements: SlideElement[]): string {
-    const columnElements = elements.filter(e => e.columnIndex !== undefined);
-    const nonColumnElements = elements.filter(e => e.columnIndex === undefined);
+    const columnElements = elements.filter((e) => e.columnIndex !== undefined);
+    const nonColumnElements = elements.filter((e) => e.columnIndex === undefined);
 
     // Separate slide headers (H1/H2 and kickers) from body content
     // H3+ are treated as body content (can serve as column separators)
-    const headerElements = nonColumnElements.filter(e => 
-      e.type === 'kicker' || (e.type === 'heading' && (e.level === 1 || e.level === 2))
+    const headerElements = nonColumnElements.filter(
+      (e) => e.type === 'kicker' || (e.type === 'heading' && (e.level === 1 || e.level === 2))
     );
-    const bodyElements = nonColumnElements.filter(e => 
-      !(e.type === 'kicker' || (e.type === 'heading' && (e.level === 1 || e.level === 2)))
+    const bodyElements = nonColumnElements.filter(
+      (e) => !(e.type === 'kicker' || (e.type === 'heading' && (e.level === 1 || e.level === 2)))
     );
 
     // If no column elements, render all body content in a single column
     if (columnElements.length === 0) {
       return `
         <div class="slot-header">
-          ${headerElements.map(e => this.renderElement(e)).join('\n')}
+          ${headerElements.map((e) => this.renderElement(e)).join('\n')}
         </div>
         <div class="slot-columns columns-1 ratio-equal">
           <div class="column" data-column="1">
-            ${bodyElements.map(e => this.renderElement(e)).join('\n')}
+            ${bodyElements.map((e) => this.renderElement(e)).join('\n')}
           </div>
         </div>`;
     }
 
     // Auto-detect column count
-    const maxColumnIndex = Math.max(...columnElements.map(e => e.columnIndex ?? 0));
+    const maxColumnIndex = Math.max(...columnElements.map((e) => e.columnIndex ?? 0));
     const columnCount = Math.min(maxColumnIndex + 1, 3); // Max 3 columns
 
     // Group elements by column
     const columns: SlideElement[][] = Array.from({ length: columnCount }, () => []);
-    columnElements.forEach(e => {
+    columnElements.forEach((e) => {
       const idx = Math.min(e.columnIndex ?? 0, columnCount - 1);
       columns[idx].push(e);
     });
 
     return `
       <div class="slot-header">
-        ${headerElements.map(e => this.renderElement(e)).join('\n')}
+        ${headerElements.map((e) => this.renderElement(e)).join('\n')}
       </div>
       <div class="slot-columns columns-${columnCount} ratio-equal">
-        ${columns.map((col, i) => `
+        ${columns
+          .map(
+            (col, i) => `
           <div class="column" data-column="${i + 1}">
-            ${col.map(e => this.renderElement(e)).join('\n')}
+            ${col.map((e) => this.renderElement(e)).join('\n')}
           </div>
-        `).join('\n')}
+        `
+          )
+          .join('\n')}
       </div>`;
   }
 
@@ -984,26 +1229,25 @@ export class SlideRenderer {
     columnCount: number,
     ratio: 'equal' | 'narrow-wide' | 'wide-narrow' = 'equal'
   ): string {
-    const columnElements = elements.filter(e => e.columnIndex !== undefined);
-    const nonColumnElements = elements.filter(e => e.columnIndex === undefined);
+    const columnElements = elements.filter((e) => e.columnIndex !== undefined);
+    const nonColumnElements = elements.filter((e) => e.columnIndex === undefined);
 
     // Separate slide headers (H1/H2 and kickers) from body content
     // H3+ are treated as body content (can serve as column separators)
-    const headerElements = nonColumnElements.filter(e => 
-      e.type === 'kicker' || (e.type === 'heading' && (e.level === 1 || e.level === 2))
+    const headerElements = nonColumnElements.filter(
+      (e) => e.type === 'kicker' || (e.type === 'heading' && (e.level === 1 || e.level === 2))
     );
-    const bodyElements = nonColumnElements.filter(e => 
-      !(e.type === 'kicker' || (e.type === 'heading' && (e.level === 1 || e.level === 2)))
+    const bodyElements = nonColumnElements.filter(
+      (e) => !(e.type === 'kicker' || (e.type === 'heading' && (e.level === 1 || e.level === 2)))
     );
 
     // Find how many data columns exist
-    const maxDataColumn = columnElements.reduce((max, e) =>
-      Math.max(max, e.columnIndex ?? 0), -1);
+    const maxDataColumn = columnElements.reduce((max, e) => Math.max(max, e.columnIndex ?? 0), -1);
     const dataColumnCount = maxDataColumn + 1;
 
     // Group elements into visual columns, merging overflow into last column
     const columns: SlideElement[][] = Array.from({ length: columnCount }, () => []);
-    columnElements.forEach(e => {
+    columnElements.forEach((e) => {
       let targetCol = e.columnIndex ?? 0;
       if (dataColumnCount > columnCount && targetCol >= columnCount - 1) {
         targetCol = columnCount - 1; // Merge into last column
@@ -1015,28 +1259,35 @@ export class SlideRenderer {
     if (columnElements.length === 0) {
       return `
         <div class="slot-header">
-          ${headerElements.map(e => this.renderElement(e)).join('\n')}
+          ${headerElements.map((e) => this.renderElement(e)).join('\n')}
         </div>
         <div class="slot-columns columns-${columnCount} ratio-${ratio}">
           <div class="column" data-column="1">
-            ${bodyElements.map(e => this.renderElement(e)).join('\n')}
+            ${bodyElements.map((e) => this.renderElement(e)).join('\n')}
           </div>
-          ${Array.from({ length: columnCount - 1 }, (_, i) => `
+          ${Array.from(
+            { length: columnCount - 1 },
+            (_, i) => `
             <div class="column" data-column="${i + 2}"></div>
-          `).join('\n')}
+          `
+          ).join('\n')}
         </div>`;
     }
 
     return `
       <div class="slot-header">
-        ${headerElements.map(e => this.renderElement(e)).join('\n')}
+        ${headerElements.map((e) => this.renderElement(e)).join('\n')}
       </div>
       <div class="slot-columns columns-${columnCount} ratio-${ratio}">
-        ${columns.map((col, i) => `
+        ${columns
+          .map(
+            (col, i) => `
           <div class="column" data-column="${i + 1}">
-            ${col.map(e => this.renderElement(e)).join('\n')}
+            ${col.map((e) => this.renderElement(e)).join('\n')}
           </div>
-        `).join('\n')}
+        `
+          )
+          .join('\n')}
       </div>`;
   }
 
@@ -1045,10 +1296,11 @@ export class SlideRenderer {
   // ==================
 
   /**
-   * Full Image Layout: Images fill the entire slide with object-fit: cover
+   * Full Image Layout: Images fill the entire slide
    * First image fills the whole slide; multiple images split the space equally
+   * @param contained If true, use object-fit: contain instead of cover
    */
-  private renderFullImageLayout(images: SlideElement[]): string {
+  private renderFullImageLayout(images: SlideElement[], contained: boolean = false): string {
     if (images.length === 0) {
       return `<div class="slide-content full-image-content empty">No images</div>`;
     }
@@ -1063,7 +1315,7 @@ export class SlideRenderer {
       // Build style for positioning
       const x = imageData?.x || 'center';
       const y = imageData?.y || 'center';
-      const objectFit = imageData?.size || 'cover';
+      const objectFit = contained ? 'contain' : (imageData?.size || 'cover');
       const objectPosition = `${x} ${y}`;
 
       return `
@@ -1079,51 +1331,61 @@ export class SlideRenderer {
 
     return `
       <div class="slide-content full-image-content split-${direction} count-${images.length}">
-        ${images.map(img => {
-      const imageData = img.imageData;
-      const src = this.escapeHtml(this.resolveImageSrc(img));
-      const alt = imageData?.alt ? this.escapeHtml(imageData.alt) : '';
-      const x = imageData?.x || 'center';
-      const y = imageData?.y || 'center';
-      const objectFit = imageData?.size || 'cover';
-      return `
+        ${images
+          .map((img) => {
+            const imageData = img.imageData;
+            const src = this.escapeHtml(this.resolveImageSrc(img));
+            const alt = imageData?.alt ? this.escapeHtml(imageData.alt) : '';
+            const x = imageData?.x || 'center';
+            const y = imageData?.y || 'center';
+            const objectFit = contained ? 'contain' : (imageData?.size || 'cover');
+            return `
           <div class="image-slot">
             <img src="${src}" alt="${alt}" style="object-fit: ${objectFit}; object-position: ${x} ${y};" />
           </div>`;
-    }).join('\n')}
+          })
+          .join('\n')}
       </div>`;
   }
 
   /**
    * Caption Layout: Full image with title bar at top, optional caption at bottom
+   * @param contained If true, use object-fit: contain instead of cover
    */
   private renderCaptionLayout(
     headings: SlideElement[],
     images: SlideElement[],
-    bodyElements: SlideElement[]
+    bodyElements: SlideElement[],
+    contained: boolean = false
   ): string {
     return `
       <div class="slide-content caption-content">
         <div class="slot-title-bar">
-          ${headings.map(e => this.renderElement(e)).join('\n')}
+          ${headings.map((e) => this.renderElement(e)).join('\n')}
         </div>
         <div class="slot-image">
-          ${images.map(img => {
-      const imageData = img.imageData;
-      const objectFit = imageData?.size || 'cover';
-      const x = imageData?.x || 'center';
-      const y = imageData?.y || 'center';
-      return `
+          ${images
+            .map((img) => {
+              const imageData = img.imageData;
+              const objectFit = contained ? 'contain' : (imageData?.size || 'cover');
+              const x = imageData?.x || 'center';
+              const y = imageData?.y || 'center';
+              return `
             <div class="image-slot">
               <img src="${this.escapeHtml(this.resolveImageSrc(img))}" alt="" style="object-fit: ${objectFit}; object-position: ${x} ${y};" />
             </div>`;
-    }).join('\n')}
+            })
+            .join('\n')}
         </div>
-        ${bodyElements.length > 0 ? `
+        ${
+          bodyElements.length > 0
+            ? `
           <div class="slot-caption">
-            ${bodyElements.map(e => this.renderElement(e)).join('\n')}
+            ${bodyElements.map((e) => this.renderElement(e)).join('\n')}
           </div>
-        ` : ''}
+        `
+            : ''
+        }
       </div>`;
   }
 
@@ -1179,7 +1441,7 @@ export class SlideRenderer {
       isOrdered: boolean;
     }
 
-    const items: ListItem[] = lines.map(line => {
+    const items: ListItem[] = lines.map((line) => {
       // Count leading spaces/tabs to determine indentation level
       const leadingWhitespace = line.match(/^(\s*)/)?.[1] || '';
 
@@ -1198,17 +1460,24 @@ export class SlideRenderer {
       indentLevel += Math.floor(spaceCount / 2);
 
       const isOrdered = /^\d+\./.test(line.trim());
-      const text = line.trim().replace(/^[-*+]\s+/, '').replace(/^\d+\.\s+/, '');
+      const text = line
+        .trim()
+        .replace(/^[-*+]\s+/, '')
+        .replace(/^\d+\.\s+/, '');
 
       return {
         level: indentLevel,
         text,
-        isOrdered
+        isOrdered,
       };
     });
 
     // Build nested HTML - properly handle nesting by looking ahead
-    const buildListHTML = (items: ListItem[], startIndex: number = 0, parentLevel: number = -1): { html: string; nextIndex: number } => {
+    const buildListHTML = (
+      items: ListItem[],
+      startIndex: number = 0,
+      parentLevel: number = -1
+    ): { html: string; nextIndex: number } => {
       let html = '';
       let i = startIndex;
 
@@ -1269,6 +1538,10 @@ export class SlideRenderer {
     const src = this.escapeHtml(this.resolveImageSrc(element));
     const alt = imageData?.alt ? this.escapeHtml(imageData.alt) : '';
 
+    // Check if this is a loading spinner OR any Excalidraw SVG data URL
+    const isExcalidrawSvg = src.startsWith('data:image/svg+xml');
+    const isLoading = isExcalidrawSvg && this.isLoadingSpinnerSvg(src);
+
     // Build inline styles for positioning
     const styles: string[] = [];
 
@@ -1289,11 +1562,11 @@ export class SlideRenderer {
     // Build filter string
     if (imageData?.filter && imageData.filter !== 'none') {
       const filterMap: Record<string, string> = {
-        'darken': 'brightness(0.6)',
-        'lighten': 'brightness(1.4)',
-        'blur': 'blur(4px)',
-        'grayscale': 'grayscale(100%)',
-        'sepia': 'sepia(100%)',
+        darken: 'brightness(0.6)',
+        lighten: 'brightness(1.4)',
+        blur: 'blur(4px)',
+        grayscale: 'grayscale(100%)',
+        sepia: 'sepia(100%)',
       };
       const filterValue = filterMap[imageData.filter];
       if (filterValue) {
@@ -1303,84 +1576,118 @@ export class SlideRenderer {
 
     const styleAttr = styles.length > 0 ? ` style="${styles.join('; ')}"` : '';
 
+    // If Excalidraw SVG (spinner or converted), use special inline styles to prevent stretching
+    if (isExcalidrawSvg) {
+      const containerStyle = 'display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;';
+      const imgStyle = 'max-width: 95%; max-height: 95%; object-fit: contain; object-position: center;';
+      return `<figure class="image-figure" style="${containerStyle}"><img src="${src}" alt="${alt}" style="${imgStyle}" /></figure>`;
+    }
+
     // Wrap in figure for semantic markup
     return `<figure class="image-figure"><img src="${src}" alt="${alt}"${styleAttr} /></figure>`;
   }
 
-  private renderTable(content: string): string {
-    const lines = content.split('\n').filter(l => l.trim());
-    if (lines.length < 2) return '';
+  /**
+   * Check if an SVG data URL is our loading spinner (by checking for the spinner animation marker)
+   */
+  private isLoadingSpinnerSvg(dataUrl: string): boolean {
+    // Our loading spinner contains "spin" keyframe animation
+    try {
+      const base64 = dataUrl.replace(/^data:image\/svg\+xml;base64,/, '');
+      const svg = decodeURIComponent(escape(atob(base64)));
+      return svg.includes('spin') && svg.includes('stroke-dasharray');
+    } catch {
+      return false;
+    }
+  }
 
-    const headerCells = lines[0].split('|').filter(c => c.trim()).map(c => c.trim());
+  private renderTable(content: string): string {
+    const lines = content.split('\n').filter((l) => l.trim());
+    if (lines.length < 2) {
+      return '';
+    }
+
+    const headerCells = lines[0]
+      .split('|')
+      .filter((c) => c.trim())
+      .map((c) => c.trim());
     const bodyLines = lines.slice(2);
 
-    const header = `<tr>${headerCells.map(c => `<th>${this.renderMarkdown(c)}</th>`).join('')}</tr>`;
-    const body = bodyLines.map(line => {
-      const cells = line.split('|').filter(c => c.trim()).map(c => c.trim());
-      return `<tr>${cells.map(c => `<td>${this.renderMarkdown(c)}</td>`).join('')}</tr>`;
-    }).join('\n');
+    const header = `<tr>${headerCells.map((c) => `<th>${this.renderMarkdown(c)}</th>`).join('')}</tr>`;
+    const body = bodyLines
+      .map((line) => {
+        const cells = line
+          .split('|')
+          .filter((c) => c.trim())
+          .map((c) => c.trim());
+        return `<tr>${cells.map((c) => `<td>${this.renderMarkdown(c)}</td>`).join('')}</tr>`;
+      })
+      .join('\n');
 
     return `<table><thead>${header}</thead><tbody>${body}</tbody></table>`;
   }
 
   private renderMarkdown(text: string): string {
-     let html = this.escapeHtml(text);
+    let html = this.escapeHtml(text);
 
-     // Footnote references [^id] -> <sup><b>id</b></sup> (must be before link parsing)
-     // Match [^id] but not [^id]: (which is a definition)
-     html = html.replace(/\[\^([^\]]+)\](?!:)/g, '<sup class="footnote-ref"><b>$1</b></sup>');
+    // Footnote references [^id] -> <sup><b>id</b></sup> (must be before link parsing)
+    // Match [^id] but not [^id]: (which is a definition)
+    html = html.replace(/\[\^([^\]]+)\](?!:)/g, '<sup class="footnote-ref"><b>$1</b></sup>');
 
-     // Bold
-     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-     html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    // Bold
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
 
-     // Italic
-     html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-     html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+    // Italic
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    html = html.replace(/_(.+?)_/g, '<em>$1</em>');
 
-     // Highlight
-     html = html.replace(/==(.+?)==/g, '<mark>$1</mark>');
+    // Highlight
+    html = html.replace(/==(.+?)==/g, '<mark>$1</mark>');
 
-     // Inline code
-     html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+    // Inline code
+    html = html.replace(/`(.+?)`/g, '<code>$1</code>');
 
-     // Links handling
-     const enableObsidianLinks = this.presentation.frontmatter.enableObsidianLinks === true;
-     
-     if (enableObsidianLinks) {
-       // Links - open in new window/tab
-       html = html.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-     } else {
-       // Strip markdown links: keep only the link text, remove the URL
-       html = html.replace(/\[(.+?)\]\((.+?)\)/g, '$1');
-       
-       // Strip Obsidian wiki-links: [[text]] or [[text|display]]
-       // [[path/to/page]] -> "page" (extract last component)
-       // [[page|display text]] -> "display text" (use display text if provided)
-       // [[page#heading]] -> strip heading reference
-       html = html.replace(/\[\[([^\]|]+)(\|([^\]]+))?\]\]/g, (match, path, pipe, displayText) => {
-         // If display text is provided, use it
-         if (displayText) {
-           return displayText.trim();
-         }
-         // Otherwise extract the page name from the path (last component)
-         // Remove heading references (#...) and folder paths (...)
-         const cleanPath = path.split('#')[0].trim(); // Remove heading reference
-         const pageName = cleanPath.split('/').pop() || cleanPath; // Get last path component
-         return pageName.trim();
-       });
-     }
+    // Links handling
+    const enableObsidianLinks = this.presentation.frontmatter.enableObsidianLinks === true;
 
-     // Convert newlines to <br /> tags
-     // Preserve escaped backslashes (\\n should display as \n)
-     const ESCAPED_BACKSLASH_PLACEHOLDER = '___ESCAPED_BACKSLASH___';
-     html = html.replace(/\\\\n/g, ESCAPED_BACKSLASH_PLACEHOLDER); // temporarily replace \\n
-     html = html.replace(/\\n/g, '<br />');  // replace unescaped \n with <br />
-     html = html.replace(/\n/g, '<br />');   // replace actual newline characters
-     html = html.replace(new RegExp(ESCAPED_BACKSLASH_PLACEHOLDER, 'g'), '\\n'); // restore escaped backslashes
+    if (enableObsidianLinks) {
+      // Links - open in new window/tab
+      html = html.replace(
+        /\[(.+?)\]\((.+?)\)/g,
+        '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+      );
+    } else {
+      // Strip markdown links: keep only the link text, remove the URL
+      html = html.replace(/\[(.+?)\]\((.+?)\)/g, '$1');
 
-     return html;
-   }
+      // Strip Obsidian wiki-links: [[text]] or [[text|display]]
+      // [[path/to/page]] -> "page" (extract last component)
+      // [[page|display text]] -> "display text" (use display text if provided)
+      // [[page#heading]] -> strip heading reference
+      html = html.replace(/\[\[([^\]|]+)(\|([^\]]+))?\]\]/g, (match, path, pipe, displayText) => {
+        // If display text is provided, use it
+        if (displayText) {
+          return displayText.trim();
+        }
+        // Otherwise extract the page name from the path (last component)
+        // Remove heading references (#...) and folder paths (...)
+        const cleanPath = path.split('#')[0].trim(); // Remove heading reference
+        const pageName = cleanPath.split('/').pop() || cleanPath; // Get last path component
+        return pageName.trim();
+      });
+    }
+
+    // Convert newlines to <br /> tags
+    // Preserve escaped backslashes (\\n should display as \n)
+    const ESCAPED_BACKSLASH_PLACEHOLDER = '___ESCAPED_BACKSLASH___';
+    html = html.replace(/\\\\n/g, ESCAPED_BACKSLASH_PLACEHOLDER); // temporarily replace \\n
+    html = html.replace(/\\n/g, '<br />'); // replace unescaped \n with <br />
+    html = html.replace(/\n/g, '<br />'); // replace actual newline characters
+    html = html.replace(new RegExp(ESCAPED_BACKSLASH_PLACEHOLDER, 'g'), '\\n'); // restore escaped backslashes
+
+    return html;
+  }
 
   private escapeHtml(text: string): string {
     return text
@@ -1465,11 +1772,11 @@ export class SlideRenderer {
 
   private getVisibleSlideNumber(index: number): number {
     // Count only non-hidden slides up to and including this index
-    return this.presentation.slides.slice(0, index + 1).filter(s => !s.hidden).length;
+    return this.presentation.slides.slice(0, index + 1).filter((s) => !s.hidden).length;
   }
 
   private getTotalVisibleSlides(): number {
-    return this.presentation.slides.filter(s => !s.hidden).length;
+    return this.presentation.slides.filter((s) => !s.hidden).length;
   }
 
   private renderFooter(frontmatter: PresentationFrontmatter, index: number, total: number): string {
@@ -1497,7 +1804,7 @@ export class SlideRenderer {
   private getFontScaleCSS(frontmatter: PresentationFrontmatter): string {
     const fontOffset = frontmatter.fontSizeOffset ?? 0;
     // Convert percentage offset to scale factor: -20 → 0.8, +10 → 1.1
-    const scale = 1 + (fontOffset / 100);
+    const scale = 1 + fontOffset / 100;
     // Clamp to reasonable range (0.5 to 1.5)
     const clampedScale = Math.max(0.5, Math.min(1.5, scale));
 
@@ -2190,12 +2497,21 @@ export class SlideRenderer {
         padding-bottom: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
         padding-left: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
       }
-      .layout-full-image { 
+      .layout-full-image,
+      .layout-full-image-contained { 
         padding: 0; 
         flex-direction: row; 
       }
-      .layout-full-image .image-slot { flex: 1; height: 100%; }
+      .layout-full-image .image-slot,
+      .layout-full-image-contained .image-slot { 
+        flex: 1; 
+        height: 100%; 
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
       .layout-full-image .image-slot img { width: 100%; height: 100%; object-fit: cover; }
+      .layout-full-image-contained .image-slot img { width: 100%; height: 100%; object-fit: contain; }
       
       /* ============================================
          LAYOUT: CAPTION - Full bleed image with headline overlay
@@ -2227,7 +2543,8 @@ export class SlideRenderer {
         flex-direction: column;
         min-height: 0;
       }
-      .layout-caption { 
+      .layout-caption,
+      .layout-caption-contained { 
         position: static !important;
         left: auto !important;
         right: auto !important;
@@ -2239,13 +2556,15 @@ export class SlideRenderer {
         flex-direction: column;
         min-height: 0;
       }
-      .layout-caption .caption-content {
+      .layout-caption .caption-content,
+      .layout-caption-contained .caption-content {
         flex: 1 1 auto;
         display: flex;
         flex-direction: column;
         min-height: 0;
       }
-      .layout-caption .slot-title-bar { 
+      .layout-caption .slot-title-bar,
+      .layout-caption-contained .slot-title-bar { 
         flex: 0 0 auto;
         padding: 0 calc(var(--slide-unit) * 2);
         background: transparent;
@@ -2259,7 +2578,13 @@ export class SlideRenderer {
       .layout-caption .slot-title-bar h3,
       .layout-caption .slot-title-bar h4,
       .layout-caption .slot-title-bar h5,
-      .layout-caption .slot-title-bar h6 {
+      .layout-caption .slot-title-bar h6,
+      .layout-caption-contained .slot-title-bar h1,
+      .layout-caption-contained .slot-title-bar h2,
+      .layout-caption-contained .slot-title-bar h3,
+      .layout-caption-contained .slot-title-bar h4,
+      .layout-caption-contained .slot-title-bar h5,
+      .layout-caption-contained .slot-title-bar h6 {
         font-family: var(--title-font, system-ui, -apple-system, sans-serif) !important;
         font-weight: var(--title-font-weight, 700) !important;
         font-size: calc(var(--slide-unit) * 3.5 * var(--title-font-scale, 1) * var(--font-scale, 1));
@@ -2268,7 +2593,8 @@ export class SlideRenderer {
         padding: 0;
         display: block;
       }
-      .layout-caption .slot-image { 
+      .layout-caption .slot-image,
+      .layout-caption-contained .slot-image { 
         flex: 1 1 auto;
         display: flex;
         min-height: 0;
@@ -2276,10 +2602,13 @@ export class SlideRenderer {
         overflow: hidden;
         width: 100%;
       }
-      .layout-caption .slot-image .image-slot {
+      .layout-caption .slot-image .image-slot,
+      .layout-caption-contained .slot-image .image-slot {
         width: 100%;
         height: 100%;
         display: flex;
+        justify-content: center;
+        align-items: center;
       }
       .layout-caption .slot-image img { 
         width: 100%; 
@@ -2287,7 +2616,14 @@ export class SlideRenderer {
         object-fit: cover; 
         display: block;
       }
-      .layout-caption .slot-caption { 
+      .layout-caption-contained .slot-image img { 
+        width: 100%; 
+        height: 100%; 
+        object-fit: contain; 
+        display: block;
+      }
+      .layout-caption .slot-caption,
+      .layout-caption-contained .slot-caption { 
         flex: 0 0 auto;
         padding: 0 calc(var(--slide-unit) * 2);
         background: transparent;
@@ -2298,7 +2634,8 @@ export class SlideRenderer {
         justify-content: flex-start;
         height: calc(var(--slide-unit) * 6);
       }
-      .layout-caption .slot-caption p {
+      .layout-caption .slot-caption p,
+      .layout-caption-contained .slot-caption p {
         margin: 0;
         padding: 0;
         line-height: 1.0;
@@ -2413,7 +2750,10 @@ export class SlideRenderer {
     `;
   }
 
-  private getBaseStyles(context: 'thumbnail' | 'preview' | 'presentation' = 'thumbnail', frontmatter?: PresentationFrontmatter): string {
+  private getBaseStyles(
+    context: 'thumbnail' | 'preview' | 'presentation' = 'thumbnail',
+    frontmatter?: PresentationFrontmatter
+  ): string {
     const containerClass = context === 'thumbnail' ? 'perspecta-thumbnail' : 'perspecta-preview';
     const textScale = frontmatter?.textScale || 1;
 
@@ -2548,7 +2888,7 @@ ${this.getSlideCSS()}
   /**
    * Generate CSS rules to override theme heading colors when custom title/body text is set
    * This ensures that inspector color changes take precedence over theme-defined heading colors
-   * 
+   *
    * Priority order:
    * 1. Explicit heading color from frontmatter (lightH1Color, darkH1Color, etc.)
    * 2. General title/body text color from frontmatter (lightTitleText, darkTitleText, etc.)
@@ -2607,10 +2947,22 @@ ${this.getSlideCSS()}
     const vars: string[] = [];
 
     // Validate font weights against available weights for each font
-    const validTitleWeight = this.validateFontWeight(frontmatter.titleFont, frontmatter.titleFontWeight);
-    const validBodyWeight = this.validateFontWeight(frontmatter.bodyFont, frontmatter.bodyFontWeight);
-    const validHeaderWeight = this.validateFontWeight(frontmatter.headerFont, frontmatter.headerFontWeight);
-    const validFooterWeight = this.validateFontWeight(frontmatter.footerFont, frontmatter.footerFontWeight);
+    const validTitleWeight = this.validateFontWeight(
+      frontmatter.titleFont,
+      frontmatter.titleFontWeight
+    );
+    const validBodyWeight = this.validateFontWeight(
+      frontmatter.bodyFont,
+      frontmatter.bodyFontWeight
+    );
+    const validHeaderWeight = this.validateFontWeight(
+      frontmatter.headerFont,
+      frontmatter.headerFontWeight
+    );
+    const validFooterWeight = this.validateFontWeight(
+      frontmatter.footerFont,
+      frontmatter.footerFontWeight
+    );
 
     // Fonts
     if (frontmatter.titleFont) {
@@ -2640,93 +2992,181 @@ ${this.getSlideCSS()}
 
     // Font sizes (as scale factors, convert from % offset)
     if (frontmatter.titleFontSize !== undefined) {
-      const scale = 1 + (frontmatter.titleFontSize / 100);
+      const scale = 1 + frontmatter.titleFontSize / 100;
       vars.push(`  --title-font-scale: ${scale};`);
     }
     if (frontmatter.bodyFontSize !== undefined) {
-      const scale = 1 + (frontmatter.bodyFontSize / 100);
+      const scale = 1 + frontmatter.bodyFontSize / 100;
       vars.push(`  --body-font-scale: ${scale};`);
     }
     if (frontmatter.headerFontSize !== undefined) {
-      const scale = 1 + (frontmatter.headerFontSize / 100);
+      const scale = 1 + frontmatter.headerFontSize / 100;
       vars.push(`  --header-font-scale: ${scale};`);
     }
     if (frontmatter.footerFontSize !== undefined) {
-      const scale = 1 + (frontmatter.footerFontSize / 100);
+      const scale = 1 + frontmatter.footerFontSize / 100;
       vars.push(`  --footer-font-scale: ${scale};`);
     }
 
     // Legacy font size offset (affects all text)
     if (frontmatter.fontSizeOffset !== undefined) {
-      const scale = 1 + (frontmatter.fontSizeOffset / 100);
+      const scale = 1 + frontmatter.fontSizeOffset / 100;
       vars.push(`  --font-scale: ${scale};`);
     }
 
     // Spacing (unitless, will be multiplied by --slide-unit in CSS)
-    if (frontmatter.headlineSpacingBefore !== undefined) vars.push(`  --headline-spacing-before: ${frontmatter.headlineSpacingBefore};`);
-    if (frontmatter.headlineSpacingAfter !== undefined) vars.push(`  --headline-spacing-after: ${frontmatter.headlineSpacingAfter};`);
-    if (frontmatter.listItemSpacing !== undefined) vars.push(`  --list-item-spacing: ${frontmatter.listItemSpacing};`);
-    if (frontmatter.lineHeight !== undefined) vars.push(`  --line-height: ${frontmatter.lineHeight};`);
+    if (frontmatter.headlineSpacingBefore !== undefined) {
+      vars.push(`  --headline-spacing-before: ${frontmatter.headlineSpacingBefore};`);
+    }
+    if (frontmatter.headlineSpacingAfter !== undefined) {
+      vars.push(`  --headline-spacing-after: ${frontmatter.headlineSpacingAfter};`);
+    }
+    if (frontmatter.listItemSpacing !== undefined) {
+      vars.push(`  --list-item-spacing: ${frontmatter.listItemSpacing};`);
+    }
+    if (frontmatter.lineHeight !== undefined) {
+      vars.push(`  --line-height: ${frontmatter.lineHeight};`);
+    }
 
     // Margins (unitless, absolute distance from slide edge in slide units)
     // These will be multiplied by --slide-unit in CSS for proper scaling
-    if (frontmatter.headerTop !== undefined) vars.push(`  --header-top: ${frontmatter.headerTop};`);
-    if (frontmatter.footerBottom !== undefined) vars.push(`  --footer-bottom: ${frontmatter.footerBottom};`);
-    if (frontmatter.titleTop !== undefined) vars.push(`  --title-top: ${frontmatter.titleTop};`);
-    if (frontmatter.contentTop !== undefined) vars.push(`  --content-top: ${frontmatter.contentTop};`);
+    if (frontmatter.headerTop !== undefined) {
+      vars.push(`  --header-top: ${frontmatter.headerTop};`);
+    }
+    if (frontmatter.footerBottom !== undefined) {
+      vars.push(`  --footer-bottom: ${frontmatter.footerBottom};`);
+    }
+    if (frontmatter.titleTop !== undefined) {
+      vars.push(`  --title-top: ${frontmatter.titleTop};`);
+    }
+    if (frontmatter.contentTop !== undefined) {
+      vars.push(`  --content-top: ${frontmatter.contentTop};`);
+    }
     // Content margins: Support asymmetric left/right, with contentWidth as legacy fallback
     const contentLeft = frontmatter.contentLeft ?? frontmatter.contentWidth;
     const contentRight = frontmatter.contentRight ?? frontmatter.contentWidth;
-    if (contentLeft !== undefined) vars.push(`  --content-left: ${contentLeft};`);
-    if (contentRight !== undefined) vars.push(`  --content-right: ${contentRight};`);
+    if (contentLeft !== undefined) {
+      vars.push(`  --content-left: ${contentLeft};`);
+    }
+    if (contentRight !== undefined) {
+      vars.push(`  --content-right: ${contentRight};`);
+    }
     // Legacy: still output --content-width if defined for backwards compatibility
-    if (frontmatter.contentWidth !== undefined) vars.push(`  --content-width: ${frontmatter.contentWidth};`);
+    if (frontmatter.contentWidth !== undefined) {
+      vars.push(`  --content-width: ${frontmatter.contentWidth};`);
+    }
 
     // Semantic colors (light mode)
-    if (frontmatter.lightLinkColor) vars.push(`  --light-link-color: ${frontmatter.lightLinkColor};`);
-    if (frontmatter.lightBulletColor) vars.push(`  --light-bullet-color: ${frontmatter.lightBulletColor};`);
-    if (frontmatter.lightBlockquoteBorder) vars.push(`  --light-blockquote-border: ${frontmatter.lightBlockquoteBorder};`);
-    if (frontmatter.lightTableHeaderBg) vars.push(`  --light-table-header-bg: ${frontmatter.lightTableHeaderBg};`);
-    if (frontmatter.lightCodeBorder) vars.push(`  --light-code-border: ${frontmatter.lightCodeBorder};`);
-    if (frontmatter.lightProgressBar) vars.push(`  --light-progress-bar: ${frontmatter.lightProgressBar};`);
-    if (frontmatter.lightBoldColor) vars.push(`  --light-bold-color: ${frontmatter.lightBoldColor};`);
+    if (frontmatter.lightLinkColor) {
+      vars.push(`  --light-link-color: ${frontmatter.lightLinkColor};`);
+    }
+    if (frontmatter.lightBulletColor) {
+      vars.push(`  --light-bullet-color: ${frontmatter.lightBulletColor};`);
+    }
+    if (frontmatter.lightBlockquoteBorder) {
+      vars.push(`  --light-blockquote-border: ${frontmatter.lightBlockquoteBorder};`);
+    }
+    if (frontmatter.lightTableHeaderBg) {
+      vars.push(`  --light-table-header-bg: ${frontmatter.lightTableHeaderBg};`);
+    }
+    if (frontmatter.lightCodeBorder) {
+      vars.push(`  --light-code-border: ${frontmatter.lightCodeBorder};`);
+    }
+    if (frontmatter.lightProgressBar) {
+      vars.push(`  --light-progress-bar: ${frontmatter.lightProgressBar};`);
+    }
+    if (frontmatter.lightBoldColor) {
+      vars.push(`  --light-bold-color: ${frontmatter.lightBoldColor};`);
+    }
 
     // Semantic colors (dark mode)
-    if (frontmatter.darkLinkColor) vars.push(`  --dark-link-color: ${frontmatter.darkLinkColor};`);
-    if (frontmatter.darkBulletColor) vars.push(`  --dark-bullet-color: ${frontmatter.darkBulletColor};`);
-    if (frontmatter.darkBlockquoteBorder) vars.push(`  --dark-blockquote-border: ${frontmatter.darkBlockquoteBorder};`);
-    if (frontmatter.darkTableHeaderBg) vars.push(`  --dark-table-header-bg: ${frontmatter.darkTableHeaderBg};`);
-    if (frontmatter.darkCodeBorder) vars.push(`  --dark-code-border: ${frontmatter.darkCodeBorder};`);
-    if (frontmatter.darkProgressBar) vars.push(`  --dark-progress-bar: ${frontmatter.darkProgressBar};`);
-    if (frontmatter.darkBoldColor) vars.push(`  --dark-bold-color: ${frontmatter.darkBoldColor};`);
+    if (frontmatter.darkLinkColor) {
+      vars.push(`  --dark-link-color: ${frontmatter.darkLinkColor};`);
+    }
+    if (frontmatter.darkBulletColor) {
+      vars.push(`  --dark-bullet-color: ${frontmatter.darkBulletColor};`);
+    }
+    if (frontmatter.darkBlockquoteBorder) {
+      vars.push(`  --dark-blockquote-border: ${frontmatter.darkBlockquoteBorder};`);
+    }
+    if (frontmatter.darkTableHeaderBg) {
+      vars.push(`  --dark-table-header-bg: ${frontmatter.darkTableHeaderBg};`);
+    }
+    if (frontmatter.darkCodeBorder) {
+      vars.push(`  --dark-code-border: ${frontmatter.darkCodeBorder};`);
+    }
+    if (frontmatter.darkProgressBar) {
+      vars.push(`  --dark-progress-bar: ${frontmatter.darkProgressBar};`);
+    }
+    if (frontmatter.darkBoldColor) {
+      vars.push(`  --dark-bold-color: ${frontmatter.darkBoldColor};`);
+    }
 
-    if (frontmatter.lightBackground) vars.push(`  --light-background: ${frontmatter.lightBackground};`);
-    if (frontmatter.darkBackground) vars.push(`  --dark-background: ${frontmatter.darkBackground};`);
-    if (frontmatter.lightTitleText) vars.push(`  --light-title-text: ${frontmatter.lightTitleText};`);
-    if (frontmatter.darkTitleText) vars.push(`  --dark-title-text: ${frontmatter.darkTitleText};`);
-    if (frontmatter.lightBodyText) vars.push(`  --light-body-text: ${frontmatter.lightBodyText};`);
-    if (frontmatter.darkBodyText) vars.push(`  --dark-body-text: ${frontmatter.darkBodyText};`);
+    if (frontmatter.lightBackground) {
+      vars.push(`  --light-background: ${frontmatter.lightBackground};`);
+    }
+    if (frontmatter.darkBackground) {
+      vars.push(`  --dark-background: ${frontmatter.darkBackground};`);
+    }
+    if (frontmatter.lightTitleText) {
+      vars.push(`  --light-title-text: ${frontmatter.lightTitleText};`);
+    }
+    if (frontmatter.darkTitleText) {
+      vars.push(`  --dark-title-text: ${frontmatter.darkTitleText};`);
+    }
+    if (frontmatter.lightBodyText) {
+      vars.push(`  --light-body-text: ${frontmatter.lightBodyText};`);
+    }
+    if (frontmatter.darkBodyText) {
+      vars.push(`  --dark-body-text: ${frontmatter.darkBodyText};`);
+    }
 
     // Per-heading colors (can be gradient if array has 2 elements)
     const colorOrGradient = (colors: string[]): string => {
-      if (colors.length === 1) return colors[0];
+      if (colors.length === 1) {
+        return colors[0];
+      }
       return `linear-gradient(to right, ${colors.join(', ')})`;
     };
 
-    if (frontmatter.lightH1Color?.length) vars.push(`  --light-h1-color: ${colorOrGradient(frontmatter.lightH1Color)};`);
-    if (frontmatter.lightH2Color?.length) vars.push(`  --light-h2-color: ${colorOrGradient(frontmatter.lightH2Color)};`);
-    if (frontmatter.lightH3Color?.length) vars.push(`  --light-h3-color: ${colorOrGradient(frontmatter.lightH3Color)};`);
-    if (frontmatter.lightH4Color?.length) vars.push(`  --light-h4-color: ${colorOrGradient(frontmatter.lightH4Color)};`);
-    if (frontmatter.darkH1Color?.length) vars.push(`  --dark-h1-color: ${colorOrGradient(frontmatter.darkH1Color)};`);
-    if (frontmatter.darkH2Color?.length) vars.push(`  --dark-h2-color: ${colorOrGradient(frontmatter.darkH2Color)};`);
-    if (frontmatter.darkH3Color?.length) vars.push(`  --dark-h3-color: ${colorOrGradient(frontmatter.darkH3Color)};`);
-    if (frontmatter.darkH4Color?.length) vars.push(`  --dark-h4-color: ${colorOrGradient(frontmatter.darkH4Color)};`);
+    if (frontmatter.lightH1Color?.length) {
+      vars.push(`  --light-h1-color: ${colorOrGradient(frontmatter.lightH1Color)};`);
+    }
+    if (frontmatter.lightH2Color?.length) {
+      vars.push(`  --light-h2-color: ${colorOrGradient(frontmatter.lightH2Color)};`);
+    }
+    if (frontmatter.lightH3Color?.length) {
+      vars.push(`  --light-h3-color: ${colorOrGradient(frontmatter.lightH3Color)};`);
+    }
+    if (frontmatter.lightH4Color?.length) {
+      vars.push(`  --light-h4-color: ${colorOrGradient(frontmatter.lightH4Color)};`);
+    }
+    if (frontmatter.darkH1Color?.length) {
+      vars.push(`  --dark-h1-color: ${colorOrGradient(frontmatter.darkH1Color)};`);
+    }
+    if (frontmatter.darkH2Color?.length) {
+      vars.push(`  --dark-h2-color: ${colorOrGradient(frontmatter.darkH2Color)};`);
+    }
+    if (frontmatter.darkH3Color?.length) {
+      vars.push(`  --dark-h3-color: ${colorOrGradient(frontmatter.darkH3Color)};`);
+    }
+    if (frontmatter.darkH4Color?.length) {
+      vars.push(`  --dark-h4-color: ${colorOrGradient(frontmatter.darkH4Color)};`);
+    }
 
     // Header/Footer text colors
-    if (frontmatter.lightHeaderText) vars.push(`  --light-header-text: ${frontmatter.lightHeaderText};`);
-    if (frontmatter.lightFooterText) vars.push(`  --light-footer-text: ${frontmatter.lightFooterText};`);
-    if (frontmatter.darkHeaderText) vars.push(`  --dark-header-text: ${frontmatter.darkHeaderText};`);
-    if (frontmatter.darkFooterText) vars.push(`  --dark-footer-text: ${frontmatter.darkFooterText};`);
+    if (frontmatter.lightHeaderText) {
+      vars.push(`  --light-header-text: ${frontmatter.lightHeaderText};`);
+    }
+    if (frontmatter.lightFooterText) {
+      vars.push(`  --light-footer-text: ${frontmatter.lightFooterText};`);
+    }
+    if (frontmatter.darkHeaderText) {
+      vars.push(`  --dark-header-text: ${frontmatter.darkHeaderText};`);
+    }
+    if (frontmatter.darkFooterText) {
+      vars.push(`  --dark-footer-text: ${frontmatter.darkFooterText};`);
+    }
 
     // Layout-specific backgrounds
     // Always output these to override theme defaults when user removes a custom layout background
@@ -2938,11 +3378,13 @@ ${this.getSlideCSS()}
     </div>
   </div>
   <script>
-    const slidesData = ${JSON.stringify(slides.map((s, i) => ({
-      index: i,
-      notes: s.speakerNotes,
-      html: this.renderSingleSlideHTML(s, i, frontmatter)
-    })))};
+    const slidesData = ${JSON.stringify(
+      slides.map((s, i) => ({
+        index: i,
+        notes: s.speakerNotes,
+        html: this.renderSingleSlideHTML(s, i, frontmatter),
+      }))
+    )};
     
     let currentSlide = 0;
     const totalSlides = slidesData.length;

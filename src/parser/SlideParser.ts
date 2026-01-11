@@ -1,4 +1,4 @@
-import {
+import type {
   Presentation,
   PresentationFrontmatter,
   Slide,
@@ -7,14 +7,15 @@ import {
   SlideLayout,
   ContentMode,
   ImageData,
-  Footnote
+  Footnote,
 } from '../types';
+import { getDebugService } from '../utils/DebugService';
 
 export class SlideParser {
   private defaultContentMode: ContentMode = 'perspecta';
   private debugMode: boolean = false;
 
-  constructor() { }
+  constructor() {}
 
   /**
    * Set the default content mode (used when not specified in frontmatter)
@@ -41,23 +42,23 @@ export class SlideParser {
 
   /**
    * Parse a markdown document into a Presentation
-   * 
+   *
    * Content Mode determines how slide content vs speaker notes are distinguished:
-    * 
-    * 'perspecta' (Perspecta style):
-    * - `---` separates slides (horizontal rule)
-    * - Regular text = speaker notes (not visible on slide)
-    * - Headings (#, ##, etc.) = visible on slide
-    * - Tab-indented content = visible on slide
-    * - `note:` or `notes:` explicitly marks start of speaker notes section
-    * - `//` at start of line = comment (hidden from all)
-    * 
-    * 'advanced-slides' (Obsidian Advanced Slides style):
-    * - `---` separates slides
-    * - All content is visible on slide by default
-    * - `note:` or `notes:` on its own line marks the start of speaker notes
-    * - Everything after `note:`/`notes:` until next slide is speaker notes
-    */
+   *
+   * 'perspecta' (Perspecta style):
+   * - `---` separates slides (horizontal rule)
+   * - Regular text = speaker notes (not visible on slide)
+   * - Headings (#, ##, etc.) = visible on slide
+   * - Tab-indented content = visible on slide
+   * - `note:` or `notes:` explicitly marks start of speaker notes section
+   * - `//` at start of line = comment (hidden from all)
+   *
+   * 'advanced-slides' (Obsidian Advanced Slides style):
+   * - `---` separates slides
+   * - All content is visible on slide by default
+   * - `note:` or `notes:` on its own line marks the start of speaker notes
+   * - Everything after `note:`/`notes:` until next slide is speaker notes
+   */
   parse(source: string): Presentation {
     const { frontmatter, content } = this.extractFrontmatter(source);
     const contentMode = frontmatter.contentMode || this.defaultContentMode;
@@ -70,14 +71,14 @@ export class SlideParser {
     const contentWithoutFootnotes = this.removeFootnoteDefinitions(content);
 
     // Parse slides and attach relevant footnotes to each
-    let slides = this.parseSlides(contentWithoutFootnotes, contentMode, footnoteDefinitions);
+    const slides = this.parseSlides(contentWithoutFootnotes, contentMode, footnoteDefinitions);
 
     // If showFootnotesOnSlides is not true, create an auto-generated footnotes slide at the end
     // (default: false - don't show footnotes on individual slides, only on auto-generated footnotes slide)
     // BUT: skip if there's already an explicit layout: footnotes slide in the presentation
     const showFootnotesOnSlides = frontmatter.showFootnotesOnSlides === true;
-    const hasExplicitFootnotesSlide = slides.some(slide => slide.metadata.layout === 'footnotes');
-    
+    const hasExplicitFootnotesSlide = slides.some((slide) => slide.metadata.layout === 'footnotes');
+
     if (!showFootnotesOnSlides && !hasExplicitFootnotesSlide && footnoteDefinitions.size > 0) {
       // Collect all footnotes that were actually referenced in the presentation
       const allReferencedFootnotes: Map<string, string> = new Map();
@@ -91,8 +92,9 @@ export class SlideParser {
 
       // Create auto-generated footnotes slide if there are any referenced footnotes
       if (allReferencedFootnotes.size > 0) {
-        const footnotesArray: Footnote[] = Array.from(allReferencedFootnotes.entries())
-          .map(([id, content]) => ({ id, content }));
+        const footnotesArray: Footnote[] = Array.from(allReferencedFootnotes.entries()).map(
+          ([id, content]) => ({ id, content })
+        );
 
         const footnotesSlide: Slide = {
           index: slides.length,
@@ -160,29 +162,29 @@ export class SlideParser {
    */
   private extractFootnoteDefinitions(source: string): Map<string, string> {
     const definitions = new Map<string, string>();
-    
+
     // Match footnote definitions: [^id]: content
     // Footnote content can span multiple lines if subsequent lines are indented
     const lines = source.split('\n');
     let currentFootnoteId: string | null = null;
     let currentFootnoteContent: string[] = [];
-    
+
     for (const line of lines) {
       // Check for new footnote definition
       const defMatch = line.match(/^\[\^([^\]]+)\]:\s*(.*)$/);
-      
+
       if (defMatch) {
         // Save previous footnote if exists
         if (currentFootnoteId) {
           definitions.set(currentFootnoteId, currentFootnoteContent.join('\n').trim());
         }
-        
+
         // Start new footnote
         currentFootnoteId = defMatch[1];
         currentFootnoteContent = defMatch[2] ? [defMatch[2]] : [];
       } else if (currentFootnoteId && (line.startsWith('    ') || line.startsWith('\t'))) {
         // Continuation of current footnote (indented line)
-        currentFootnoteContent.push(line.replace(/^(\t|    )/, ''));
+        currentFootnoteContent.push(line.replace(/^(\t| {4})/, ''));
       } else if (currentFootnoteId && line.trim() === '') {
         // Empty line might still be part of footnote, keep collecting
         currentFootnoteContent.push('');
@@ -193,12 +195,12 @@ export class SlideParser {
         currentFootnoteContent = [];
       }
     }
-    
+
     // Save last footnote if exists
     if (currentFootnoteId) {
       definitions.set(currentFootnoteId, currentFootnoteContent.join('\n').trim());
     }
-    
+
     this.debugLog('[SlideParser] Found footnote definitions:', Array.from(definitions.keys()));
     return definitions;
   }
@@ -211,17 +213,20 @@ export class SlideParser {
     const refs: string[] = [];
     const refRegex = /\[\^([^\]]+)\](?!:)/g;
     let match;
-    
+
     while ((match = refRegex.exec(content)) !== null) {
       if (!refs.includes(match[1])) {
         refs.push(match[1]);
       }
     }
-    
+
     return refs;
   }
 
-  private extractFrontmatter(source: string): { frontmatter: PresentationFrontmatter; content: string } {
+  private extractFrontmatter(source: string): {
+    frontmatter: PresentationFrontmatter;
+    content: string;
+  } {
     const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n/;
     const match = source.match(frontmatterRegex);
 
@@ -242,198 +247,202 @@ export class SlideParser {
 
     for (const line of lines) {
       const colonIndex = line.indexOf(':');
-      if (colonIndex === -1) continue;
+      if (colonIndex === -1) {
+        continue;
+      }
 
       const key = line.slice(0, colonIndex).trim();
       let value = line.slice(colonIndex + 1).trim();
 
       // Remove quotes if present
-      if ((value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))) {
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
         value = value.slice(1, -1);
       }
 
       // Map YAML keys to frontmatter properties
       const keyMap: Record<string, keyof PresentationFrontmatter> = {
-        'title': 'title',
-        'author': 'author',
-        'date': 'date',
-        'theme': 'theme',
+        title: 'title',
+        author: 'author',
+        date: 'date',
+        theme: 'theme',
         'title-font': 'titleFont',
-        'titleFont': 'titleFont',
+        titleFont: 'titleFont',
         'title-font-weight': 'titleFontWeight',
-        'titleFontWeight': 'titleFontWeight',
+        titleFontWeight: 'titleFontWeight',
         'body-font': 'bodyFont',
-        'bodyFont': 'bodyFont',
+        bodyFont: 'bodyFont',
         'body-font-weight': 'bodyFontWeight',
-        'bodyFontWeight': 'bodyFontWeight',
+        bodyFontWeight: 'bodyFontWeight',
         'header-font': 'headerFont',
-        'headerFont': 'headerFont',
+        headerFont: 'headerFont',
         'header-font-weight': 'headerFontWeight',
-        'headerFontWeight': 'headerFontWeight',
+        headerFontWeight: 'headerFontWeight',
         'footer-font': 'footerFont',
-        'footerFont': 'footerFont',
+        footerFont: 'footerFont',
         'footer-font-weight': 'footerFontWeight',
-        'footerFontWeight': 'footerFontWeight',
+        footerFontWeight: 'footerFontWeight',
         'title-font-size': 'titleFontSize',
-        'titleFontSize': 'titleFontSize',
+        titleFontSize: 'titleFontSize',
         'body-font-size': 'bodyFontSize',
-        'bodyFontSize': 'bodyFontSize',
+        bodyFontSize: 'bodyFontSize',
         'text-scale': 'textScale',
-        'textScale': 'textScale',
+        textScale: 'textScale',
         'font-size-offset': 'fontSizeOffset',
-        'fontSizeOffset': 'fontSizeOffset',
+        fontSizeOffset: 'fontSizeOffset',
         'header-top': 'headerTop',
-        'headerTop': 'headerTop',
+        headerTop: 'headerTop',
         'footer-bottom': 'footerBottom',
-        'footerBottom': 'footerBottom',
+        footerBottom: 'footerBottom',
         'title-top': 'titleTop',
-        'titleTop': 'titleTop',
+        titleTop: 'titleTop',
         'content-top': 'contentTop',
-        'contentTop': 'contentTop',
+        contentTop: 'contentTop',
         'content-width': 'contentWidth',
-        'contentWidth': 'contentWidth',
+        contentWidth: 'contentWidth',
         'content-left': 'contentLeft',
-        'contentLeft': 'contentLeft',
+        contentLeft: 'contentLeft',
         'content-right': 'contentRight',
-        'contentRight': 'contentRight',
+        contentRight: 'contentRight',
         'content-top-offset': 'contentTopOffset',
-        'contentTopOffset': 'contentTopOffset',
+        contentTopOffset: 'contentTopOffset',
         'header-to-edge': 'headerToEdge',
-        'headerToEdge': 'headerToEdge',
+        headerToEdge: 'headerToEdge',
         'footer-to-edge': 'footerToEdge',
-        'footerToEdge': 'footerToEdge',
+        footerToEdge: 'footerToEdge',
         'line-height': 'lineHeight',
-        'lineHeight': 'lineHeight',
+        lineHeight: 'lineHeight',
         'light-link-color': 'lightLinkColor',
-        'lightLinkColor': 'lightLinkColor',
+        lightLinkColor: 'lightLinkColor',
         'light-bullet-color': 'lightBulletColor',
-        'lightBulletColor': 'lightBulletColor',
+        lightBulletColor: 'lightBulletColor',
         'light-blockquote-border': 'lightBlockquoteBorder',
-        'lightBlockquoteBorder': 'lightBlockquoteBorder',
+        lightBlockquoteBorder: 'lightBlockquoteBorder',
         'light-table-header-bg': 'lightTableHeaderBg',
-        'lightTableHeaderBg': 'lightTableHeaderBg',
+        lightTableHeaderBg: 'lightTableHeaderBg',
         'light-code-border': 'lightCodeBorder',
-        'lightCodeBorder': 'lightCodeBorder',
+        lightCodeBorder: 'lightCodeBorder',
         'light-progress-bar': 'lightProgressBar',
-        'lightProgressBar': 'lightProgressBar',
+        lightProgressBar: 'lightProgressBar',
         'light-bold-color': 'lightBoldColor',
-        'lightBoldColor': 'lightBoldColor',
+        lightBoldColor: 'lightBoldColor',
         'dark-link-color': 'darkLinkColor',
-        'darkLinkColor': 'darkLinkColor',
+        darkLinkColor: 'darkLinkColor',
         'dark-bullet-color': 'darkBulletColor',
-        'darkBulletColor': 'darkBulletColor',
+        darkBulletColor: 'darkBulletColor',
         'dark-blockquote-border': 'darkBlockquoteBorder',
-        'darkBlockquoteBorder': 'darkBlockquoteBorder',
+        darkBlockquoteBorder: 'darkBlockquoteBorder',
         'dark-table-header-bg': 'darkTableHeaderBg',
-        'darkTableHeaderBg': 'darkTableHeaderBg',
+        darkTableHeaderBg: 'darkTableHeaderBg',
         'dark-code-border': 'darkCodeBorder',
-        'darkCodeBorder': 'darkCodeBorder',
+        darkCodeBorder: 'darkCodeBorder',
         'dark-progress-bar': 'darkProgressBar',
-        'darkProgressBar': 'darkProgressBar',
+        darkProgressBar: 'darkProgressBar',
         'dark-bold-color': 'darkBoldColor',
-        'darkBoldColor': 'darkBoldColor',
+        darkBoldColor: 'darkBoldColor',
         'light-background': 'lightBackground',
-        'lightBackground': 'lightBackground',
+        lightBackground: 'lightBackground',
         'dark-background': 'darkBackground',
-        'darkBackground': 'darkBackground',
+        darkBackground: 'darkBackground',
         'header-left': 'headerLeft',
-        'headerLeft': 'headerLeft',
+        headerLeft: 'headerLeft',
         'header-middle': 'headerMiddle',
-        'headerMiddle': 'headerMiddle',
+        headerMiddle: 'headerMiddle',
         'header-right': 'headerRight',
-        'headerRight': 'headerRight',
+        headerRight: 'headerRight',
         'footer-left': 'footerLeft',
-        'footerLeft': 'footerLeft',
+        footerLeft: 'footerLeft',
         'footer-middle': 'footerMiddle',
-        'footerMiddle': 'footerMiddle',
+        footerMiddle: 'footerMiddle',
         'footer-right': 'footerRight',
-        'footerRight': 'footerRight',
-        'logo': 'logo',
+        footerRight: 'footerRight',
+        logo: 'logo',
         'logo-size': 'logoSize',
-        'logoSize': 'logoSize',
-        'aspectRatio': 'aspectRatio',
+        logoSize: 'logoSize',
+        aspectRatio: 'aspectRatio',
         'aspect-ratio': 'aspectRatio',
-        'lockAspectRatio': 'lockAspectRatio',
+        lockAspectRatio: 'lockAspectRatio',
         'lock-aspect-ratio': 'lockAspectRatio',
         'show-progress': 'showProgress',
-        'showProgress': 'showProgress',
+        showProgress: 'showProgress',
         'show-slide-numbers': 'showSlideNumbers',
-        'showSlideNumbers': 'showSlideNumbers',
-        'transition': 'transition',
+        showSlideNumbers: 'showSlideNumbers',
+        transition: 'transition',
         'content-mode': 'contentMode',
-        'contentMode': 'contentMode',
+        contentMode: 'contentMode',
         'light-title-text': 'lightTitleText',
-        'lightTitleText': 'lightTitleText',
+        lightTitleText: 'lightTitleText',
         'dark-title-text': 'darkTitleText',
-        'darkTitleText': 'darkTitleText',
+        darkTitleText: 'darkTitleText',
         'light-body-text': 'lightBodyText',
-        'lightBodyText': 'lightBodyText',
+        lightBodyText: 'lightBodyText',
         'dark-body-text': 'darkBodyText',
-        'darkBodyText': 'darkBodyText',
+        darkBodyText: 'darkBodyText',
         'use-dynamic-background': 'useDynamicBackground',
-        'useDynamicBackground': 'useDynamicBackground',
+        useDynamicBackground: 'useDynamicBackground',
         'light-dynamic-background': 'lightDynamicBackground',
-        'lightDynamicBackground': 'lightDynamicBackground',
+        lightDynamicBackground: 'lightDynamicBackground',
         'dark-dynamic-background': 'darkDynamicBackground',
-        'darkDynamicBackground': 'darkDynamicBackground',
-        'mode': 'mode',
+        darkDynamicBackground: 'darkDynamicBackground',
+        mode: 'mode',
         'list-item-spacing': 'listItemSpacing',
-        'listItemSpacing': 'listItemSpacing',
+        listItemSpacing: 'listItemSpacing',
         'header-font-size': 'headerFontSize',
-        'headerFontSize': 'headerFontSize',
+        headerFontSize: 'headerFontSize',
         'footer-font-size': 'footerFontSize',
-        'footerFontSize': 'footerFontSize',
+        footerFontSize: 'footerFontSize',
         'headline-spacing-before': 'headlineSpacingBefore',
-        'headlineSpacingBefore': 'headlineSpacingBefore',
+        headlineSpacingBefore: 'headlineSpacingBefore',
         'headline-spacing-after': 'headlineSpacingAfter',
-        'headlineSpacingAfter': 'headlineSpacingAfter',
+        headlineSpacingAfter: 'headlineSpacingAfter',
         'image-overlay': 'imageOverlay',
-        'imageOverlay': 'imageOverlay',
+        imageOverlay: 'imageOverlay',
         'image-overlay-opacity': 'imageOverlayOpacity',
-        'imageOverlayOpacity': 'imageOverlayOpacity',
+        imageOverlayOpacity: 'imageOverlayOpacity',
         // Per-heading colors
         'light-h1-color': 'lightH1Color',
-        'lightH1Color': 'lightH1Color',
+        lightH1Color: 'lightH1Color',
         'light-h2-color': 'lightH2Color',
-        'lightH2Color': 'lightH2Color',
+        lightH2Color: 'lightH2Color',
         'light-h3-color': 'lightH3Color',
-        'lightH3Color': 'lightH3Color',
+        lightH3Color: 'lightH3Color',
         'light-h4-color': 'lightH4Color',
-        'lightH4Color': 'lightH4Color',
+        lightH4Color: 'lightH4Color',
         'dark-h1-color': 'darkH1Color',
-        'darkH1Color': 'darkH1Color',
+        darkH1Color: 'darkH1Color',
         'dark-h2-color': 'darkH2Color',
-        'darkH2Color': 'darkH2Color',
+        darkH2Color: 'darkH2Color',
         'dark-h3-color': 'darkH3Color',
-        'darkH3Color': 'darkH3Color',
+        darkH3Color: 'darkH3Color',
         'dark-h4-color': 'darkH4Color',
-        'darkH4Color': 'darkH4Color',
+        darkH4Color: 'darkH4Color',
         // Header/footer text colors
         'light-header-text': 'lightHeaderText',
-        'lightHeaderText': 'lightHeaderText',
+        lightHeaderText: 'lightHeaderText',
         'light-footer-text': 'lightFooterText',
-        'lightFooterText': 'lightFooterText',
+        lightFooterText: 'lightFooterText',
         'dark-header-text': 'darkHeaderText',
-        'darkHeaderText': 'darkHeaderText',
+        darkHeaderText: 'darkHeaderText',
         'dark-footer-text': 'darkFooterText',
-        'darkFooterText': 'darkFooterText',
+        darkFooterText: 'darkFooterText',
         // Layout-specific backgrounds
         'light-bg-cover': 'lightBgCover',
-        'lightBgCover': 'lightBgCover',
+        lightBgCover: 'lightBgCover',
         'light-bg-title': 'lightBgTitle',
-        'lightBgTitle': 'lightBgTitle',
+        lightBgTitle: 'lightBgTitle',
         'light-bg-section': 'lightBgSection',
-        'lightBgSection': 'lightBgSection',
+        lightBgSection: 'lightBgSection',
         'dark-bg-cover': 'darkBgCover',
-        'darkBgCover': 'darkBgCover',
+        darkBgCover: 'darkBgCover',
         'dark-bg-title': 'darkBgTitle',
-        'darkBgTitle': 'darkBgTitle',
+        darkBgTitle: 'darkBgTitle',
         'dark-bg-section': 'darkBgSection',
-        'darkBgSection': 'darkBgSection',
+        darkBgSection: 'darkBgSection',
         // Dynamic background options
         'dynamic-background-restart-at-section': 'dynamicBackgroundRestartAtSection',
-        'dynamicBackgroundRestartAtSection': 'dynamicBackgroundRestartAtSection',
+        dynamicBackgroundRestartAtSection: 'dynamicBackgroundRestartAtSection',
       };
 
       const mappedKey = keyMap[key];
@@ -444,18 +453,30 @@ export class SlideParser {
         } else if (value === 'false') {
           (frontmatter as any)[mappedKey] = false;
         } else if (
-          mappedKey === 'fontSizeOffset' || mappedKey === 'contentTopOffset' ||
-          mappedKey === 'listItemSpacing' || mappedKey === 'headerFontSize' ||
-          mappedKey === 'footerFontSize' || mappedKey === 'headlineSpacingBefore' ||
-          mappedKey === 'headlineSpacingAfter' || mappedKey === 'titleFontWeight' ||
-          mappedKey === 'bodyFontWeight' || mappedKey === 'headerFontWeight' ||
-          mappedKey === 'footerFontWeight' || mappedKey === 'titleFontSize' ||
-          mappedKey === 'bodyFontSize' || mappedKey === 'titleTop' ||
-          mappedKey === 'contentTop' || mappedKey === 'contentWidth' ||
-          mappedKey === 'contentLeft' || mappedKey === 'contentRight' ||
-          mappedKey === 'headerToEdge' || mappedKey === 'footerToEdge' ||
-          mappedKey === 'headerTop' || mappedKey === 'footerBottom' ||
-          mappedKey === 'lineHeight' || mappedKey === 'imageOverlayOpacity' ||
+          mappedKey === 'fontSizeOffset' ||
+          mappedKey === 'contentTopOffset' ||
+          mappedKey === 'listItemSpacing' ||
+          mappedKey === 'headerFontSize' ||
+          mappedKey === 'footerFontSize' ||
+          mappedKey === 'headlineSpacingBefore' ||
+          mappedKey === 'headlineSpacingAfter' ||
+          mappedKey === 'titleFontWeight' ||
+          mappedKey === 'bodyFontWeight' ||
+          mappedKey === 'headerFontWeight' ||
+          mappedKey === 'footerFontWeight' ||
+          mappedKey === 'titleFontSize' ||
+          mappedKey === 'bodyFontSize' ||
+          mappedKey === 'titleTop' ||
+          mappedKey === 'contentTop' ||
+          mappedKey === 'contentWidth' ||
+          mappedKey === 'contentLeft' ||
+          mappedKey === 'contentRight' ||
+          mappedKey === 'headerToEdge' ||
+          mappedKey === 'footerToEdge' ||
+          mappedKey === 'headerTop' ||
+          mappedKey === 'footerBottom' ||
+          mappedKey === 'lineHeight' ||
+          mappedKey === 'imageOverlayOpacity' ||
           mappedKey === 'textScale'
         ) {
           // Parse as number for numeric properties
@@ -464,11 +485,16 @@ export class SlideParser {
             (frontmatter as any)[mappedKey] = num;
           }
         } else if (
-          mappedKey === 'lightDynamicBackground' || mappedKey === 'darkDynamicBackground' ||
-          mappedKey === 'lightH1Color' || mappedKey === 'lightH2Color' ||
-          mappedKey === 'lightH3Color' || mappedKey === 'lightH4Color' ||
-          mappedKey === 'darkH1Color' || mappedKey === 'darkH2Color' ||
-          mappedKey === 'darkH3Color' || mappedKey === 'darkH4Color'
+          mappedKey === 'lightDynamicBackground' ||
+          mappedKey === 'darkDynamicBackground' ||
+          mappedKey === 'lightH1Color' ||
+          mappedKey === 'lightH2Color' ||
+          mappedKey === 'lightH3Color' ||
+          mappedKey === 'lightH4Color' ||
+          mappedKey === 'darkH1Color' ||
+          mappedKey === 'darkH2Color' ||
+          mappedKey === 'darkH3Color' ||
+          mappedKey === 'darkH4Color'
         ) {
           // Parse as array of colors (comma-separated or JSON array)
           if (value.startsWith('[')) {
@@ -476,10 +502,17 @@ export class SlideParser {
               (frontmatter as any)[mappedKey] = JSON.parse(value);
             } catch {
               // Fallback to comma-separated
-              (frontmatter as any)[mappedKey] = value.replace(/[\[\]]/g, '').split(',').map(s => s.trim()).filter(Boolean);
+              (frontmatter as any)[mappedKey] = value
+                .replace(/[\[\]]/g, '')
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean);
             }
           } else {
-            (frontmatter as any)[mappedKey] = value.split(',').map(s => s.trim()).filter(Boolean);
+            (frontmatter as any)[mappedKey] = value
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
           }
         } else {
           (frontmatter as any)[mappedKey] = value;
@@ -490,18 +523,29 @@ export class SlideParser {
     return frontmatter;
   }
 
-  private parseSlides(content: string, contentMode: ContentMode, footnoteDefinitions: Map<string, string>): Slide[] {
+  private parseSlides(
+    content: string,
+    contentMode: ContentMode,
+    footnoteDefinitions: Map<string, string>
+  ): Slide[] {
     // Split by horizontal rule (---)
     // Must be at least 3 dashes on their own line
     const slideDelimiter = /\n---+\s*\n/;
     const rawSlides = content.split(slideDelimiter);
 
     return rawSlides
-      .map((rawContent, index) => this.parseSlide(rawContent.trim(), index, contentMode, footnoteDefinitions))
-      .filter(slide => slide.elements.length > 0 || slide.speakerNotes.length > 0);
+      .map((rawContent, index) =>
+        this.parseSlide(rawContent.trim(), index, contentMode, footnoteDefinitions)
+      )
+      .filter((slide) => slide.elements.length > 0 || slide.speakerNotes.length > 0);
   }
 
-  private parseSlide(rawContent: string, index: number, contentMode: ContentMode, footnoteDefinitions: Map<string, string>): Slide {
+  private parseSlide(
+    rawContent: string,
+    index: number,
+    contentMode: ContentMode,
+    footnoteDefinitions: Map<string, string>
+  ): Slide {
     const lines = rawContent.split('\n');
     let elements: SlideElement[] = [];
     const speakerNotes: string[] = [];
@@ -531,7 +575,8 @@ export class SlideParser {
     const hasExplicitColumnLayout = this.hasExplicitColumnLayout(lines);
 
     // Check for no-autocolumn modifier
-    const isNoAutocolumn = layoutValue === 'default;no-autocolumn' || layoutValue === 'no-autocolumn';
+    const isNoAutocolumn =
+      layoutValue === 'default;no-autocolumn' || layoutValue === 'no-autocolumn';
 
     // Use different parsing strategies based on content mode
     if (contentMode === 'advanced-slides') {
@@ -547,7 +592,8 @@ export class SlideParser {
     }
 
     // Apply auto-column detection for default layout and explicit column layouts
-    const isColumnLayout = metadata.layout === 'default' ||
+    const isColumnLayout =
+      metadata.layout === 'default' ||
       metadata.layout === '1-column' ||
       metadata.layout === '2-columns' ||
       metadata.layout === '3-columns' ||
@@ -555,9 +601,23 @@ export class SlideParser {
       metadata.layout === '2-columns-2+1';
 
     if (isColumnLayout && !isNoAutocolumn) {
-      this.debugLog('Before auto-detection:', elements.map(e => ({ type: e.type, content: e.content.substring(0, 30), columnIndex: e.columnIndex })));
+      this.debugLog(
+        'Before auto-detection:',
+        elements.map((e) => ({
+          type: e.type,
+          content: e.content.substring(0, 30),
+          columnIndex: e.columnIndex,
+        }))
+      );
       elements = this.autoDetectColumns(elements, contentLines);
-      this.debugLog('After auto-detection:', elements.map(e => ({ type: e.type, content: e.content.substring(0, 30), columnIndex: e.columnIndex })));
+      this.debugLog(
+        'After auto-detection:',
+        elements.map((e) => ({
+          type: e.type,
+          content: e.content.substring(0, 30),
+          columnIndex: e.columnIndex,
+        }))
+      );
     }
 
     // If no-autocolumn was specified, ensure layout is just 'default'
@@ -643,8 +703,12 @@ export class SlideParser {
         if (lastWasColumnContent && hasTabColumns) {
           // Check if next non-empty line is also column content
           let nextI = i + 1;
-          while (nextI < contentLines.length && contentLines[nextI].trim() === '' &&
-            !contentLines[nextI].startsWith('\t') && !contentLines[nextI].startsWith('    ')) {
+          while (
+            nextI < contentLines.length &&
+            contentLines[nextI].trim() === '' &&
+            !contentLines[nextI].startsWith('\t') &&
+            !contentLines[nextI].startsWith('    ')
+          ) {
             nextI++;
           }
           if (nextI < contentLines.length) {
@@ -694,7 +758,8 @@ export class SlideParser {
         while (nextI < contentLines.length && contentLines[nextI].trim() === '') {
           nextI++;
         }
-        const nextIsColumnContent = nextI < contentLines.length &&
+        const nextIsColumnContent =
+          nextI < contentLines.length &&
           (contentLines[nextI].startsWith('\t') || contentLines[nextI].startsWith('    '));
 
         const headingElement: SlideElement = {
@@ -718,7 +783,7 @@ export class SlideParser {
 
       // Tab-indented content - visible (potential column content)
       if (isTabIndented) {
-        const unindentedLine = line.replace(/^(\t|    )/, '');
+        const unindentedLine = line.replace(/^(\t| {4})/, '');
         const element = this.parseElement(unindentedLine, contentLines, i, true);
 
         if (hasColumns) {
@@ -733,8 +798,13 @@ export class SlideParser {
 
       // Images - visible (both standard markdown and Obsidian wiki-link syntax)
       // Check if the line (before unindenting for tab-indented) contains an image
-      const lineToCheckForImage = isTabIndented ? line.replace(/^(\t|    )/, '') : line;
-      const imageResult = this.parseImageWithMetadata(lineToCheckForImage, contentLines, i, isTabIndented);
+      const lineToCheckForImage = isTabIndented ? line.replace(/^(\t| {4})/, '') : line;
+      const imageResult = this.parseImageWithMetadata(
+        lineToCheckForImage,
+        contentLines,
+        i,
+        isTabIndented
+      );
       if (imageResult) {
         // Assign columnIndex based on context
         if (hasTabColumns && isTabIndented) {
@@ -745,7 +815,10 @@ export class SlideParser {
           // Non-indented images get sequential column indices (0, 1, 2, ...)
           imageResult.element.columnIndex = Math.min(imageIndexCounter, 2);
           imageIndexCounter++;
-          this.debugLog('Assigned image column:', { imageIndexCounter: imageIndexCounter - 1, path: imageResult.element.content });
+          this.debugLog('Assigned image column:', {
+            imageIndexCounter: imageIndexCounter - 1,
+            path: imageResult.element.content,
+          });
         }
         lastWasColumnContent = isTabIndented;
         elements.push(imageResult.element);
@@ -876,7 +949,7 @@ export class SlideParser {
         // For explicit column layouts, treat H3 headings as column separators
         if (hasExplicitColumnLayout && headingMatch[1].length === 3) {
           // Increment column index for new column headings (except the first one)
-          if (currentColumnIndex > 0 || elements.some(e => e.columnIndex !== undefined)) {
+          if (currentColumnIndex > 0 || elements.some((e) => e.columnIndex !== undefined)) {
             currentColumnIndex++;
           }
           headingElement.columnIndex = currentColumnIndex;
@@ -1087,7 +1160,9 @@ export class SlideParser {
     // Look for layout metadata at the start
     for (const line of lines) {
       const trimmed = line.trim();
-      if (trimmed === '') break;
+      if (trimmed === '') {
+        break;
+      }
 
       const layoutMatch = trimmed.match(/^layout:\s*(.+)$/i);
       if (layoutMatch) {
@@ -1098,7 +1173,10 @@ export class SlideParser {
     return false;
   }
 
-  private extractSlideMetadata(lines: string[]): { slideMetadata: SlideMetadata; contentLines: string[] } {
+  private extractSlideMetadata(lines: string[]): {
+    slideMetadata: SlideMetadata;
+    contentLines: string[];
+  } {
     const metadata: SlideMetadata = {};
     let startIndex = 0;
 
@@ -1116,7 +1194,7 @@ export class SlideParser {
       // Check for metadata patterns
       const layoutMatch = line.match(/^layout:\s*(.+)$/i);
       if (layoutMatch) {
-        let layoutValue = layoutMatch[1].trim();
+        const layoutValue = layoutMatch[1].trim();
         metadata.layout = layoutValue as SlideLayout;
         startIndex = i + 1;
         continue;
@@ -1152,7 +1230,11 @@ export class SlideParser {
 
       const filterMatch = line.match(/^filter:\s*(darken|lighten|blur|none)$/i);
       if (filterMatch) {
-        metadata.backgroundFilter = filterMatch[1].toLowerCase() as 'darken' | 'lighten' | 'blur' | 'none';
+        metadata.backgroundFilter = filterMatch[1].toLowerCase() as
+          | 'darken'
+          | 'lighten'
+          | 'blur'
+          | 'none';
         startIndex = i + 1;
         continue;
       }
@@ -1191,7 +1273,7 @@ export class SlideParser {
       while (nextIndex < allLines.length) {
         const nextLine = allLines[nextIndex];
         const isIndented = nextLine.startsWith('\t') || nextLine.startsWith('    ');
-        const unindented = nextLine.replace(/^(\t|    )/, '');
+        const unindented = nextLine.replace(/^(\t| {4})/, '');
 
         // Stop at empty line - this separates list blocks for auto-column detection
         if (nextLine.trim() === '') {
@@ -1242,7 +1324,10 @@ export class SlideParser {
     };
   }
 
-  private parseCodeBlock(lines: string[], startIndex: number): { content: string; raw: string; nextIndex: number } {
+  private parseCodeBlock(
+    lines: string[],
+    startIndex: number
+  ): { content: string; raw: string; nextIndex: number } {
     const firstLine = lines[startIndex];
     const language = firstLine.replace(/^```/, '').trim();
     const codeLines: string[] = [];
@@ -1259,7 +1344,10 @@ export class SlideParser {
     return { content, raw, nextIndex: i + 1 };
   }
 
-  private parseTable(lines: string[], startIndex: number): { content: string; raw: string; nextIndex: number } {
+  private parseTable(
+    lines: string[],
+    startIndex: number
+  ): { content: string; raw: string; nextIndex: number } {
     const tableLines: string[] = [];
     let i = startIndex;
 
@@ -1275,7 +1363,10 @@ export class SlideParser {
     };
   }
 
-  private parseMathBlock(lines: string[], startIndex: number): { content: string; raw: string; nextIndex: number } {
+  private parseMathBlock(
+    lines: string[],
+    startIndex: number
+  ): { content: string; raw: string; nextIndex: number } {
     const mathLines: string[] = [lines[startIndex]];
     let i = startIndex + 1;
 
@@ -1292,7 +1383,10 @@ export class SlideParser {
     }
 
     return {
-      content: mathLines.join('\n').replace(/^\$\$|\$\$$/g, '').trim(),
+      content: mathLines
+        .join('\n')
+        .replace(/^\$\$|\$\$$/g, '')
+        .trim(),
       raw: mathLines.join('\n'),
       nextIndex: i,
     };
@@ -1300,7 +1394,7 @@ export class SlideParser {
 
   /**
    * Auto-detect layout based on slide content
-   * 
+   *
    * Detection priority:
    * 1. Column content → default (auto-columns)
    * 2. Images only → full-image
@@ -1310,13 +1404,13 @@ export class SlideParser {
    * 6. Otherwise → default
    */
   private detectLayout(elements: SlideElement[]): SlideLayout {
-    const headings = elements.filter(e => e.type === 'heading');
-    const images = elements.filter(e => e.type === 'image');
-    const visibleContent = elements.filter(e => e.visible);
-    const textContent = visibleContent.filter(e => e.type !== 'image');
+    const headings = elements.filter((e) => e.type === 'heading');
+    const images = elements.filter((e) => e.type === 'image');
+    const visibleContent = elements.filter((e) => e.visible);
+    const textContent = visibleContent.filter((e) => e.type !== 'image');
 
     // Check for column content - use 'default' which auto-detects columns
-    const columnElements = elements.filter(e => e.columnIndex !== undefined);
+    const columnElements = elements.filter((e) => e.columnIndex !== undefined);
     if (columnElements.length > 0) {
       // Default layout handles auto-column detection
       return 'default';
@@ -1353,14 +1447,16 @@ export class SlideParser {
    * Returns elements with columnIndex assigned
    */
   private autoDetectColumns(elements: SlideElement[], contentLines?: string[]): SlideElement[] {
-    if (elements.length === 0) return elements;
+    if (elements.length === 0) {
+      return elements;
+    }
 
     // Check if auto-columns is disabled in raw content
     // Look for no-autocolumn in the original raw content lines
     if (contentLines) {
-      const hasNoAutocolumn = contentLines.some(line =>
-        line.trim().includes('no-autocolumn') ||
-        line.trim().includes('default;no-autocolumn')
+      const hasNoAutocolumn = contentLines.some(
+        (line) =>
+          line.trim().includes('no-autocolumn') || line.trim().includes('default;no-autocolumn')
       );
       if (hasNoAutocolumn) {
         return elements;
@@ -1368,17 +1464,19 @@ export class SlideParser {
     }
 
     // Group elements by type to detect patterns
-    const h3Elements = elements.filter(e => e.type === 'heading' && e.level === 3);
-    const h2Elements = elements.filter(e => e.type === 'heading' && e.level === 2);
+    const h3Elements = elements.filter((e) => e.type === 'heading' && e.level === 3);
+    const h2Elements = elements.filter((e) => e.type === 'heading' && e.level === 2);
 
     // Case 1: Multiple H3 headings - use them as column separators
     if (h3Elements.length >= 2) {
       let currentColumn = 0;
       let h3Count = 0;
-      return elements.map(e => {
+      return elements.map((e) => {
         if (e.type === 'heading' && e.level === 3) {
           // New H3 starts a new column (except the first one)
-          if (h3Count > 0) currentColumn++;
+          if (h3Count > 0) {
+            currentColumn++;
+          }
           h3Count++;
           e.columnIndex = currentColumn;
         } else if (e.type === 'heading' && e.level !== 3) {
@@ -1396,10 +1494,12 @@ export class SlideParser {
     if (h3Elements.length === 0 && h2Elements.length >= 2) {
       let currentColumn = 0;
       let h2Count = 0;
-      return elements.map(e => {
+      return elements.map((e) => {
         if (e.type === 'heading' && e.level === 2) {
           // New H2 starts a new column (except the first one)
-          if (h2Count > 0) currentColumn++;
+          if (h2Count > 0) {
+            currentColumn++;
+          }
           h2Count++;
           e.columnIndex = currentColumn;
         } else if (e.type === 'heading') {
@@ -1416,7 +1516,7 @@ export class SlideParser {
     // Case 3: Content blocks separated by empty lines
     if (contentLines) {
       const assignments = this.detectColumnsByEmptyLines(contentLines, elements);
-      if (assignments.some(a => a !== undefined)) {
+      if (assignments.some((a) => a !== undefined)) {
         return elements.map((e, i) => {
           // Only overwrite if we have an assignment; preserve existing columnIndex
           if (assignments[i] !== undefined) {
@@ -1438,29 +1538,39 @@ export class SlideParser {
   private detectColumnsByEmptyLines(contentLines: string[], elements: SlideElement[]): number[] {
     const assignments: number[] = new Array(elements.length).fill(undefined);
     let currentColumn = 0;
-    let elementIndex = 0;
+    const elementIndex = 0;
     let inContentBlock = false;
     let foundFirstBlock = false;
 
     this.debugLog('detectColumnsByEmptyLines called');
     this.debugLog('contentLines:', contentLines);
-    this.debugLog('elements:', elements.map((e, i) => ({
-      index: i,
-      type: e.type,
-      visible: e.visible,
-      content: e.content.substring(0, 30),
-      fullContent: e.content,
-      raw: e.raw
-    })));
+    this.debugLog(
+      'elements:',
+      elements.map((e, i) => ({
+        index: i,
+        type: e.type,
+        visible: e.visible,
+        content: e.content.substring(0, 30),
+        fullContent: e.content,
+        raw: e.raw,
+      }))
+    );
 
     // Create a map of content lines to element indices for easier lookup
     const contentToElementMap = new Map<string, number[]>();
     elements.forEach((element, idx) => {
-      if (element.visible && (element.type === 'paragraph' || element.type === 'list' || element.type === 'blockquote' || element.type === 'image' || element.type === 'table')) {
+      if (
+        element.visible &&
+        (element.type === 'paragraph' ||
+          element.type === 'list' ||
+          element.type === 'blockquote' ||
+          element.type === 'image' ||
+          element.type === 'table')
+      ) {
         // For lists, store each line separately and track all elements that match
         if (element.type === 'list') {
           const lines = element.content.split('\n');
-          lines.forEach(line => {
+          lines.forEach((line) => {
             const trimmed = line.trim();
             if (!contentToElementMap.has(trimmed)) {
               contentToElementMap.set(trimmed, []);
@@ -1540,14 +1650,16 @@ export class SlideParser {
           }
         }
         assignments[elementIdx] = Math.min(currentColumn, 2);
-        this.debugLog(`Line "${trimmed}" assigned to column ${currentColumn} (element ${elementIdx})`);
+        this.debugLog(
+          `Line "${trimmed}" assigned to column ${currentColumn} (element ${elementIdx})`
+        );
       } else if (trimmed !== '' && !trimmed.startsWith('#')) {
         this.debugLog(`No match found for line: "${trimmed}"`);
       }
     }
 
     // Check if we actually detected multiple columns
-    const uniqueColumns = new Set(assignments.filter(a => a !== undefined));
+    const uniqueColumns = new Set(assignments.filter((a) => a !== undefined));
     this.debugLog('Final assignments:', assignments);
     this.debugLog('Unique columns detected:', uniqueColumns);
 
@@ -1572,7 +1684,7 @@ export class SlideParser {
 
   /**
    * Parse image with optional metadata lines following it.
-   * 
+   *
    * Metadata lines can specify:
    * - size: cover | contain
    * - x: left | center | right | <percentage>
@@ -1580,7 +1692,7 @@ export class SlideParser {
    * - filter: none | darken | lighten | blur | grayscale | sepia
    * - opacity: <number>%
    * - caption: <text>
-   * 
+   *
    * Returns null if line is not an image
    */
   private parseImageWithMetadata(
@@ -1590,7 +1702,9 @@ export class SlideParser {
     isIndented: boolean = false
   ): { element: SlideElement; nextIndex: number } | null {
     const imageElement = this.parseImage(line);
-    if (!imageElement) return null;
+    if (!imageElement) {
+      return null;
+    }
 
     // Look for metadata lines following the image
     let nextIndex = currentIndex + 1;
@@ -1600,15 +1714,24 @@ export class SlideParser {
       let rawLine = allLines[nextIndex];
       // If we're in indented context, strip the indent before checking
       if (isIndented) {
-        rawLine = rawLine.replace(/^(\t|    )/, '');
+        rawLine = rawLine.replace(/^(\t| {4})/, '');
       }
       const metaLine = rawLine.trim();
 
       // Stop at empty line
-      if (metaLine === '') break;
+      if (metaLine === '') {
+        break;
+      }
 
       // Stop if line doesn't look like metadata (no colon, or starts with heading/list)
-      if (!metaLine.includes(':') || metaLine.startsWith('#') || metaLine.startsWith('-') || metaLine.startsWith('!')) break;
+      if (
+        !metaLine.includes(':') ||
+        metaLine.startsWith('#') ||
+        metaLine.startsWith('-') ||
+        metaLine.startsWith('!')
+      ) {
+        break;
+      }
 
       // Size: cover | contain (also accept "contains" typo)
       const sizeMatch = metaLine.match(/^size:\s*(cover|contains?)$/i);
@@ -1670,13 +1793,13 @@ export class SlideParser {
 
   /**
    * Parse an image from a line (supports standard markdown and Obsidian wiki-link syntax)
-   * 
+   *
    * Supported formats:
    * - Standard markdown: ![alt](path/to/image.png)
    * - Obsidian wiki-link: ![[image.png]]
    * - Obsidian with alt: ![[image.png|alt text]]
    * - Obsidian with size: ![[image.png|100x200]] or ![[image.png|100]]
-   * 
+   *
    * Returns null if line is not an image
    */
   private parseImage(line: string): SlideElement | null {
@@ -1706,6 +1829,7 @@ export class SlideParser {
     const wikiLinkMatch = line.match(/^!\[\[([^\]|]+)(?:\|([^\]]*))?\]\]$/);
     if (wikiLinkMatch) {
       const src = wikiLinkMatch[1];
+      getDebugService().log('excalidraw', `Wiki-link image src: ${src}`);
       const modifier = wikiLinkMatch[2]; // Could be alt text or dimensions
 
       let alt: string | undefined;

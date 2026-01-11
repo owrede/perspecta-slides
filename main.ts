@@ -1,37 +1,37 @@
-import {
-  App,
-  Plugin,
-  WorkspaceLeaf,
-  TFile,
-  MarkdownView,
-  Notice,
-  addIcon,
-  FileSystemAdapter
-} from 'obsidian';
+import type { WorkspaceLeaf } from 'obsidian';
+import { App, Plugin, MarkdownView, Notice, addIcon, FileSystemAdapter, TFile } from 'obsidian';
 
-import { PerspecaSlidesSettings, DEFAULT_SETTINGS, Presentation, Theme, PresentationFrontmatter } from './src/types';
+import type {
+  PerspecaSlidesSettings,
+  Presentation,
+  Theme,
+  PresentationFrontmatter,
+} from './src/types';
+import { DEFAULT_SETTINGS } from './src/types';
 import { SlideParser } from './src/parser/SlideParser';
-import { SlideRenderer, ImagePathResolver } from './src/renderer/SlideRenderer';
-import { getTheme } from './src/themes';
+import type { ImagePathResolver } from './src/renderer/SlideRenderer';
+import { SlideRenderer } from './src/renderer/SlideRenderer';
+import type { getTheme } from './src/themes';
 import { ThumbnailNavigatorView, THUMBNAIL_VIEW_TYPE } from './src/ui/ThumbnailNavigator';
 import { InspectorPanelView, INSPECTOR_VIEW_TYPE } from './src/ui/InspectorPanel';
 import { PresentationView, PRESENTATION_VIEW_TYPE } from './src/ui/PresentationView';
 import { PerspectaSlidesSettingTab, CreateDemoModal } from './src/ui/SettingsTab';
 import { PresentationWindow } from './src/ui/PresentationWindow';
 import { PresenterWindow } from './src/ui/PresenterWindow';
+import type { PresentationCache, SlideDiff } from './src/utils/SlideHasher';
 import {
-  PresentationCache,
-  SlideDiff,
   buildPresentationCache,
   diffPresentations,
-  requiresFullRender
+  requiresFullRender,
 } from './src/utils/SlideHasher';
-import { FontManager, FontCache } from './src/utils/FontManager';
+import type { FontCache } from './src/utils/FontManager';
+import { FontManager } from './src/utils/FontManager';
 import { ThemeExporter, SaveThemeModal } from './src/utils/ThemeExporter';
 import { ThemeLoader } from './src/themes/ThemeLoader';
 import { getBuiltInThemeNames } from './src/themes/builtin';
 import { DebugService, setDebugService } from './src/utils/DebugService';
 import { ExportService } from './src/utils/ExportService';
+import { ExcalidrawRenderer } from './src/utils/ExcalidrawRenderer';
 
 const SLIDES_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
 
@@ -53,6 +53,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
   themeLoader: ThemeLoader | null = null;
   debugService: DebugService = new DebugService();
   exportService: ExportService | null = null;
+  excalidrawRenderer: ExcalidrawRenderer | null = null;
   private settingsTab: PerspectaSlidesSettingTab | null = null;
   private presentationWindow: PresentationWindow | null = null;
   private presenterWindow: PresenterWindow | null = null;
@@ -61,6 +62,35 @@ export default class PerspectaSlidesPlugin extends Plugin {
   private cachedFilePath: string | null = null;
   private currentTheme: Theme | null = null;
   private lastUsedSlideDocument: TFile | null = null;
+  private rerenderDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private excalidrawConversionsInProgress: Set<string> = new Set(); // Track files being converted
+
+  /**
+   * Log Excalidraw-related debug messages
+   */
+  private logExcalidraw(message: string, data?: any): void {
+    this.debugService.log('excalidraw', message, data);
+  }
+
+  private warnExcalidraw(message: string, data?: any): void {
+    this.debugService.warn('excalidraw', message, data);
+  }
+
+  private errorExcalidraw(message: string, data?: any): void {
+    this.debugService.error('excalidraw', message, data);
+  }
+
+  /**
+   * Extract frame reference from path (e.g., "path#^frame=KhGXN0BZ" -> "KhGXN0BZ")
+   */
+  private extractFrameReference(path: string): { filePath: string; frameId: string | null } {
+    const frameMatch = path.match(/#\^frame=([^#&]+)/);
+    if (frameMatch) {
+      const filePath = path.split('#')[0];
+      return { filePath, frameId: frameMatch[1] };
+    }
+    return { filePath: path.split('#')[0], frameId: null };
+  }
 
   /**
    * Image path resolver for Obsidian wiki-links
@@ -74,28 +104,131 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     // For wiki-links, resolve through Obsidian's system
     try {
+      // Extract frame reference if present (e.g., "#^frame=KhGXN0BZ")
+      const { filePath: pathWithoutFrame, frameId } = this.extractFrameReference(path);
+      
+      // Strip other block references from path (e.g., "path#^blockid" -> "path")
+      const pathWithoutBlock = pathWithoutFrame.split('#')[0];
+      
       // Decode any URL-encoded characters in the path (e.g., %20 for space)
-      const decodedPath = decodeURIComponent(path);
+      const decodedPath = decodeURIComponent(pathWithoutBlock);
 
       // Get the current file for context
       const activeFile = this.app.workspace.getActiveFile();
       const sourcePath = activeFile?.path || '';
 
       // Resolve the link to a file
-      const linkedFile = this.app.metadataCache.getFirstLinkpathDest(decodedPath, sourcePath);
+      let linkedFile = this.app.metadataCache.getFirstLinkpathDest(decodedPath, sourcePath);
+
+      if (!linkedFile) {
+        // Try with original path as fallback
+        linkedFile = this.app.metadataCache.getFirstLinkpathDest(pathWithoutBlock, sourcePath);
+      }
 
       if (linkedFile) {
-        // Get the resource path for the file
-        return this.app.vault.getResourcePath(linkedFile);
-      }
+        // Check if this is an Excalidraw file (either .excalidraw or .md in Excalidraw folder)
+        const isExcalidrawFile = 
+          linkedFile.extension === 'excalidraw' || 
+          (linkedFile.extension === 'md' && 
+            (linkedFile.path.includes('Excalidraw/') || linkedFile.name.includes('.excalidraw')));
 
-      // Try with original path as fallback
-      const linkedFileOriginal = this.app.metadataCache.getFirstLinkpathDest(path, sourcePath);
-      if (linkedFileOriginal) {
-        return this.app.vault.getResourcePath(linkedFileOriginal);
+        if (isExcalidrawFile) {
+          // Build cache key including frame reference if present
+          const cacheKey = frameId ? `${linkedFile.path}#^frame=${frameId}` : linkedFile.path;
+          this.logExcalidraw(`Resolving Excalidraw drawing: ${cacheKey}`);
+
+          // Check if SVG is already cached or conversion is in progress
+          const isCached = this.excalidrawRenderer?.getSvgCache().has(cacheKey);
+          const isConverting = this.excalidrawConversionsInProgress.has(cacheKey);
+
+          if (!isCached && !isConverting && this.excalidrawRenderer) {
+            this.logExcalidraw(`Starting async conversion for: ${cacheKey}`);
+            this.excalidrawConversionsInProgress.add(cacheKey);
+
+            // Start async conversion immediately (non-blocking)
+            // Once complete, trigger a re-render so the cached SVG is displayed
+            void (async () => {
+              try {
+                await this.excalidrawRenderer!.toSvgDataUrl(linkedFile, frameId ?? undefined);
+                this.logExcalidraw(`✅ Converted to SVG: ${cacheKey}`);
+                // Trigger re-render to display the now-cached SVG
+                void this.rerenderPresentationWindow();
+              } catch (e) {
+                this.errorExcalidraw(`Failed to convert Excalidraw to SVG: ${cacheKey}`, e);
+              } finally {
+                // Remove from in-progress set
+                this.excalidrawConversionsInProgress.delete(cacheKey);
+              }
+            })();
+          } else if (isCached) {
+            this.logExcalidraw(`SVG already cached for: ${cacheKey}`);
+          } else if (isConverting) {
+            this.logExcalidraw(`Conversion already in progress for: ${cacheKey}`);
+          }
+
+          // For frame references, skip PNG/SVG export lookup and use native rendering
+          if (frameId) {
+            this.logExcalidraw(`Frame reference detected, using native rendering: ${cacheKey}`);
+            return `excalidraw://${cacheKey}`;
+          }
+
+          // Fallback: For Excalidraw .md files, look for PNG/SVG exports
+          const basePath = linkedFile.path.replace(/\.md$/, '');
+
+          // Try .png first (export without extension suffix)
+          let pngPath = basePath + '.png';
+          let exportFile = this.app.vault.getAbstractFileByPath(pngPath);
+          if (exportFile instanceof TFile) {
+            const resourcePath = this.app.vault.getResourcePath(exportFile);
+            this.logExcalidraw(`✅ Found PNG export: ${pngPath}`);
+            return resourcePath;
+          }
+
+          // Try .svg
+          let svgPath = basePath + '.svg';
+          exportFile = this.app.vault.getAbstractFileByPath(svgPath);
+          if (exportFile instanceof TFile) {
+            const resourcePath = this.app.vault.getResourcePath(exportFile);
+            this.logExcalidraw(`✅ Found SVG export: ${svgPath}`);
+            return resourcePath;
+          }
+
+          // For .excalidraw files, also try with .excalidraw suffix
+          if (linkedFile.extension === 'excalidraw') {
+            pngPath = linkedFile.path + '.png';
+            exportFile = this.app.vault.getAbstractFileByPath(pngPath);
+            if (exportFile instanceof TFile) {
+              const resourcePath = this.app.vault.getResourcePath(exportFile);
+              this.logExcalidraw(`✅ Found PNG export: ${pngPath}`);
+              return resourcePath;
+            }
+
+            svgPath = linkedFile.path + '.svg';
+            exportFile = this.app.vault.getAbstractFileByPath(svgPath);
+            if (exportFile instanceof TFile) {
+              const resourcePath = this.app.vault.getResourcePath(exportFile);
+              this.logExcalidraw(`✅ Found SVG export: ${svgPath}`);
+              return resourcePath;
+            }
+          }
+
+          // No export found - use Excalidraw renderer fallback
+          this.logExcalidraw(
+            `ℹ️ No Excalidraw export found for: ${linkedFile.path}\n` +
+            `Returning placeholder for async conversion.`
+          );
+
+          // Return placeholder URL
+          return `excalidraw://${linkedFile.path}`;
+        }
+
+        // For non-Excalidraw files, get the resource path directly
+        return this.app.vault.getResourcePath(linkedFile);
+      } else {
+        console.warn(`[Perspecta] Could not resolve wiki-link: ${path}`);
       }
     } catch (e) {
-      console.warn('Failed to resolve image path:', path, e);
+      console.warn('[Perspecta] Failed to resolve image path:', path, e);
     }
 
     // Fallback - return original path
@@ -107,7 +240,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
    * Returns file:// URLs instead of app:// URLs since the presentation window
    * doesn't have access to Obsidian's custom protocol handler
    */
-  presentationImagePathResolver: ImagePathResolver = (path: string, isWikiLink: boolean): string => {
+  presentationImagePathResolver: ImagePathResolver = (
+    path: string,
+    _isWikiLink: boolean
+  ): string => {
     // Handle URLs - pass through as-is
     if (path.startsWith('http://') || path.startsWith('https://')) {
       return path;
@@ -120,8 +256,14 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     // For wiki-links and plain filenames, resolve to file:// URL
     try {
+      // Extract frame reference if present (e.g., "#^frame=KhGXN0BZ")
+      const { filePath: pathWithoutFrame, frameId } = this.extractFrameReference(path);
+      
+      // Strip other block references from path (e.g., "path#^blockid" -> "path")
+      const pathWithoutBlock = pathWithoutFrame.split('#')[0];
+      
       // Decode any URL-encoded characters in the path (e.g., %20 for space)
-      const decodedPath = decodeURIComponent(path);
+      const decodedPath = decodeURIComponent(pathWithoutBlock);
 
       // Get the current file for context
       const activeFile = this.app.workspace.getActiveFile();
@@ -130,21 +272,144 @@ export default class PerspectaSlidesPlugin extends Plugin {
       // Resolve the link to a file (try decoded first, then original)
       let linkedFile = this.app.metadataCache.getFirstLinkpathDest(decodedPath, sourcePath);
       if (!linkedFile) {
-        linkedFile = this.app.metadataCache.getFirstLinkpathDest(path, sourcePath);
+        linkedFile = this.app.metadataCache.getFirstLinkpathDest(pathWithoutBlock, sourcePath);
       }
 
       if (linkedFile) {
-        // Get the vault's base path
-        const adapter = this.app.vault.adapter;
-        if (adapter instanceof FileSystemAdapter) {
-          const basePath = adapter.getBasePath();
-          const fullPath = `${basePath}/${linkedFile.path}`;
-          // Return as file:// URL with proper encoding
-          return `file://${encodeURI(fullPath).replace(/#/g, '%23')}`;
+        // Check if this is an Excalidraw file (either .excalidraw or .md in Excalidraw folder)
+        const isExcalidrawFile = 
+          linkedFile.extension === 'excalidraw' || 
+          (linkedFile.extension === 'md' && 
+            (linkedFile.path.includes('Excalidraw/') || linkedFile.name.includes('.excalidraw')));
+
+        if (isExcalidrawFile) {
+          // Build cache key including frame reference if present
+          const cacheKey = frameId ? `${linkedFile.path}#^frame=${frameId}` : linkedFile.path;
+
+          // For frame references, skip PNG/SVG export lookup and use native rendering
+          if (frameId) {
+            this.logExcalidraw(`Frame reference detected, using native rendering: ${cacheKey}`);
+            
+            // Check if SVG is already cached or conversion is in progress
+            const isCached = this.excalidrawRenderer?.getSvgCache().has(cacheKey);
+            const isConverting = this.excalidrawConversionsInProgress.has(cacheKey);
+
+            if (!isCached && !isConverting && this.excalidrawRenderer) {
+              this.logExcalidraw(`Starting async conversion for: ${cacheKey}`);
+              this.excalidrawConversionsInProgress.add(cacheKey);
+
+              void (async () => {
+                try {
+                  await this.excalidrawRenderer!.toSvgDataUrl(linkedFile as TFile, frameId);
+                  this.logExcalidraw(`✅ Converted to SVG: ${cacheKey}`);
+                  void this.rerenderPresentationWindow();
+                } catch (e) {
+                  this.errorExcalidraw(`Failed to convert Excalidraw to SVG: ${cacheKey}`, e);
+                } finally {
+                  this.excalidrawConversionsInProgress.delete(cacheKey);
+                }
+              })();
+            }
+
+            return `excalidraw://${cacheKey}`;
+          }
+
+          // For Excalidraw .md files without frame reference, look for PNG/SVG exports
+          const basePath = linkedFile.path.replace(/\.md$/, '');
+          let exportFile: TFile | null = null;
+
+          // Try .png first
+          let pngPath = basePath + '.png';
+          let file = this.app.vault.getAbstractFileByPath(pngPath);
+          if (file instanceof TFile) {
+            exportFile = file;
+          }
+
+          // Try .svg
+          if (!exportFile) {
+            const svgPath = basePath + '.svg';
+            file = this.app.vault.getAbstractFileByPath(svgPath);
+            if (file instanceof TFile) {
+              exportFile = file;
+            }
+          }
+
+          // For .excalidraw files, also try with suffix
+          if (!exportFile && linkedFile.extension === 'excalidraw') {
+            pngPath = linkedFile.path + '.png';
+            file = this.app.vault.getAbstractFileByPath(pngPath);
+            if (file instanceof TFile) {
+              exportFile = file;
+            }
+
+            if (!exportFile) {
+              const svgPath = linkedFile.path + '.svg';
+              file = this.app.vault.getAbstractFileByPath(svgPath);
+              if (file instanceof TFile) {
+                exportFile = file;
+              }
+            }
+          }
+
+          // If export found, use it
+           if (exportFile) {
+             const adapter = this.app.vault.adapter;
+             if (adapter instanceof FileSystemAdapter) {
+               const basePath = adapter.getBasePath();
+               const fullPath = `${basePath}/${exportFile.path}`;
+               return `file://${encodeURI(fullPath).replace(/#/g, '%23')}`;
+             }
+           }
+
+           // No export found - use native Excalidraw rendering via async conversion
+           this.logExcalidraw(
+             `ℹ️ No Excalidraw export found for: ${linkedFile.path}\n` +
+             `Returning placeholder for async conversion.`
+           );
+
+           // Check if SVG is already cached or conversion is in progress
+           const isCached = this.excalidrawRenderer?.getSvgCache().has(cacheKey);
+           const isConverting = this.excalidrawConversionsInProgress.has(cacheKey);
+
+           if (!isCached && !isConverting && this.excalidrawRenderer) {
+             this.logExcalidraw(`Starting async conversion for: ${cacheKey}`);
+             this.excalidrawConversionsInProgress.add(cacheKey);
+
+             // Start async conversion immediately (non-blocking)
+             void (async () => {
+               try {
+                 await this.excalidrawRenderer!.toSvgDataUrl(linkedFile, frameId ?? undefined);
+                 this.logExcalidraw(`✅ Converted to SVG: ${cacheKey}`);
+                 // Trigger re-render to display the now-cached SVG
+                 void this.rerenderPresentationWindow();
+               } catch (e) {
+                 this.errorExcalidraw(`Failed to convert Excalidraw to SVG: ${cacheKey}`, e);
+               } finally {
+                 // Remove from in-progress set
+                 this.excalidrawConversionsInProgress.delete(cacheKey);
+               }
+             })();
+             } else if (isCached) {
+             this.logExcalidraw(`SVG already cached for: ${cacheKey}`);
+             } else if (isConverting) {
+             this.logExcalidraw(`Conversion already in progress for: ${cacheKey}`);
+             }
+
+             // Return placeholder URL
+             return `excalidraw://${cacheKey}`;
+        } else {
+          // For non-Excalidraw files
+          const adapter = this.app.vault.adapter;
+          if (adapter instanceof FileSystemAdapter) {
+            const basePath = adapter.getBasePath();
+            const fullPath = `${basePath}/${linkedFile.path}`;
+            // Return as file:// URL with proper encoding
+            return `file://${encodeURI(fullPath).replace(/#/g, '%23')}`;
+          }
         }
       }
     } catch (e) {
-      console.warn('Failed to resolve image path for presentation:', path, e);
+      console.warn('[Perspecta] Failed to resolve image path for presentation:', path, e);
     }
 
     // Fallback - return original path
@@ -177,6 +442,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       this.fontManager,
       this.presentationImagePathResolver
     );
+
+    // Initialize Excalidraw renderer for native SVG conversion
+    this.excalidrawRenderer = new ExcalidrawRenderer(this.app.vault);
 
     // Initialize theme loader with built-in themes first
     this.themeLoader = new ThemeLoader(this.app, this.settings.customThemesFolder);
@@ -248,11 +516,11 @@ export default class PerspectaSlidesPlugin extends Plugin {
         // Refresh the active presentation if there is one
         const activeFile = this.app.workspace.getActiveFile();
         if (activeFile && activeFile.extension === 'md') {
-          this.updateSidebars(activeFile);
+          void this.updateSidebars(activeFile);
         }
         // Also update the presentation window if it's open
         if (this.presentationWindow?.isOpen() && this.currentPresentationFile) {
-          this.refreshPresentationWindow();
+          void this.refreshPresentationWindow();
         }
       };
       colorSchemeQuery.addEventListener('change', handleColorSchemeChange);
@@ -261,20 +529,11 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     addIcon('presentation', SLIDES_ICON);
 
-    this.registerView(
-      THUMBNAIL_VIEW_TYPE,
-      (leaf) => new ThumbnailNavigatorView(leaf)
-    );
+    this.registerView(THUMBNAIL_VIEW_TYPE, (leaf) => new ThumbnailNavigatorView(leaf));
 
-    this.registerView(
-      INSPECTOR_VIEW_TYPE,
-      (leaf) => new InspectorPanelView(leaf)
-    );
+    this.registerView(INSPECTOR_VIEW_TYPE, (leaf) => new InspectorPanelView(leaf));
 
-    this.registerView(
-      PRESENTATION_VIEW_TYPE,
-      (leaf) => new PresentationView(leaf)
-    );
+    this.registerView(PRESENTATION_VIEW_TYPE, (leaf) => new PresentationView(leaf));
 
     this.addCommand({
       id: 'open-presentation-view',
@@ -283,28 +542,28 @@ export default class PerspectaSlidesPlugin extends Plugin {
         const file = this.app.workspace.getActiveFile();
         if (file && file.extension === 'md') {
           if (!checking) {
-            this.openPresentationView(file);
+            void this.openPresentationView(file);
           }
           return true;
         }
         return false;
-      }
+      },
     });
 
     this.addCommand({
       id: 'toggle-thumbnail-navigator',
       name: 'Toggle slide navigator',
       callback: () => {
-        this.toggleThumbnailNavigator();
-      }
+        void this.toggleThumbnailNavigator();
+      },
     });
 
     this.addCommand({
       id: 'toggle-inspector',
       name: 'Toggle slide inspector',
       callback: () => {
-        this.toggleInspector();
-      }
+        void this.toggleInspector();
+      },
     });
 
     this.addCommand({
@@ -314,12 +573,27 @@ export default class PerspectaSlidesPlugin extends Plugin {
         const file = this.app.workspace.getActiveFile();
         if (file && file.extension === 'md') {
           if (!checking) {
-            this.startPresentation(file);
+            void this.startPresentation(file);
           }
           return true;
         }
         return false;
-      }
+      },
+    });
+
+    this.addCommand({
+      id: 'convert-to-presentation',
+      name: 'Convert to presentation',
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        if (file && file.extension === 'md') {
+          if (!checking) {
+            void this.convertToPresentation(file);
+          }
+          return true;
+        }
+        return false;
+      },
     });
 
     this.addCommand({
@@ -329,7 +603,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
         const cursor = editor.getCursor();
         editor.replaceRange('\n---\n\n', cursor);
         editor.setCursor({ line: cursor.line + 3, ch: 0 });
-      }
+      },
     });
 
     this.addCommand({
@@ -339,12 +613,12 @@ export default class PerspectaSlidesPlugin extends Plugin {
         const file = this.app.workspace.getActiveFile();
         if (file && file.extension === 'md') {
           if (!checking) {
-            this.saveAsCustomTheme(file);
+            void this.saveAsCustomTheme(file);
           }
           return true;
         }
         return false;
-      }
+      },
     });
 
     this.addCommand({
@@ -354,12 +628,12 @@ export default class PerspectaSlidesPlugin extends Plugin {
         const file = this.app.workspace.getActiveFile();
         if (file && file.extension === 'md') {
           if (!checking) {
-            this.openPresenterView(file);
+            void this.openPresenterView(file);
           }
           return true;
         }
         return false;
-      }
+      },
     });
 
     this.addCommand({
@@ -369,12 +643,12 @@ export default class PerspectaSlidesPlugin extends Plugin {
         const file = this.app.workspace.getActiveFile();
         if (file && file.extension === 'md') {
           if (!checking) {
-            this.openPresenterViewWithPresentation(file, true);
+            void this.openPresenterViewWithPresentation(file, true);
           }
           return true;
         }
         return false;
-      }
+      },
     });
 
     this.addCommand({
@@ -384,19 +658,19 @@ export default class PerspectaSlidesPlugin extends Plugin {
         const file = this.app.workspace.getActiveFile();
         if (file && file.extension === 'md') {
           if (!checking) {
-            this.exportPresentation(file);
+            void this.exportPresentation(file);
           }
           return true;
         }
         return false;
-      }
+      },
     });
 
     this.addRibbonIcon('presentation', 'Open presentation view', () => {
       console.log('[Presentation Button] Clicked');
       const file = this.app.workspace.getActiveFile();
       if (file && file.extension === 'md') {
-        this.openPresentationView(file);
+        void this.openPresentationView(file);
       } else {
         new Notice('Please open a markdown file first');
       }
@@ -406,7 +680,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       const file = this.app.workspace.getActiveFile();
       if (file && file.extension === 'md') {
         new Notice('Opening presenter view...');
-        this.openPresenterView(file);
+        void this.openPresenterView(file);
       } else {
         new Notice('Please open a markdown file first');
       }
@@ -421,7 +695,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on('file-open', (file) => {
         if (file && file.extension === 'md') {
-          this.updateSidebars(file);
+          void this.updateSidebars(file);
         }
       })
     );
@@ -501,16 +775,22 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
 
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!activeView) return;
+    if (!activeView) {
+      return;
+    }
 
     const editor = activeView.editor;
     const file = activeView.file;
-    if (!file || file.extension !== 'md') return;
+    if (!file || file.extension !== 'md') {
+      return;
+    }
 
     // Use interval-based polling for cursor position (works with CM6)
     const pollInterval = setInterval(() => {
       const currentView = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (!currentView || currentView.file?.path !== file.path) return;
+      if (!currentView || currentView.file?.path !== file.path) {
+        return;
+      }
 
       const cursor = currentView.editor.getCursor();
       const currentLine = cursor.line;
@@ -519,7 +799,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       if (currentLine !== this.lastTrackedLine || file.path !== this.lastTrackedFile) {
         this.lastTrackedLine = currentLine;
         this.lastTrackedFile = file.path;
-        this.handleCursorPositionChange(file, currentLine);
+        void this.handleCursorPositionChange(file, currentLine);
       }
     }, 150);
 
@@ -538,7 +818,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
         if (cursor.line !== this.lastTrackedLine || file.path !== this.lastTrackedFile) {
           this.lastTrackedLine = cursor.line;
           this.lastTrackedFile = file.path;
-          this.handleCursorPositionChange(file, cursor.line);
+          void this.handleCursorPositionChange(file, cursor.line);
         }
       };
       cm.on('cursorActivity', handleCursorChange);
@@ -592,17 +872,19 @@ export default class PerspectaSlidesPlugin extends Plugin {
     });
 
     const view = leaf.view;
-    if (!(view instanceof PresentationView)) return;
-    
+    if (!(view instanceof PresentationView)) {
+      return;
+    }
+
     // Ensure parser uses the correct content mode from settings
     view.setDefaultContentMode(this.settings.defaultContentMode);
-    
+
     await view.loadFile(file);
 
     // Track this as the last used slide document for initialization context
     this.lastUsedSlideDocument = file;
 
-    this.app.workspace.revealLeaf(leaf);
+    await this.app.workspace.revealLeaf(leaf);
 
     if (this.settings.showThumbnailNavigator) {
       await this.ensureThumbnailNavigator();
@@ -652,12 +934,12 @@ export default class PerspectaSlidesPlugin extends Plugin {
       // Set up callback to save window bounds
       this.presenterWindow.setOnWindowBoundsChanged((bounds: any) => {
         this.settings.presenterWindowBounds = bounds;
-        this.saveSettings();
+        void this.saveSettings();
       });
 
       // Set up callback to open presentation window when timer is started
       this.presenterWindow.setOnOpenPresentationWindow(() => {
-        this.startPresentation(file);
+        void this.startPresentation(file);
       });
 
       await this.presenterWindow.open(presentation, theme || null, file, 0, fullscreenOnSecondary);
@@ -666,7 +948,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       this.lastUsedSlideDocument = file;
     } catch (error) {
       console.error('[PresenterWindow] Failed to open:', error);
-      new Notice(`Failed to open presenter view: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      new Notice(
+        `Failed to open presenter view: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -693,6 +977,12 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
       this.presentationWindow.setCustomFontCSS(customFontCSS);
       this.presentationWindow.setFontWeightsCache(fontWeightsCache);
+      
+      // Pass Excalidraw SVG cache and failed decompression files to presentation window
+      if (this.excalidrawRenderer) {
+        this.presentationWindow.setExcalidrawSvgCache(this.excalidrawRenderer.getSvgCache());
+        this.presentationWindow.setFailedDecompressionFiles(this.excalidrawRenderer.getFailedDecompressionFiles());
+      }
 
       // Sync presentation window slide changes back to presenter window
       this.presentationWindow.setOnSlideChanged((slideIndex: number) => {
@@ -721,7 +1011,75 @@ export default class PerspectaSlidesPlugin extends Plugin {
       await this.exportService.export(presentation, theme || null, file, customFontCSS);
     } catch (error) {
       console.error('Export failed:', error);
-      new Notice(`Failed to export presentation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      new Notice(
+        `Failed to export presentation: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  private async convertToPresentation(file: TFile) {
+    try {
+      const content = await this.app.vault.read(file);
+      let newContent = content;
+      let hadFrontmatter = false;
+      let hadSlides = false;
+
+      // Check if file already has frontmatter
+      if (content.startsWith('---')) {
+        hadFrontmatter = true;
+        // Check if there are slide separators
+        const slideSeparators = content.match(/\n---\n/g);
+        hadSlides = slideSeparators !== null && slideSeparators.length > 0;
+      }
+
+      // If no frontmatter, add minimal frontmatter
+      if (!hadFrontmatter) {
+        newContent = '---\ntheme: default\n---\n\n' + content;
+      }
+
+      // If no slides found, add at least one slide separator and a blank slide
+      if (!hadSlides) {
+        // Ensure content ends with newlines, add slide separator
+        if (!newContent.endsWith('\n\n')) {
+          newContent = newContent.trimEnd() + '\n\n';
+        }
+        newContent += '---\n\n# Slide 1\n\nAdd your content here...';
+      }
+
+      // Write the modified content
+      if (newContent !== content) {
+        await this.app.vault.modify(file, newContent);
+        new Notice(
+          hadFrontmatter && hadSlides
+            ? 'File is ready for presentation'
+            : hadFrontmatter
+              ? 'Added slide structure'
+              : 'Added frontmatter and slide structure'
+        );
+      } else {
+        new Notice('File is ready for presentation');
+      }
+
+      // Open presentation view
+      await this.openPresentationView(file);
+
+      // Open navigator if setting allows
+      if (this.settings.showThumbnailNavigator) {
+        await this.ensureThumbnailNavigator();
+      }
+
+      // Open inspector if setting allows
+      if (this.settings.showInspector) {
+        await this.ensureInspector();
+      }
+
+      // Start presentation window
+      await this.startPresentation(file);
+    } catch (error) {
+      console.error('Convert to presentation failed:', error);
+      new Notice(
+        `Failed to convert to presentation: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -794,14 +1152,16 @@ export default class PerspectaSlidesPlugin extends Plugin {
       if (leaves.length > 0 && leaves[0].view) {
         return true;
       }
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
     }
     return false;
   }
 
   private async ensureThumbnailNavigator() {
     const existing = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
-    if (existing.length > 0) return;
+    if (existing.length > 0) {
+      return;
+    }
 
     const leaf = this.app.workspace.getLeftLeaf(false);
     if (leaf) {
@@ -814,7 +1174,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
   private async ensureInspector() {
     const existing = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
-    if (existing.length > 0) return;
+    if (existing.length > 0) {
+      return;
+    }
 
     const leaf = this.app.workspace.getRightLeaf(false);
     if (leaf) {
@@ -854,7 +1216,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
     this.updateTimeout = setTimeout(async () => {
       const content = await this.app.vault.read(file);
-      this.updateSidebarsIncrementalWithContent(file, content);
+      void this.updateSidebarsIncrementalWithContent(file, content);
     }, 50);
   }
 
@@ -868,7 +1230,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Use very short delay (30ms) for responsive updates from editor
     this.updateTimeout = setTimeout(() => {
       if (this.pendingContent) {
-        this.updateSidebarsIncrementalWithContent(file, this.pendingContent);
+        void this.updateSidebarsIncrementalWithContent(file, this.pendingContent);
         this.pendingContent = null;
       }
     }, 30);
@@ -882,10 +1244,13 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const presentation = this.parser.parse(content);
 
     // Determine current slide index
-    const currentSlideIndex = Math.max(0, Math.min(
-      this.lastCursorSlideIndex >= 0 ? this.lastCursorSlideIndex : 0,
-      presentation.slides.length - 1
-    ));
+    const currentSlideIndex = Math.max(
+      0,
+      Math.min(
+        this.lastCursorSlideIndex >= 0 ? this.lastCursorSlideIndex : 0,
+        presentation.slides.length - 1
+      )
+    );
 
     // Check if we have a valid cache for this file
     const hasCacheForThisFile = this.presentationCache && this.cachedFilePath === file.path;
@@ -901,7 +1266,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
         const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
         for (const leaf of inspectorLeaves) {
           const view = leaf.view;
-          if (!(view instanceof InspectorPanelView)) continue;
+          if (!(view instanceof InspectorPanelView)) {
+            continue;
+          }
           if (presentation.slides[currentSlideIndex]) {
             view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
           }
@@ -914,7 +1281,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
         this.presentationCache = buildPresentationCache(presentation);
         this.cachedFilePath = file.path;
         this.lastSlideCount = presentation.slides.length;
-        this.updateSidebars(file);
+        await this.updateSidebars(file);
         return;
       }
     }
@@ -924,10 +1291,15 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Handle based on diff type
     if (diff && diff.type === 'content-only') {
       // Content-only changes: update only modified slides
-      const success = await this.applyContentOnlyUpdate(diff, presentation, theme, currentSlideIndex);
+      const success = await this.applyContentOnlyUpdate(
+        diff,
+        presentation,
+        theme,
+        currentSlideIndex
+      );
       if (!success) {
         // Fallback to full re-render
-        this.updateSidebarsWithPresentation(file, presentation, theme, currentSlideIndex);
+        await this.updateSidebarsWithPresentation(file, presentation, theme, currentSlideIndex);
       }
     } else if (diff && diff.type === 'structural') {
       // Structural changes: handle adds/removes
@@ -935,7 +1307,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     } else {
       // No cache or first load: do full render with the parsed presentation
       this.lastSlideCount = presentation.slides.length;
-      this.updateSidebarsWithPresentation(file, presentation, theme, currentSlideIndex);
+      await this.updateSidebarsWithPresentation(file, presentation, theme, currentSlideIndex);
     }
 
     // Update cache for next comparison
@@ -953,13 +1325,15 @@ export default class PerspectaSlidesPlugin extends Plugin {
     theme: ReturnType<typeof getTheme>,
     currentSlideIndex: number
   ): Promise<boolean> {
-    const modifiedSlides = diff.modifiedIndices.map(i => presentation.slides[i]);
+    const modifiedSlides = diff.modifiedIndices.map((i) => presentation.slides[i]);
 
     // Update thumbnail navigator (only modified slides)
     const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
     for (const leaf of thumbnailLeaves) {
       const view = leaf.view;
-      if (!(view instanceof ThumbnailNavigatorView)) continue;
+      if (!(view instanceof ThumbnailNavigatorView)) {
+        continue;
+      }
       view.setImagePathResolver(this.imagePathResolver);
       if (theme) {
         view.setTheme(theme);
@@ -975,7 +1349,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
     for (const leaf of presentationLeaves) {
       const view = leaf.view;
-      if (!(view instanceof PresentationView)) continue;
+      if (!(view instanceof PresentationView)) {
+        continue;
+      }
       view.setImagePathResolver(this.imagePathResolver);
       view.setPresentationImagePathResolver(this.presentationImagePathResolver);
       // Update all modified slides in the view's internal state
@@ -991,7 +1367,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
     for (const leaf of inspectorLeaves) {
       const view = leaf.view;
-      if (!(view instanceof InspectorPanelView)) continue;
+      if (!(view instanceof InspectorPanelView)) {
+        continue;
+      }
       if (presentation.slides[currentSlideIndex]) {
         view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
       }
@@ -1015,13 +1393,15 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // For now, if there are too many changes or complex reordering, do full re-render
     // This is a reasonable tradeoff for simplicity
     if (diff.addedIndices.length > 3 || diff.removedIndices.length > 3) {
-      this.updateSidebars(file);
+      await this.updateSidebars(file);
       return;
     }
 
     for (const leaf of thumbnailLeaves) {
       const view = leaf.view;
-      if (!(view instanceof ThumbnailNavigatorView)) continue;
+      if (!(view instanceof ThumbnailNavigatorView)) {
+        continue;
+      }
       view.setImagePathResolver(this.imagePathResolver);
 
       // Update internal presentation reference WITHOUT triggering a full re-render
@@ -1049,7 +1429,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
     for (const leaf of presentationLeaves) {
       const view = leaf.view;
-      if (!(view instanceof PresentationView)) continue;
+      if (!(view instanceof PresentationView)) {
+        continue;
+      }
       view.setImagePathResolver(this.imagePathResolver);
       view.setPresentationImagePathResolver(this.presentationImagePathResolver);
       // Ensure parser uses correct content mode for live updates
@@ -1062,7 +1444,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
     for (const leaf of inspectorLeaves) {
       const view = leaf.view;
-      if (!(view instanceof InspectorPanelView)) continue;
+      if (!(view instanceof InspectorPanelView)) {
+        continue;
+      }
       view.setPresentation(presentation, file);
       if (presentation.slides[currentSlideIndex]) {
         view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
@@ -1086,13 +1470,16 @@ export default class PerspectaSlidesPlugin extends Plugin {
       currentSlideIndex = 0;
     } else {
       // Use cursor position or default to first slide
-      currentSlideIndex = Math.max(0, Math.min(
-        this.lastCursorSlideIndex >= 0 ? this.lastCursorSlideIndex : 0,
-        presentation.slides.length - 1
-      ));
+      currentSlideIndex = Math.max(
+        0,
+        Math.min(
+          this.lastCursorSlideIndex >= 0 ? this.lastCursorSlideIndex : 0,
+          presentation.slides.length - 1
+        )
+      );
     }
 
-    this.updateSidebarsWithPresentation(file, presentation, theme, currentSlideIndex);
+    await this.updateSidebarsWithPresentation(file, presentation, theme, currentSlideIndex);
   }
 
   private async updateSidebars(file: TFile) {
@@ -1122,34 +1509,43 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     for (const leaf of thumbnailLeaves) {
       const view = leaf.view;
-      if (!(view instanceof ThumbnailNavigatorView)) continue;
+      if (!(view instanceof ThumbnailNavigatorView)) {
+        continue;
+      }
       view.setImagePathResolver(this.imagePathResolver);
       view.setCustomFontCSS(customFontCSS);
       view.setFontWeightsCache(fontWeightsCache);
+      // Pass Excalidraw SVG cache and failed decompression files for native rendering
+      if (this.excalidrawRenderer) {
+        view.setExcalidrawSvgCache(this.excalidrawRenderer.getSvgCache());
+        view.setFailedDecompressionFiles(this.excalidrawRenderer.getFailedDecompressionFiles());
+      }
       view.setPresentation(presentation, file, theme);
       view.setOnSlideSelect((index) => {
-        this.navigateToSlide(index, presentation, file);
+        void this.navigateToSlide(index, presentation, file);
       });
       view.setOnSlideReorder((fromIndex, toIndex) => {
-        this.reorderSlides(file, fromIndex, toIndex);
+        void this.reorderSlides(file, fromIndex, toIndex);
       });
-       view.setOnStartPresentation((index) => {
-         this.startPresentationAtSlide(file, index);
-       });
-       view.setOnAddSlide(() => {
-          this.addSlideAtEnd(file);
-        });
-       view.setOnSlideHiddenChanged((index, hidden) => {
-          this.updateSlideHiddenState(file, index, hidden);
-        });
-       // Preserve selection
-       view.selectSlide(currentSlideIndex);
+      view.setOnStartPresentation((index) => {
+        void this.startPresentationAtSlide(file, index);
+      });
+      view.setOnAddSlide(() => {
+        void this.addSlideAtEnd(file);
+      });
+      view.setOnSlideHiddenChanged((index, hidden) => {
+        void this.updateSlideHiddenState(file, index, hidden);
+      });
+      // Preserve selection
+      view.selectSlide(currentSlideIndex);
     }
 
     const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
     for (const leaf of inspectorLeaves) {
       const view = leaf.view;
-      if (!(view instanceof InspectorPanelView)) continue;
+      if (!(view instanceof InspectorPanelView)) {
+        continue;
+      }
 
       if (this.fontManager) {
         view.setFontManager(this.fontManager);
@@ -1162,25 +1558,32 @@ export default class PerspectaSlidesPlugin extends Plugin {
         view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
       }
       view.setOnSlideMetadataChange((slideIndex, metadata) => {
-        this.updateSlideMetadata(file, slideIndex, metadata);
+        void this.updateSlideMetadata(file, slideIndex, metadata);
       });
       view.setOnPresentationChange((frontmatter, persistent) => {
         if (persistent) {
-          this.updatePresentationFrontmatter(file, frontmatter);
+          void this.updatePresentationFrontmatter(file, frontmatter);
         } else {
-          this.updatePreviewsLive(file, frontmatter);
+          void this.updatePreviewsLive(file, frontmatter);
         }
       });
-      }
+    }
 
     const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
     for (const leaf of presentationLeaves) {
       const view = leaf.view;
-      if (!(view instanceof PresentationView)) continue;
+      if (!(view instanceof PresentationView)) {
+        continue;
+      }
       view.setImagePathResolver(this.imagePathResolver);
       view.setPresentationImagePathResolver(this.presentationImagePathResolver);
       view.setCustomFontCSS(customFontCSS);
       view.setFontWeightsCache(fontWeightsCache);
+      // Pass Excalidraw SVG cache and failed decompression files for native rendering
+      if (this.excalidrawRenderer) {
+        view.setExcalidrawSvgCache(this.excalidrawRenderer.getSvgCache());
+        view.setFailedDecompressionFiles(this.excalidrawRenderer.getFailedDecompressionFiles());
+      }
       if (this.themeLoader) {
         view.setThemeLoader(this.themeLoader);
       }
@@ -1189,11 +1592,11 @@ export default class PerspectaSlidesPlugin extends Plugin {
       view.setPresentation(presentation, theme, file);
       // Wire up slide change callback for navigation controls (prev/next buttons)
       view.setOnSlideChange((index) => {
-        this.navigateToSlide(index, presentation, file, true);
+        void this.navigateToSlide(index, presentation, file, true);
       });
       // Wire up reload callback for full refresh
       view.setOnReload(() => {
-        this.updateSidebars(file);
+        void this.updateSidebars(file);
       });
       // Wire up font CSS callback for presentation window
       // Accepts frontmatter parameter so it uses fresh data from startPresentation
@@ -1202,7 +1605,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       });
       // Wire up start presentation callback to use the same code path as double-click
       view.setOnStartPresentation((f, slideIndex) => {
-        this.startPresentationAtSlide(f, slideIndex);
+        void this.startPresentationAtSlide(f, slideIndex);
       });
       // Wire up presenter view callback
       view.setOnStartPresenterView(async (f) => {
@@ -1217,7 +1620,12 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
   }
 
-  private async navigateToSlide(index: number, presentation: Presentation, file?: TFile, fromPresentationView: boolean = false) {
+  private async navigateToSlide(
+    index: number,
+    presentation: Presentation,
+    file?: TFile,
+    fromPresentationView: boolean = false
+  ) {
     // Only update presentation view if not triggered from it (to avoid loop)
     if (!fromPresentationView) {
       const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
@@ -1254,7 +1662,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       this.app.workspace.iterateAllLeaves((leaf) => {
         if (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path) {
           markdownLeaf = leaf;
-          markdownView = leaf.view as MarkdownView;
+          markdownView = leaf.view;
         }
       });
     }
@@ -1295,7 +1703,13 @@ export default class PerspectaSlidesPlugin extends Plugin {
       editor.setCursor({ line: lineNumber, ch: cursorColumn });
 
       // Scroll the line into view
-      editor.scrollIntoView({ from: { line: lineNumber, ch: cursorColumn }, to: { line: lineNumber, ch: cursorColumn } }, true);
+      editor.scrollIntoView(
+        {
+          from: { line: lineNumber, ch: cursorColumn },
+          to: { line: lineNumber, ch: cursorColumn },
+        },
+        true
+      );
 
       // Focus the editor so typing goes directly into it
       editor.focus();
@@ -1309,7 +1723,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const slideIndex = this.getSlideIndexAtLine(content, lineNumber);
 
     // Only update if slide changed
-    if (slideIndex === this.lastCursorSlideIndex) return;
+    if (slideIndex === this.lastCursorSlideIndex) {
+      return;
+    }
     this.lastCursorSlideIndex = slideIndex;
 
     const presentation = this.parser.parse(content);
@@ -1319,7 +1735,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
       for (const leaf of thumbnailLeaves) {
         const view = leaf.view;
-        if (!(view instanceof ThumbnailNavigatorView)) continue;
+        if (!(view instanceof ThumbnailNavigatorView)) {
+          continue;
+        }
         view.selectSlide(slideIndex);
       }
 
@@ -1327,7 +1745,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
       for (const leaf of inspectorLeaves) {
         const view = leaf.view;
-        if (!(view instanceof InspectorPanelView)) continue;
+        if (!(view instanceof InspectorPanelView)) {
+          continue;
+        }
         view.setCurrentSlide(presentation.slides[slideIndex], slideIndex);
       }
 
@@ -1335,7 +1755,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
       for (const leaf of presentationLeaves) {
         const view = leaf.view;
-        if (!(view instanceof PresentationView)) continue;
+        if (!(view instanceof PresentationView)) {
+          continue;
+        }
         view.goToSlide(slideIndex, false);
       }
     }
@@ -1393,7 +1815,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
   private isSlideMetadataLine(line: string): boolean {
     const trimmed = line.trim();
-    if (trimmed === '') return false;
+    if (trimmed === '') {
+      return false;
+    }
     // Match patterns like "layout: title", "mode: dark", "background: image.jpg", "opacity: 50%", "class: custom"
     return /^(layout|mode|background|opacity|class):\s*.+$/i.test(trimmed);
   }
@@ -1458,7 +1882,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
     try {
       const content = await this.app.vault.read(file);
       const presentation = this.parser.parse(content);
-      const theme = this.getThemeByName(presentation.frontmatter.theme || this.settings.defaultTheme);
+      const theme = this.getThemeByName(
+        presentation.frontmatter.theme || this.settings.defaultTheme
+      );
 
       // Close existing presentation window if open
       if (this.presentationWindow && this.presentationWindow.isOpen()) {
@@ -1482,6 +1908,12 @@ export default class PerspectaSlidesPlugin extends Plugin {
       this.presentationWindow.setImagePathResolver(this.presentationImagePathResolver);
       this.presentationWindow.setCustomFontCSS(customFontCSS);
       this.presentationWindow.setFontWeightsCache(fontWeightsCache);
+
+      // Pass Excalidraw SVG cache and failed decompression files to presentation window
+      if (this.excalidrawRenderer) {
+        this.presentationWindow.setExcalidrawSvgCache(this.excalidrawRenderer.getSvgCache());
+        this.presentationWindow.setFailedDecompressionFiles(this.excalidrawRenderer.getFailedDecompressionFiles());
+      }
 
       // Sync presentation window slide changes back to presenter window
       this.presentationWindow.setOnSlideChanged((slideIndex: number) => {
@@ -1508,7 +1940,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
     this.presentationUpdateTimeout = setTimeout(async () => {
       const content = await this.app.vault.read(file);
-      this.updatePresentationWindowWithContent(file, content);
+      void this.updatePresentationWindowWithContent(file, content);
     }, 250);
   }
 
@@ -1519,7 +1951,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
     this.presentationUpdateTimeout = setTimeout(() => {
       if (this.pendingPresentationContent) {
-        this.updatePresentationWindowWithContent(file, this.pendingPresentationContent);
+        void this.updatePresentationWindowWithContent(file, this.pendingPresentationContent);
         this.pendingPresentationContent = null;
       }
     }, 250);
@@ -1543,7 +1975,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
     this.presentationWindow.setCustomFontCSS(customFontCSS);
 
-    this.presentationWindow.updateContent(presentation, theme || null);
+    await this.presentationWindow.updateContent(presentation, theme || null);
   }
 
   /**
@@ -1560,22 +1992,102 @@ export default class PerspectaSlidesPlugin extends Plugin {
     await this.updatePresentationWindowWithContent(this.currentPresentationFile, content);
   }
 
+  /**
+    * Re-render the presentation window and editor view (used when async conversions complete)
+    * Re-parses and re-renders current slides with updated cache
+    */
+  private async rerenderPresentationWindow() {
+    this.logExcalidraw(`rerenderPresentationWindow() called`);
+    
+    // Debounce re-renders to avoid flickering from multiple conversions
+    if (this.rerenderDebounceTimer) {
+      this.logExcalidraw(`⏱️ Re-render already pending, skipping duplicate`);
+      return;
+    }
+    
+    // Determine which file to re-render - prefer currentPresentationFile (fullscreen),
+    // then fall back to lastUsedSlideDocument (editor view)
+    const targetFile = this.currentPresentationFile || this.lastUsedSlideDocument;
+    if (!targetFile) {
+      this.logExcalidraw(`❌ No presentation file currently in use`);
+      return;
+    }
+
+    // Schedule re-render with a small delay to batch multiple conversions
+    this.rerenderDebounceTimer = setTimeout(async () => {
+      this.rerenderDebounceTimer = null;
+
+      try {
+        // Try to re-render fullscreen presentation window if open
+        if (this.presentationWindow?.isOpen() && this.currentPresentationFile) {
+          this.logExcalidraw(`✅ Triggering fullscreen presentation window re-render`);
+          const content = await this.app.vault.read(this.currentPresentationFile);
+          await this.updatePresentationWindowWithContent(this.currentPresentationFile, content);
+        }
+
+        // Re-render the editor view if open for this file
+        const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
+        for (const leaf of presentationLeaves) {
+          const view = leaf.view;
+          if (!(view instanceof PresentationView)) {
+            continue;
+          }
+          // Check if this view is showing the target file (access private file property)
+          const viewFile = (view as any).file as TFile | null;
+          if (viewFile?.path === targetFile.path) {
+            this.logExcalidraw(`✅ Triggering editor view re-render for: ${targetFile.path}`);
+            // Force re-render by calling private render() method
+            (view as any).render();
+          }
+        }
+
+        // Re-render thumbnail navigator for this file
+        const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
+        for (const leaf of thumbnailLeaves) {
+          const view = leaf.view;
+          if (!(view instanceof ThumbnailNavigatorView)) {
+            continue;
+          }
+          // Check if this view is showing the target file
+          const viewPresentation = view.getPresentation();
+          // Thumbnail navigator doesn't expose its file directly, so we re-render if its presentation is loaded
+          if (viewPresentation) {
+            this.logExcalidraw(`✅ Triggering thumbnail navigator re-render for: ${targetFile.path}`);
+            // Force re-render by calling private render() method
+            (view as any).render();
+          }
+        }
+
+        this.logExcalidraw(`✅ Re-render complete`);
+      } catch (e) {
+        this.errorExcalidraw(`Error during re-render:`, e);
+      }
+    }, 100); // 100ms delay to batch conversions
+  }
+
   async reorderSlides(file: TFile, fromIndex: number, toIndex: number) {
     const content = await this.app.vault.read(file);
     const presentation = this.parser.parse(content);
 
-    if (fromIndex < 0 || fromIndex >= presentation.slides.length ||
-      toIndex < 0 || toIndex >= presentation.slides.length ||
-      fromIndex === toIndex) {
+    if (
+      fromIndex < 0 ||
+      fromIndex >= presentation.slides.length ||
+      toIndex < 0 ||
+      toIndex >= presentation.slides.length ||
+      fromIndex === toIndex
+    ) {
       return;
     }
 
     // Prevent reordering the auto-generated footnotes slide (has footnotes but no elements)
     const lastSlideIndex = presentation.slides.length - 1;
     const lastSlide = presentation.slides[lastSlideIndex];
-    const isAutoGeneratedFootnotesSlide = lastSlide.elements.length === 0 &&
-                                          lastSlide.footnotes && lastSlide.footnotes.length > 0;
-    if (isAutoGeneratedFootnotesSlide && (fromIndex === lastSlideIndex || toIndex === lastSlideIndex)) {
+    const isAutoGeneratedFootnotesSlide =
+      lastSlide.elements.length === 0 && lastSlide.footnotes && lastSlide.footnotes.length > 0;
+    if (
+      isAutoGeneratedFootnotesSlide &&
+      (fromIndex === lastSlideIndex || toIndex === lastSlideIndex)
+    ) {
       new Notice('Cannot reorder the auto-generated footnotes slide - it must remain at the end');
       return;
     }
@@ -1583,7 +2095,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Get the raw content of each slide
     const slideContents: string[] = [];
     const lines = content.split('\n');
-    let currentSlideStart = 0;
+    const currentSlideStart = 0;
     let inFrontmatter = false;
     let frontmatterEnd = 0;
 
@@ -1629,77 +2141,84 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const newBody = slideRawContents.join(sep);
     const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
 
-     await this.app.vault.modify(file, newContent);
-     new Notice(`Moved slide ${fromIndex + 1} to position ${toIndex + 1}`);
+    await this.app.vault.modify(file, newContent);
+    new Notice(`Moved slide ${fromIndex + 1} to position ${toIndex + 1}`);
 
-     // Navigate to the moved slide at its new position
-     const newPresentation = this.parser.parse(newContent);
-     await this.navigateToSlide(toIndex, newPresentation, file);
+    // Navigate to the moved slide at its new position
+    const newPresentation = this.parser.parse(newContent);
+    await this.navigateToSlide(toIndex, newPresentation, file);
+  }
+
+  async addSlideAtEnd(file: TFile) {
+    const content = await this.app.vault.read(file);
+
+    // Find the first footnote definition in the document (if any)
+    // Footnote definitions look like: [^id]: content
+    const lines = content.split('\n');
+    let firstFootnoteLineIndex = -1;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].match(/^\[\^([^\]]+)\]:\s*(.*)$/)) {
+        firstFootnoteLineIndex = i;
+        break;
+      }
     }
 
-   async addSlideAtEnd(file: TFile) {
-      const content = await this.app.vault.read(file);
+    let newContent: string;
+    let newSlideIndex: number;
 
-      // Find the first footnote definition in the document (if any)
-      // Footnote definitions look like: [^id]: content
-      const lines = content.split('\n');
-      let firstFootnoteLineIndex = -1;
-
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].match(/^\[\^([^\]]+)\]:\s*(.*)$/)) {
-          firstFootnoteLineIndex = i;
+    if (firstFootnoteLineIndex >= 0) {
+      // Found footnote definitions - insert new slide BEFORE them
+      // Count empty lines before first footnote
+      let emptyLinesBefore = 0;
+      for (let i = firstFootnoteLineIndex - 1; i >= 0; i--) {
+        if (lines[i].trim() === '') {
+          emptyLinesBefore++;
+        } else {
           break;
         }
       }
 
-      let newContent: string;
-      let newSlideIndex: number;
+      // Remove existing empty lines and add exactly 5 (or more if there were already more)
+      const targetEmptyLines = Math.max(5, emptyLinesBefore);
+      const contentEndIndex = firstFootnoteLineIndex - emptyLinesBefore;
+      const beforeFootnotes = lines.slice(0, contentEndIndex).join('\n').trimEnd();
+      const footnoteDefinitions = lines.slice(firstFootnoteLineIndex).join('\n');
 
-      if (firstFootnoteLineIndex >= 0) {
-        // Found footnote definitions - insert new slide BEFORE them
-        // Count empty lines before first footnote
-        let emptyLinesBefore = 0;
-        for (let i = firstFootnoteLineIndex - 1; i >= 0; i--) {
-          if (lines[i].trim() === '') {
-            emptyLinesBefore++;
-          } else {
-            break;
-          }
-        }
+      // Build new content with new slide and proper spacing
+      // Must insert --- separator BEFORE footnote definitions so they're not part of the new slide
+      // beforeFootnotes already ends with the last slide's --- separator, so just add the new slide content
+      const emptyLinesPadding = '\n'.repeat(targetEmptyLines);
+      newContent =
+        beforeFootnotes +
+        '\n\nlayout: default\n\n# New Slide\n\nAdd your content here...' +
+        emptyLinesPadding +
+        '\n---\n\n' +
+        footnoteDefinitions;
 
-        // Remove existing empty lines and add exactly 5 (or more if there were already more)
-        const targetEmptyLines = Math.max(5, emptyLinesBefore);
-        const contentEndIndex = firstFootnoteLineIndex - emptyLinesBefore;
-        const beforeFootnotes = lines.slice(0, contentEndIndex).join('\n').trimEnd();
-        const footnoteDefinitions = lines.slice(firstFootnoteLineIndex).join('\n');
-
-        // Build new content with new slide and proper spacing
-        // Must insert --- separator BEFORE footnote definitions so they're not part of the new slide
-        // beforeFootnotes already ends with the last slide's --- separator, so just add the new slide content
-        const emptyLinesPadding = '\n'.repeat(targetEmptyLines);
-        newContent = beforeFootnotes + '\n\nlayout: default\n\n# New Slide\n\nAdd your content here...' + emptyLinesPadding + '\n---\n\n' + footnoteDefinitions;
-
-        // Parse to get the new slide index
-        const tempPresentation = this.parser.parse(newContent);
-        newSlideIndex = tempPresentation.slides.length - 1;
-      } else {
-        // No footnote definitions, append at end as usual
-        newContent = content.trimEnd() + '\n\n---\n\nlayout: default\n\n# New Slide\n\nAdd your content here...\n';
-
-        // Parse to get the new slide index
-        const tempPresentation = this.parser.parse(newContent);
-        newSlideIndex = tempPresentation.slides.length - 1;
-      }
-
-      // Modify the file
-      await this.app.vault.modify(file, newContent);
-
-      // Navigate to the new slide (this handles cursor positioning, navigator selection, etc.)
+      // Parse to get the new slide index
       const tempPresentation = this.parser.parse(newContent);
-      await this.navigateToSlide(newSlideIndex, tempPresentation, file);
-   }
+      newSlideIndex = tempPresentation.slides.length - 1;
+    } else {
+      // No footnote definitions, append at end as usual
+      newContent =
+        content.trimEnd() +
+        '\n\n---\n\nlayout: default\n\n# New Slide\n\nAdd your content here...\n';
 
-   async updateSlideMetadata(file: TFile, slideIndex: number, metadata: Record<string, any>) {
+      // Parse to get the new slide index
+      const tempPresentation = this.parser.parse(newContent);
+      newSlideIndex = tempPresentation.slides.length - 1;
+    }
+
+    // Modify the file
+    await this.app.vault.modify(file, newContent);
+
+    // Navigate to the new slide (this handles cursor positioning, navigator selection, etc.)
+    const tempPresentation = this.parser.parse(newContent);
+    await this.navigateToSlide(newSlideIndex, tempPresentation, file);
+  }
+
+  async updateSlideMetadata(file: TFile, slideIndex: number, metadata: Record<string, any>) {
     const content = await this.app.vault.read(file);
     const lines = content.split('\n');
 
@@ -1741,7 +2260,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
 
     // Get the slide content
-    let slideContent = slideRawContents[slideIndex];
+    const slideContent = slideRawContents[slideIndex];
     const slideLines = slideContent.split('\n');
 
     // Find or create metadata block at start of slide
@@ -1867,7 +2386,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
 
     // Get the slide content
-    let slideContent = slideRawContents[slideIndex];
+    const slideContent = slideRawContents[slideIndex];
     const slideLines = slideContent.split('\n');
 
     // Find layout metadata line
@@ -1879,7 +2398,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
         break;
       }
       // Stop if we hit non-metadata
-      if (line === '' || (!line.match(/^\w+\s*:/) && !line.startsWith('#') && !line.startsWith('!'))) {
+      if (
+        line === '' ||
+        (!line.match(/^\w+\s*:/) && !line.startsWith('#') && !line.startsWith('!'))
+      ) {
         break;
       }
     }
@@ -1910,7 +2432,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
         const currentLine = slideLines[layoutLineIndex];
         const match = currentLine.match(/^(layout\s*:\s*)(.*)$/i);
         if (match) {
-          const layoutValue = match[2].trim().replace(/\s*\(hidden\)\s*/, '').trim();
+          const layoutValue = match[2]
+            .trim()
+            .replace(/\s*\(hidden\)\s*/, '')
+            .trim();
           if (layoutValue) {
             slideLines[layoutLineIndex] = `${match[1]}${layoutValue}`;
           } else {
@@ -1939,7 +2464,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     await this.app.vault.modify(file, newContent);
     // vault.modify triggers editor-change event which calls debounceUpdateSidebarsWithContent
     // No need to call updateSidebars explicitly
-    }
+  }
 
   async updatePresentationFrontmatter(file: TFile, updates: Record<string, any>) {
     const content = await this.app.vault.read(file);
@@ -1972,8 +2497,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
           const key = line.slice(0, colonIndex).trim();
           let value = line.slice(colonIndex + 1).trim();
           // Remove quotes
-          if ((value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))) {
+          if (
+            (value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))
+          ) {
             value = value.slice(1, -1);
           }
           existingFM[key] = value;
@@ -1984,7 +2511,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Merge updates
     for (const [key, value] of Object.entries(updates)) {
       // Convert camelCase to kebab-case for YAML
-      const yamlKey = key.replace(/([A-Z])/g, '-$1').toLowerCase().replace(/^-/, '');
+      const yamlKey = key
+        .replace(/([A-Z])/g, '-$1')
+        .toLowerCase()
+        .replace(/^-/, '');
 
       if (value === undefined || value === null || value === '') {
         delete existingFM[yamlKey];
@@ -2028,18 +2558,25 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
     for (const leaf of thumbnailLeaves) {
       const view = leaf.view;
-      if (!(view instanceof ThumbnailNavigatorView)) continue;
+      if (!(view instanceof ThumbnailNavigatorView)) {
+        continue;
+      }
       const presentation = view.getPresentation();
       if (presentation) {
         Object.assign(presentation.frontmatter, updates);
-        view.updateSlides(Array.from({ length: presentation.slides.length }, (_, i) => i), presentation.slides);
+        view.updateSlides(
+          Array.from({ length: presentation.slides.length }, (_, i) => i),
+          presentation.slides
+        );
       }
     }
 
     const presentationLeaves = this.app.workspace.getLeavesOfType(PRESENTATION_VIEW_TYPE);
     for (const leaf of presentationLeaves) {
       const view = leaf.view;
-      if (!(view instanceof PresentationView)) continue;
+      if (!(view instanceof PresentationView)) {
+        continue;
+      }
       const presentation = view.getPresentation();
       if (presentation) {
         Object.assign(presentation.frontmatter, updates);
@@ -2052,7 +2589,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       if (presentation) {
         Object.assign(presentation.frontmatter, updates);
         // Trigger a re-render of the current slide in the window
-        this.presentationWindow.updateContent(presentation, this.currentTheme || null);
+        void this.presentationWindow.updateContent(presentation, this.currentTheme || null);
       }
     }
   }
@@ -2063,7 +2600,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     for (const leaf of inspectorLeaves) {
       const view = leaf.view;
-      if (!(view instanceof InspectorPanelView)) continue;
+      if (!(view instanceof InspectorPanelView)) {
+        continue;
+      }
       const isFocused = activeFile !== null && view.getTargetFile()?.path === activeFile.path;
       view.setFocused(isFocused);
     }
@@ -2097,7 +2636,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
         frontmatter.titleFont,
         frontmatter.bodyFont,
         frontmatter.headerFont,
-        frontmatter.footerFont
+        frontmatter.footerFont,
       ].filter(Boolean) as string[];
 
       debug.log('font-handling', `Checking fonts for CSS generation: ${fontsToCheck.join(', ')}`);
@@ -2138,7 +2677,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
           const css = await this.fontManager.generateFontFaceCSS(fontName, weightsToInclude);
           if (css) {
-            debug.log('font-handling', `Generated @font-face CSS for "${fontName}" (${css.length} bytes)${weightsToInclude ? ` with weights [${weightsToInclude.join(', ')}]` : ' with all available weights'}`);
+            debug.log(
+              'font-handling',
+              `Generated @font-face CSS for "${fontName}" (${css.length} bytes)${weightsToInclude ? ` with weights [${weightsToInclude.join(', ')}]` : ' with all available weights'}`
+            );
             cssRules.push(css);
           } else {
             debug.warn('font-handling', `Failed to generate CSS for cached font "${fontName}"`);
@@ -2152,7 +2694,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
 
     const result = cssRules.join('\n');
-    debug.log('font-handling', `Total custom font CSS: ${result.length} bytes, ${cssRules.length} rules`);
+    debug.log(
+      'font-handling',
+      `Total custom font CSS: ${result.length} bytes, ${cssRules.length} rules`
+    );
     return result;
   }
 
@@ -2181,14 +2726,18 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Try the requested theme first
     if (this.themeLoader && name) {
       const theme = this.themeLoader.getTheme(name);
-      if (theme) return theme;
+      if (theme) {
+        return theme;
+      }
     }
 
     // If requested theme not found, try default theme
     // This handles cases like Advanced Slides theme names that don't exist in Perspecta
     if (this.themeLoader && this.settings.defaultTheme && this.settings.defaultTheme !== name) {
       const defaultTheme = this.themeLoader.getTheme(this.settings.defaultTheme);
-      if (defaultTheme) return defaultTheme;
+      if (defaultTheme) {
+        return defaultTheme;
+      }
     }
 
     // No theme found - return undefined (will use CSS defaults)
@@ -2222,7 +2771,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     // Get list of existing theme names (built-in + custom)
     const builtInNames = getBuiltInThemeNames();
-    const customThemeNames = this.themeLoader?.getCustomThemes().map(t => t.template.Name) || [];
+    const customThemeNames = this.themeLoader?.getCustomThemes().map((t) => t.template.Name) || [];
 
     const modal = new SaveThemeModal(
       this.app,
@@ -2508,34 +3057,34 @@ layout: footnotes
       const modal = new CreateDemoModal(this.app, modalOnOk, async () => {
         // Hide the settings dialog
         const settingsDialogs = document.querySelectorAll('.mod-settings');
-        settingsDialogs.forEach(dialog => {
+        settingsDialogs.forEach((dialog) => {
           if (dialog instanceof HTMLElement) {
             dialog.style.display = 'none';
           }
         });
-        
+
         // Close the settings leaf
         const settingsLeaves = this.app.workspace.getLeavesOfType('settings');
         for (const leaf of settingsLeaves) {
           await leaf.detach();
         }
-        
+
         // Open the demo file
         await this.app.workspace.openLinkText(demoFile.path, '', false);
-        
+
         // Ensure both sidebars are open
         // Toggle navigator if not visible
-        let navigatorLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
+        const navigatorLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
         if (navigatorLeaves.length === 0) {
-          this.toggleThumbnailNavigator();
+          await this.toggleThumbnailNavigator();
         }
-        
+
         // Toggle inspector if not visible
-        let inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
+        const inspectorLeaves = this.app.workspace.getLeavesOfType(INSPECTOR_VIEW_TYPE);
         if (inspectorLeaves.length === 0) {
-          this.toggleInspector();
+          await this.toggleInspector();
         }
-        
+
         // Open presentation preview (not fullscreen)
         await this.openPresentationView(demoFile);
       });

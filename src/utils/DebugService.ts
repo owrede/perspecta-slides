@@ -1,18 +1,19 @@
 /**
  * Debug Service for topic-specific logging
- * 
+ *
  * Provides conditional console logging based on enabled debug topics.
  * Topics can be toggled individually in the Debug settings.
  */
 
-export type DebugTopic = 
+export type DebugTopic =
   | 'presentation-view'
   | 'presentation-window'
   | 'slide-parsing'
   | 'font-handling'
   | 'renderer'
   | 'inspector'
-  | 'thumbnail-navigator';
+  | 'thumbnail-navigator'
+  | 'excalidraw';
 
 export interface DebugTopicConfig {
   [key: string]: boolean;
@@ -107,8 +108,9 @@ export class DebugService {
       'renderer',
       'inspector',
       'thumbnail-navigator',
+      'excalidraw',
     ];
-    return allTopics.map(topic => ({
+    return allTopics.map((topic) => ({
       topic,
       enabled: this.isEnabled(topic),
     }));

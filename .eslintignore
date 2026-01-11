@@ -1,0 +1,11 @@
+node_modules
+*.js
+*.mjs
+*.d.ts
+main.js
+preload.js
+esbuild.config.mjs
+version-bump.mjs
+dist
+build
+.obsidian

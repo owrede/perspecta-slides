@@ -16,17 +16,17 @@ export interface PresentationFrontmatter {
   titleFontWeight?: number;
   bodyFont?: string;
   bodyFontWeight?: number;
-  headerFont?: string;  // Specific font for header (default: inherits body)
+  headerFont?: string; // Specific font for header (default: inherits body)
   headerFontWeight?: number;
-  footerFont?: string;  // Specific font for footer (default: inherits body)
+  footerFont?: string; // Specific font for footer (default: inherits body)
   footerFontWeight?: number;
 
   // Typography - Sizes (as percentage offset from defaults)
-  titleFontSize?: number;   // % offset for all title/heading fonts (-50 to +50)
-  bodyFontSize?: number;    // % offset for body text (-50 to +50)
-  headerFontSize?: number;  // % offset for header text (-50 to +50)
-  footerFontSize?: number;  // % offset for footer text (-50 to +50)
-  textScale?: number;       // Global multiplier for all text sizes (e.g., 0.65 to scale down, 1.2 to scale up)
+  titleFontSize?: number; // % offset for all title/heading fonts (-50 to +50)
+  bodyFontSize?: number; // % offset for body text (-50 to +50)
+  headerFontSize?: number; // % offset for header text (-50 to +50)
+  footerFontSize?: number; // % offset for footer text (-50 to +50)
+  textScale?: number; // Global multiplier for all text sizes (e.g., 0.65 to scale down, 1.2 to scale up)
 
   // Legacy: fontSizeOffset affects all text (deprecated, use titleFontSize/bodyFontSize)
   fontSizeOffset?: number;
@@ -35,16 +35,16 @@ export interface PresentationFrontmatter {
   headlineSpacingBefore?: number;
   headlineSpacingAfter?: number;
   listItemSpacing?: number;
-  lineHeight?: number;      // Line height multiplier (default: 1.1)
+  lineHeight?: number; // Line height multiplier (default: 1.1)
 
   // Typography - Margins (in em, absolute distance from slide edge)
-  headerTop?: number;       // Distance of header from top edge (default: 2.5em)
-  footerBottom?: number;    // Distance of footer from bottom edge (default: 2.5em)
-  titleTop?: number;        // Distance of title from top edge (default: 5em)
-  contentTop?: number;      // Distance of content from top edge (default: 12em)
-  contentLeft?: number;     // Left margin for all content including header/footer (default: 5em)
-  contentRight?: number;    // Right margin for all content including header/footer (default: 5em)
-  contentWidth?: number;    // Legacy: Left/right margin (deprecated, use contentLeft/contentRight)
+  headerTop?: number; // Distance of header from top edge (default: 2.5em)
+  footerBottom?: number; // Distance of footer from bottom edge (default: 2.5em)
+  titleTop?: number; // Distance of title from top edge (default: 5em)
+  contentTop?: number; // Distance of content from top edge (default: 12em)
+  contentLeft?: number; // Left margin for all content including header/footer (default: 5em)
+  contentRight?: number; // Right margin for all content including header/footer (default: 5em)
+  contentWidth?: number; // Legacy: Left/right margin (deprecated, use contentLeft/contentRight)
 
   // Legacy: contentTopOffset as percentage (deprecated)
   contentTopOffset?: number;
@@ -107,7 +107,7 @@ export interface PresentationFrontmatter {
 
   // Dynamic background gradient (color stops for gradient across slides)
   lightDynamicBackground?: string[]; // Array of color stops e.g., ['#ffffff', '#f0f0f0', '#e0e0e0']
-  darkDynamicBackground?: string[];  // Array of color stops for dark mode
+  darkDynamicBackground?: string[]; // Array of color stops for dark mode
   useDynamicBackground?: 'light' | 'dark' | 'both' | 'none'; // Which mode uses dynamic bg
   dynamicBackgroundRestartAtSection?: boolean; // Restart gradient interpolation at each section slide
 
@@ -125,20 +125,21 @@ export interface PresentationFrontmatter {
 
   // Presentation settings
   aspectRatio?: '16:9' | '4:3' | '16:10' | 'auto';
-  lockAspectRatio?: boolean;        // When true, maintain aspect ratio with letterbox/pillarbox
+  lockAspectRatio?: boolean; // When true, maintain aspect ratio with letterbox/pillarbox
   showProgress?: boolean;
   showSlideNumbers?: boolean;
-   transition?: 'none' | 'fade' | 'slide';
-   showFootnotesOnSlides?: boolean;  // When true, footnotes on each slide; when false (default), all footnotes on separate slide at end
-   enableObsidianLinks?: boolean;    // When true, preserve Obsidian links; when false (default), strip to link text only
+  transition?: 'none' | 'fade' | 'slide';
+  showFootnotesOnSlides?: boolean; // When true, footnotes on each slide; when false (default), all footnotes on separate slide at end
+  enableObsidianLinks?: boolean; // When true, preserve Obsidian links; when false (default), strip to link text only
 
-   // Appearance mode (default for all slides, can be overridden per-slide)
-   mode?: 'light' | 'dark' | 'system';
+  // Appearance mode (default for all slides, can be overridden per-slide)
+  mode?: 'light' | 'dark' | 'system';
 
   // Image overlay settings
-  imageOverlay?: string;           // Path to overlay image
-  imageOverlayOpacity?: number;    // Opacity 0-100 (default 50 = 50% visible)
-  imageOverlays?: {                // Multiple overlays for different aspect ratios
+  imageOverlay?: string; // Path to overlay image
+  imageOverlayOpacity?: number; // Opacity 0-100 (default 50 = 50% visible)
+  imageOverlays?: {
+    // Multiple overlays for different aspect ratios
     path: string;
     aspectRatio?: '16:9' | '4:3' | '16:10';
   }[];
@@ -172,9 +173,11 @@ export interface SlideMetadata {
  * - 2-columns-2+1: Left wide (2/3), right narrow (1/3)
  *
  * IMAGE SLIDES:
- * - full-image: Image fills entire slide
+ * - full-image: Image fills entire slide (object-fit: cover, may crop)
+ * - full-image-contained: Image contained within slide (object-fit: contain, no crop)
  * - half-image: Half for image(s), half for text (v-split)
- * - caption: Full image with title bar and caption
+ * - caption: Full image with title bar and caption (object-fit: cover)
+ * - caption-contained: Full image contained with title bar and caption (object-fit: contain)
  *
  * GRID SLIDES:
  * - grid: Auto-grid for multiple items (2x2, 2x3, etc.)
@@ -196,9 +199,11 @@ export type SlideLayout =
   | '2-columns-2+1'
   // Image slides
   | 'full-image'
+  | 'full-image-contained'
   | 'half-image'
   | 'half-image-horizontal'
   | 'caption'
+  | 'caption-contained'
   // Grid slides
   | 'grid'
   // Special layouts
@@ -231,7 +236,16 @@ export interface ImageData {
 }
 
 export interface SlideElement {
-  type: 'heading' | 'paragraph' | 'list' | 'blockquote' | 'image' | 'code' | 'table' | 'math' | 'kicker';
+  type:
+    | 'heading'
+    | 'paragraph'
+    | 'list'
+    | 'blockquote'
+    | 'image'
+    | 'code'
+    | 'table'
+    | 'math'
+    | 'kicker';
   content: string;
   level?: number;
   visible: boolean;
@@ -242,8 +256,8 @@ export interface SlideElement {
 }
 
 export interface Footnote {
-  id: string;           // e.g., "1", "note1", etc.
-  content: string;      // The footnote text (markdown)
+  id: string; // e.g., "1", "note1", etc.
+  content: string; // The footnote text (markdown)
 }
 
 export interface Slide {
@@ -409,8 +423,8 @@ export interface PerspecaSlidesSettings {
     'presentation-window'?: boolean;
     'slide-parsing'?: boolean;
     'font-handling'?: boolean;
-    'renderer'?: boolean;
-    'inspector'?: boolean;
+    renderer?: boolean;
+    inspector?: boolean;
     'thumbnail-navigator'?: boolean;
   };
 }
@@ -433,7 +447,7 @@ export interface CachedFontData {
 }
 
 export const DEFAULT_SETTINGS: PerspecaSlidesSettings = {
-  defaultTheme: '',  // Empty = use CSS defaults
+  defaultTheme: '', // Empty = use CSS defaults
   showThumbnailNavigator: true,
   showInspector: true,
   defaultAspectRatio: '16:9',
@@ -449,8 +463,8 @@ export const DEFAULT_SETTINGS: PerspecaSlidesSettings = {
     'presentation-window': false,
     'slide-parsing': false,
     'font-handling': false,
-    'renderer': false,
-    'inspector': false,
+    renderer: false,
+    inspector: false,
     'thumbnail-navigator': false,
   },
 };

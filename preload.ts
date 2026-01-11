@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld('nativeWindow', {
   startDragging: () => {
     ipcRenderer.send('presentation-window-drag-start');
   },
-  
+
   /**
    * Send cursor position delta to main process while dragging
    * Main process uses this to move the window
@@ -22,13 +22,13 @@ contextBridge.exposeInMainWorld('nativeWindow', {
   updateDragPosition: (dx: number, dy: number) => {
     ipcRenderer.send('presentation-window-drag-move', { dx, dy });
   },
-  
+
   /**
    * Signal to main process that dragging has ended
    */
   stopDragging: () => {
     ipcRenderer.send('presentation-window-drag-stop');
-  }
+  },
 });
 
 // Expose electron IPC for presenter window
@@ -39,6 +39,6 @@ contextBridge.exposeInMainWorld('electron', {
     },
     on: (channel: string, func: any) => {
       ipcRenderer.on(channel, (event: any, ...args: any[]) => func(...args));
-    }
-  }
+    },
+  },
 });

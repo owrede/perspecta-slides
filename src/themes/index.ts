@@ -1,4 +1,5 @@
-import { Theme, DEFAULT_SEMANTIC_COLORS } from '../types';
+import type { Theme } from '../types';
+import { DEFAULT_SEMANTIC_COLORS } from '../types';
 import { DEFAULT_SEMANTIC_COLORS_LIGHT, DEFAULT_SEMANTIC_COLORS_DARK } from './ThemeSchema';
 import { getBuiltInTheme, getBuiltInThemeNames } from './builtin';
 
@@ -88,7 +89,10 @@ export function generateDefaultCSS(): string {
  * Generate CSS variables from a theme's preset
  * Enhanced to support per-heading colors, layout-specific backgrounds, and semantic colors
  */
-export function generateThemeCSS(theme: Theme, context: 'thumbnail' | 'preview' | 'presentation' | 'export' = 'export'): string {
+export function generateThemeCSS(
+  theme: Theme,
+  context: 'thumbnail' | 'preview' | 'presentation' | 'export' = 'export'
+): string {
   const preset = theme.presets[0];
   if (!preset) {
     return context === 'thumbnail' ? '' : theme.css;
@@ -157,17 +161,17 @@ export function generateThemeCSS(theme: Theme, context: 'thumbnail' | 'preview' 
     // Layout-specific backgrounds (light mode)
     const lightBg = light.backgrounds;
     cssVars += `
-  --light-bg-cover: ${lightBg.cover.type === 'solid' ? lightBg.cover.color : (lightBg.cover.colors ? `linear-gradient(135deg, ${lightBg.cover.colors.join(', ')})` : 'inherit')};
-  --light-bg-title: ${lightBg.title.type === 'solid' ? lightBg.title.color : (lightBg.title.colors ? `linear-gradient(135deg, ${lightBg.title.colors.join(', ')})` : 'inherit')};
-  --light-bg-section: ${lightBg.section.type === 'solid' ? lightBg.section.color : (lightBg.section.colors ? `linear-gradient(135deg, ${lightBg.section.colors.join(', ')})` : 'inherit')};
+  --light-bg-cover: ${lightBg.cover.type === 'solid' ? lightBg.cover.color : lightBg.cover.colors ? `linear-gradient(135deg, ${lightBg.cover.colors.join(', ')})` : 'inherit'};
+  --light-bg-title: ${lightBg.title.type === 'solid' ? lightBg.title.color : lightBg.title.colors ? `linear-gradient(135deg, ${lightBg.title.colors.join(', ')})` : 'inherit'};
+  --light-bg-section: ${lightBg.section.type === 'solid' ? lightBg.section.color : lightBg.section.colors ? `linear-gradient(135deg, ${lightBg.section.colors.join(', ')})` : 'inherit'};
 `;
 
     // Layout-specific backgrounds (dark mode)
     const darkBg = dark.backgrounds;
     cssVars += `
-  --dark-bg-cover: ${darkBg.cover.type === 'solid' ? darkBg.cover.color : (darkBg.cover.colors ? `linear-gradient(135deg, ${darkBg.cover.colors.join(', ')})` : 'inherit')};
-  --dark-bg-title: ${darkBg.title.type === 'solid' ? darkBg.title.color : (darkBg.title.colors ? `linear-gradient(135deg, ${darkBg.title.colors.join(', ')})` : 'inherit')};
-  --dark-bg-section: ${darkBg.section.type === 'solid' ? darkBg.section.color : (darkBg.section.colors ? `linear-gradient(135deg, ${darkBg.section.colors.join(', ')})` : 'inherit')};
+  --dark-bg-cover: ${darkBg.cover.type === 'solid' ? darkBg.cover.color : darkBg.cover.colors ? `linear-gradient(135deg, ${darkBg.cover.colors.join(', ')})` : 'inherit'};
+  --dark-bg-title: ${darkBg.title.type === 'solid' ? darkBg.title.color : darkBg.title.colors ? `linear-gradient(135deg, ${darkBg.title.colors.join(', ')})` : 'inherit'};
+  --dark-bg-section: ${darkBg.section.type === 'solid' ? darkBg.section.color : darkBg.section.colors ? `linear-gradient(135deg, ${darkBg.section.colors.join(', ')})` : 'inherit'};
 `;
   }
 

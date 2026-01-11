@@ -12,7 +12,8 @@ export type DebugTopic =
   | 'font-handling'
   | 'renderer'
   | 'inspector'
-  | 'thumbnail-navigator';
+  | 'thumbnail-navigator'
+  | 'excalidraw';
 
 export interface DebugTopicConfig {
   [key: string]: boolean;
@@ -107,6 +108,7 @@ export class DebugService {
       'renderer',
       'inspector',
       'thumbnail-navigator',
+      'excalidraw',
     ];
     return allTopics.map((topic) => ({
       topic,

@@ -20,6 +20,8 @@ export class ThumbnailNavigatorView extends ItemView {
   private imagePathResolver: ImagePathResolver | null = null;
   private customFontCSS: string = '';
   private fontWeightsCache: Map<string, number[]> = new Map();
+  private excalidrawSvgCache: Map<string, string> | null = null;
+  private failedDecompressionFiles: Set<string> = new Set();
 
   public getPresentation(): Presentation | null {
     return this.presentation;
@@ -51,6 +53,20 @@ export class ThumbnailNavigatorView extends ItemView {
   }
 
   /**
+   * Set the Excalidraw SVG cache (for native Excalidraw rendering)
+   */
+  setExcalidrawSvgCache(cache: Map<string, string>): void {
+    this.excalidrawSvgCache = cache;
+  }
+
+  /**
+   * Set failed decompression files (files that need manual decompression)
+   */
+  setFailedDecompressionFiles(files: Set<string>): void {
+    this.failedDecompressionFiles = files;
+  }
+
+  /**
    * Create a SlideRenderer with the image path resolver
    */
   private createRenderer(): SlideRenderer {
@@ -62,6 +78,14 @@ export class ThumbnailNavigatorView extends ItemView {
     }
     // Set font weights cache for validation
     renderer.setFontWeightsCache(this.fontWeightsCache);
+    // Set Excalidraw SVG cache for native rendering
+    if (this.excalidrawSvgCache) {
+      renderer.setExcalidrawSvgCache(this.excalidrawSvgCache);
+    }
+    // Set failed decompression files
+    if (this.failedDecompressionFiles.size > 0) {
+      renderer.setFailedDecompressionFiles(this.failedDecompressionFiles);
+    }
     // Set system color scheme so 'system' mode resolves correctly
     renderer.setSystemColorScheme(this.getSystemColorScheme());
     return renderer;

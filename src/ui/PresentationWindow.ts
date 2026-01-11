@@ -34,7 +34,9 @@ export class PresentationWindow {
   private customFontCSS: string = '';
   private fontWeightsCache: Map<string, number[]> = new Map();
   private excalidrawSvgCache: Map<string, string> | null = null;
+  private failedDecompressionFiles: Set<string> = new Set();
   private onSlideChanged: ((index: number) => void) | null = null;
+  private forceReload: boolean = false;
 
   public getPresentation(): Presentation | null {
     return this.presentation;
@@ -60,6 +62,10 @@ export class PresentationWindow {
     this.onSlideChanged = callback;
   }
 
+  forceFullReload(): void {
+    this.forceReload = true;
+  }
+
   private createRenderer(presentation: Presentation, theme: Theme | null): SlideRenderer {
     const renderer = new SlideRenderer(
       presentation,
@@ -75,8 +81,15 @@ export class PresentationWindow {
     if (this.excalidrawSvgCache) {
       renderer.setExcalidrawSvgCache(this.excalidrawSvgCache);
     }
+    if (this.failedDecompressionFiles.size > 0) {
+      renderer.setFailedDecompressionFiles(this.failedDecompressionFiles);
+    }
     renderer.setSystemColorScheme(this.getSystemColorScheme());
     return renderer;
+  }
+
+  setFailedDecompressionFiles(files: Set<string>): void {
+    this.failedDecompressionFiles = files;
   }
 
   private getSystemColorScheme(): 'light' | 'dark' {
@@ -701,7 +714,11 @@ export class PresentationWindow {
       }
       this.currentSlideIndex = currentSlide;
 
-      if (this.presentationCache) {
+      // Check if a forced full reload was requested (e.g., for Excalidraw cache updates)
+      const shouldForceReload = this.forceReload;
+      this.forceReload = false; // Reset the flag
+
+      if (this.presentationCache && !shouldForceReload) {
         const diff = diffPresentations(this.presentationCache, presentation);
 
         if (diff.type === 'none') {

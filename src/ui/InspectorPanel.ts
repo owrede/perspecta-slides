@@ -2014,7 +2014,9 @@ export class InspectorPanelView extends ItemView {
 
     const imageLayouts: { id: SlideLayout; label: string; icon: string }[] = [
       { id: 'full-image', label: 'Full', icon: 'image' },
+      { id: 'full-image-contained', label: 'Full (fit)', icon: 'square' },
       { id: 'caption', label: 'Caption', icon: 'image' },
+      { id: 'caption-contained', label: 'Caption (fit)', icon: 'square' },
       { id: 'half-image', label: 'Half', icon: 'panel-left-close' },
       { id: 'half-image-horizontal', label: 'Half horiz.', icon: 'panel-top-close' },
     ];

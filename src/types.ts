@@ -173,9 +173,11 @@ export interface SlideMetadata {
  * - 2-columns-2+1: Left wide (2/3), right narrow (1/3)
  *
  * IMAGE SLIDES:
- * - full-image: Image fills entire slide
+ * - full-image: Image fills entire slide (object-fit: cover, may crop)
+ * - full-image-contained: Image contained within slide (object-fit: contain, no crop)
  * - half-image: Half for image(s), half for text (v-split)
- * - caption: Full image with title bar and caption
+ * - caption: Full image with title bar and caption (object-fit: cover)
+ * - caption-contained: Full image contained with title bar and caption (object-fit: contain)
  *
  * GRID SLIDES:
  * - grid: Auto-grid for multiple items (2x2, 2x3, etc.)
@@ -197,9 +199,11 @@ export type SlideLayout =
   | '2-columns-2+1'
   // Image slides
   | 'full-image'
+  | 'full-image-contained'
   | 'half-image'
   | 'half-image-horizontal'
   | 'caption'
+  | 'caption-contained'
   // Grid slides
   | 'grid'
   // Special layouts

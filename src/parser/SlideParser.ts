@@ -9,6 +9,7 @@ import type {
   ImageData,
   Footnote,
 } from '../types';
+import { getDebugService } from '../utils/DebugService';
 
 export class SlideParser {
   private defaultContentMode: ContentMode = 'perspecta';
@@ -1828,6 +1829,7 @@ export class SlideParser {
     const wikiLinkMatch = line.match(/^!\[\[([^\]|]+)(?:\|([^\]]*))?\]\]$/);
     if (wikiLinkMatch) {
       const src = wikiLinkMatch[1];
+      getDebugService().log('excalidraw', `Wiki-link image src: ${src}`);
       const modifier = wikiLinkMatch[2]; // Could be alt text or dimensions
 
       let alt: string | undefined;

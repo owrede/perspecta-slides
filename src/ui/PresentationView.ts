@@ -30,6 +30,8 @@ export class PresentationView extends ItemView {
   private onStartPresenterView: ((file: TFile) => Promise<void>) | null = null;
   private onExportHTML: ((file: TFile) => Promise<void>) | null = null;
   private fontWeightsCache: Map<string, number[]> = new Map();
+  private excalidrawSvgCache: Map<string, string> | null = null;
+  private failedDecompressionFiles: Set<string> = new Set();
 
   // Live update related properties
   private sourceFile: TFile | null = null;
@@ -85,6 +87,20 @@ export class PresentationView extends ItemView {
   }
 
   /**
+   * Set the Excalidraw SVG cache (for native Excalidraw rendering)
+   */
+  setExcalidrawSvgCache(cache: Map<string, string>): void {
+    this.excalidrawSvgCache = cache;
+  }
+
+  /**
+   * Set failed decompression files (files that need manual decompression)
+   */
+  setFailedDecompressionFiles(files: Set<string>): void {
+    this.failedDecompressionFiles = files;
+  }
+
+  /**
    * Get a theme by name, using themeLoader if available
    */
   private getThemeByName(name: string): Theme | undefined {
@@ -111,6 +127,14 @@ export class PresentationView extends ItemView {
     }
     // Set font weights cache for validation
     renderer.setFontWeightsCache(this.fontWeightsCache);
+    // Set Excalidraw SVG cache for native rendering
+    if (this.excalidrawSvgCache) {
+      renderer.setExcalidrawSvgCache(this.excalidrawSvgCache);
+    }
+    // Set failed decompression files
+    if (this.failedDecompressionFiles.size > 0) {
+      renderer.setFailedDecompressionFiles(this.failedDecompressionFiles);
+    }
     // Set system color scheme so 'system' mode resolves correctly
     renderer.setSystemColorScheme(this.getSystemColorScheme());
     return renderer;
@@ -536,10 +560,12 @@ More content here...`,
       case 'section':
         return 'section-container';
       case 'full-image':
+      case 'full-image-contained':
         return 'image-container';
       case 'half-image':
         return 'split-container';
       case 'caption':
+      case 'caption-contained':
         return 'caption-container';
       case 'grid':
         return 'grid-container';
@@ -710,11 +736,19 @@ More content here...`,
       // ==================
 
       case 'full-image':
-        this.renderFullImageLayout(container, images);
+        this.renderFullImageLayout(container, images, false);
+        break;
+
+      case 'full-image-contained':
+        this.renderFullImageLayout(container, images, true);
         break;
 
       case 'caption':
-        this.renderCaptionLayout(container, headings, images, bodyElements);
+        this.renderCaptionLayout(container, headings, images, bodyElements, false);
+        break;
+
+      case 'caption-contained':
+        this.renderCaptionLayout(container, headings, images, bodyElements, true);
         break;
 
       case 'half-image':
@@ -848,8 +882,9 @@ More content here...`,
 
   /**
    * Full Image Layout: Images fill entire slide
+   * @param contained If true, use object-fit: contain instead of cover
    */
-  private renderFullImageLayout(container: HTMLElement, images: SlideElement[]) {
+  private renderFullImageLayout(container: HTMLElement, images: SlideElement[], contained: boolean = false) {
     if (images.length > 1) {
       container.addClass(`count-${images.length}`);
     }
@@ -861,18 +896,23 @@ More content here...`,
 
     images.forEach((img) => {
       const slot = container.createDiv({ cls: 'image-slot' });
-      slot.createEl('img', { attr: { src: img.content, alt: '' } });
+      const imgEl = slot.createEl('img', { attr: { src: img.content, alt: '' } });
+      if (contained) {
+        imgEl.style.objectFit = 'contain';
+      }
     });
   }
 
   /**
    * Caption Layout: Full image with title bar and caption
+   * @param contained If true, use object-fit: contain instead of cover
    */
   private renderCaptionLayout(
     container: HTMLElement,
     headings: SlideElement[],
     images: SlideElement[],
-    bodyElements: SlideElement[]
+    bodyElements: SlideElement[],
+    contained: boolean = false
   ) {
     // Title bar
     const titleBar = container.createDiv({ cls: 'slot-title-bar' });
@@ -882,7 +922,10 @@ More content here...`,
     const imageSlot = container.createDiv({ cls: 'slot-image' });
     images.forEach((img) => {
       const slot = imageSlot.createDiv({ cls: 'image-slot' });
-      slot.createEl('img', { attr: { src: img.content, alt: '' } });
+      const imgEl = slot.createEl('img', { attr: { src: img.content, alt: '' } });
+      if (contained) {
+        imgEl.style.objectFit = 'contain';
+      }
     });
 
     // Caption slot

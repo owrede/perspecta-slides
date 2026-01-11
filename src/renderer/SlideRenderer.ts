@@ -8,6 +8,7 @@ import type {
 } from '../types';
 import { ImageData } from '../types';
 import { generateThemeCSS } from '../themes';
+import { getDebugService } from '../utils/DebugService';
 
 /**
  * SlideRenderer-Renders presentations to HTML
@@ -30,6 +31,7 @@ export class SlideRenderer {
   private systemColorScheme: 'light' | 'dark' = 'light';
   private fontWeightsCache: Map<string, number[]> = new Map(); // Cache of font name -> available weights
   private excalidrawSvgCache: Map<string, string> | null = null; // Reference to ExcalidrawRenderer's cache
+  private failedDecompressionFiles: Set<string> = new Set(); // Files that couldn't be auto-decompressed
 
   constructor(presentation: Presentation, theme?: Theme, resolveImagePath?: ImagePathResolver) {
     this.presentation = presentation;
@@ -120,6 +122,14 @@ export class SlideRenderer {
   }
 
   /**
+   * Set reference to files that failed decompression
+   * These files need manual decompression via the Obsidian Excalidraw plugin
+   */
+  setFailedDecompressionFiles(files: Set<string>): void {
+    this.failedDecompressionFiles = files;
+  }
+
+  /**
    * Resolve an image path, using the resolver if available
    */
   private resolveImageSrc(element: SlideElement): string {
@@ -133,20 +143,31 @@ export class SlideRenderer {
     // Check if this is an excalidraw:// URL that was converted and cached
     if (src.startsWith('excalidraw://')) {
       const filePath = src.substring('excalidraw://'.length);
-      console.log(`[Perspecta] Looking up Excalidraw cache for: ${filePath}`);
+      const debug = getDebugService();
+      debug.log('excalidraw', `Looking up cache for: ${filePath}`);
+      
+      // Check if this file failed decompression
+      if (this.failedDecompressionFiles.has(filePath)) {
+        debug.log('excalidraw', `File needs manual decompression: ${filePath}`);
+        return this.getDecompressionNeededSvg();
+      }
+      
       if (this.excalidrawSvgCache) {
-        console.log(`[Perspecta] Cache has ${this.excalidrawSvgCache.size} items`);
+        debug.log('excalidraw', `Cache has ${this.excalidrawSvgCache.size} items`);
+        if (this.excalidrawSvgCache.size > 0) {
+          debug.log('excalidraw', `Cache keys:`, Array.from(this.excalidrawSvgCache.keys()));
+        }
         const cachedSvg = this.excalidrawSvgCache.get(filePath);
         if (cachedSvg) {
-          console.log(`[Perspecta] ✅ Found cached SVG for: ${filePath}`);
+          debug.log('excalidraw', `✅ Found cached SVG for: ${filePath}`);
           return cachedSvg;
         }
-        console.log(`[Perspecta] ❌ SVG not in cache for: ${filePath}`);
+        debug.log('excalidraw', `❌ SVG not in cache for: ${filePath}`);
       } else {
-        console.log(`[Perspecta] ❌ Cache is null/undefined`);
+        debug.log('excalidraw', `❌ Cache is null/undefined`);
       }
       // If not cached, return subtle loading spinner
-      console.log(`[Perspecta] Returning loading spinner for: ${filePath}`);
+      debug.log('excalidraw', `Returning loading spinner for: ${filePath}`);
       return this.getLoadingSpinnerSvg();
     }
 
@@ -173,6 +194,34 @@ export class SlideRenderer {
   }
 
   /**
+   * Generate a "manual decompression needed" placeholder SVG
+   * Shows a helpful message that the file needs manual decompression
+   */
+  private getDecompressionNeededSvg(): string {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+      <defs>
+        <style>
+          .bg { fill: #f5f5f5; }
+          .border { stroke: #ccc; stroke-width: 2; fill: none; }
+          .title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; font-weight: bold; fill: #333; }
+          .text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; fill: #666; }
+        </style>
+      </defs>
+      <rect class="bg" width="400" height="200"/>
+      <rect class="border" x="10" y="10" width="380" height="180" rx="4"/>
+      <text class="title" x="20" y="35">Excalidraw File</text>
+      <text class="text" x="20" y="60">This file uses a compressed format</text>
+      <text class="text" x="20" y="80">that requires manual decompression.</text>
+      <text class="text" x="20" y="105">Please decompress using the Obsidian</text>
+      <text class="text" x="20" y="125">Excalidraw plugin:</text>
+      <text class="text" x="20" y="150" font-style="italic">Cmd+P → "Decompress current Excalidraw file"</text>
+      <text class="text" x="20" y="170" font-size="11">Then Perspecta Slides will render it.</text>
+    </svg>`;
+    const encoded = btoa(unescape(encodeURIComponent(svg)));
+    return `data:image/svg+xml;base64,${encoded}`;
+  }
+
+  /**
    * Get the container class for a layout
    */
   private getContainerClass(layout: SlideLayout): string {
@@ -184,12 +233,14 @@ export class SlideRenderer {
       case 'section':
         return 'section-container';
       case 'full-image':
+      case 'full-image-contained':
         return 'image-container';
       case 'half-image':
         return 'split-container';
       case 'half-image-horizontal':
         return 'split-horizontal-container';
       case 'caption':
+      case 'caption-contained':
         return 'caption-container';
       case 'grid':
         return 'grid-container';
@@ -572,10 +623,10 @@ export class SlideRenderer {
         ? ` data-light-bg="${lightDynamicBg || ''}" data-dark-bg="${darkDynamicBg || ''}"`
         : '';
 
-    // For full-image layout, render images as background layer (edge-to-edge)
+    // For full-image layouts, render images as background layer (edge-to-edge)
     let imageBackground = '';
-    if (layout === 'full-image') {
-      imageBackground = this.renderFullImageBackground(slide);
+    if (layout === 'full-image' || layout === 'full-image-contained') {
+      imageBackground = this.renderFullImageBackground(slide, layout === 'full-image-contained');
     }
 
     // For half-image layouts, use special split rendering
@@ -613,7 +664,7 @@ export class SlideRenderer {
       ${showHeaderFooter ? this.renderHeader(frontmatter, index) : ''}
       <div class="slide-body">
         <div class="slide-content layout-${layout}">
-          ${layout === 'full-image' ? '' : this.renderSlideContent(slide, layout)}
+          ${layout === 'full-image' || layout === 'full-image-contained' ? '' : this.renderSlideContent(slide, layout)}
         </div>
         ${this.renderFootnotes(slide, layout)}
       </div>
@@ -735,8 +786,9 @@ export class SlideRenderer {
 
   /**
    * Render full-image layout as a background layer (edge-to-edge, no padding)
+   * @param contained If true, use object-fit: contain instead of cover
    */
-  private renderFullImageBackground(slide: Slide): string {
+  private renderFullImageBackground(slide: Slide, contained: boolean = false): string {
     const images = slide.elements.filter((e) => e.visible && e.type === 'image');
     if (images.length === 0) {
       return '';
@@ -750,8 +802,8 @@ export class SlideRenderer {
       const x = imageData?.x || 'center';
       const y = imageData?.y || 'center';
 
-      // Build styles
-      const objectFit = imageData?.size || 'cover';
+      // Build styles - use contain for contained layouts, otherwise respect imageData or default to cover
+      const objectFit = contained ? 'contain' : (imageData?.size || 'cover');
       const styles: string[] = [
         'position: absolute',
         'top: 0',
@@ -797,7 +849,7 @@ export class SlideRenderer {
           const src = this.escapeHtml(this.resolveImageSrc(img));
           const x = imageData?.x || 'center';
           const y = imageData?.y || 'center';
-          const objectFit = imageData?.size || 'cover';
+          const objectFit = contained ? 'contain' : (imageData?.size || 'cover');
           return `<div class="image-panel image-${idx + 1}"><img src="${src}" style="object-fit: ${objectFit}; object-position: ${x} ${y};" /></div>`;
         })
         .join('\n')}
@@ -858,10 +910,16 @@ export class SlideRenderer {
       // ==================
 
       case 'full-image':
-        return this.renderFullImageLayout(images);
+        return this.renderFullImageLayout(images, false);
+
+      case 'full-image-contained':
+        return this.renderFullImageLayout(images, true);
 
       case 'caption':
-        return this.renderCaptionLayout(headings, images, bodyElements);
+        return this.renderCaptionLayout(headings, images, bodyElements, false);
+
+      case 'caption-contained':
+        return this.renderCaptionLayout(headings, images, bodyElements, true);
 
       // ==================
       // SPECIAL LAYOUTS
@@ -1238,10 +1296,11 @@ export class SlideRenderer {
   // ==================
 
   /**
-   * Full Image Layout: Images fill the entire slide with object-fit: cover
+   * Full Image Layout: Images fill the entire slide
    * First image fills the whole slide; multiple images split the space equally
+   * @param contained If true, use object-fit: contain instead of cover
    */
-  private renderFullImageLayout(images: SlideElement[]): string {
+  private renderFullImageLayout(images: SlideElement[], contained: boolean = false): string {
     if (images.length === 0) {
       return `<div class="slide-content full-image-content empty">No images</div>`;
     }
@@ -1256,7 +1315,7 @@ export class SlideRenderer {
       // Build style for positioning
       const x = imageData?.x || 'center';
       const y = imageData?.y || 'center';
-      const objectFit = imageData?.size || 'cover';
+      const objectFit = contained ? 'contain' : (imageData?.size || 'cover');
       const objectPosition = `${x} ${y}`;
 
       return `
@@ -1279,7 +1338,7 @@ export class SlideRenderer {
             const alt = imageData?.alt ? this.escapeHtml(imageData.alt) : '';
             const x = imageData?.x || 'center';
             const y = imageData?.y || 'center';
-            const objectFit = imageData?.size || 'cover';
+            const objectFit = contained ? 'contain' : (imageData?.size || 'cover');
             return `
           <div class="image-slot">
             <img src="${src}" alt="${alt}" style="object-fit: ${objectFit}; object-position: ${x} ${y};" />
@@ -1291,11 +1350,13 @@ export class SlideRenderer {
 
   /**
    * Caption Layout: Full image with title bar at top, optional caption at bottom
+   * @param contained If true, use object-fit: contain instead of cover
    */
   private renderCaptionLayout(
     headings: SlideElement[],
     images: SlideElement[],
-    bodyElements: SlideElement[]
+    bodyElements: SlideElement[],
+    contained: boolean = false
   ): string {
     return `
       <div class="slide-content caption-content">
@@ -1306,7 +1367,7 @@ export class SlideRenderer {
           ${images
             .map((img) => {
               const imageData = img.imageData;
-              const objectFit = imageData?.size || 'cover';
+              const objectFit = contained ? 'contain' : (imageData?.size || 'cover');
               const x = imageData?.x || 'center';
               const y = imageData?.y || 'center';
               return `
@@ -2436,12 +2497,21 @@ export class SlideRenderer {
         padding-bottom: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
         padding-left: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
       }
-      .layout-full-image { 
+      .layout-full-image,
+      .layout-full-image-contained { 
         padding: 0; 
         flex-direction: row; 
       }
-      .layout-full-image .image-slot { flex: 1; height: 100%; }
+      .layout-full-image .image-slot,
+      .layout-full-image-contained .image-slot { 
+        flex: 1; 
+        height: 100%; 
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
       .layout-full-image .image-slot img { width: 100%; height: 100%; object-fit: cover; }
+      .layout-full-image-contained .image-slot img { width: 100%; height: 100%; object-fit: contain; }
       
       /* ============================================
          LAYOUT: CAPTION - Full bleed image with headline overlay
@@ -2473,7 +2543,8 @@ export class SlideRenderer {
         flex-direction: column;
         min-height: 0;
       }
-      .layout-caption { 
+      .layout-caption,
+      .layout-caption-contained { 
         position: static !important;
         left: auto !important;
         right: auto !important;
@@ -2485,13 +2556,15 @@ export class SlideRenderer {
         flex-direction: column;
         min-height: 0;
       }
-      .layout-caption .caption-content {
+      .layout-caption .caption-content,
+      .layout-caption-contained .caption-content {
         flex: 1 1 auto;
         display: flex;
         flex-direction: column;
         min-height: 0;
       }
-      .layout-caption .slot-title-bar { 
+      .layout-caption .slot-title-bar,
+      .layout-caption-contained .slot-title-bar { 
         flex: 0 0 auto;
         padding: 0 calc(var(--slide-unit) * 2);
         background: transparent;
@@ -2505,7 +2578,13 @@ export class SlideRenderer {
       .layout-caption .slot-title-bar h3,
       .layout-caption .slot-title-bar h4,
       .layout-caption .slot-title-bar h5,
-      .layout-caption .slot-title-bar h6 {
+      .layout-caption .slot-title-bar h6,
+      .layout-caption-contained .slot-title-bar h1,
+      .layout-caption-contained .slot-title-bar h2,
+      .layout-caption-contained .slot-title-bar h3,
+      .layout-caption-contained .slot-title-bar h4,
+      .layout-caption-contained .slot-title-bar h5,
+      .layout-caption-contained .slot-title-bar h6 {
         font-family: var(--title-font, system-ui, -apple-system, sans-serif) !important;
         font-weight: var(--title-font-weight, 700) !important;
         font-size: calc(var(--slide-unit) * 3.5 * var(--title-font-scale, 1) * var(--font-scale, 1));
@@ -2514,7 +2593,8 @@ export class SlideRenderer {
         padding: 0;
         display: block;
       }
-      .layout-caption .slot-image { 
+      .layout-caption .slot-image,
+      .layout-caption-contained .slot-image { 
         flex: 1 1 auto;
         display: flex;
         min-height: 0;
@@ -2522,10 +2602,13 @@ export class SlideRenderer {
         overflow: hidden;
         width: 100%;
       }
-      .layout-caption .slot-image .image-slot {
+      .layout-caption .slot-image .image-slot,
+      .layout-caption-contained .slot-image .image-slot {
         width: 100%;
         height: 100%;
         display: flex;
+        justify-content: center;
+        align-items: center;
       }
       .layout-caption .slot-image img { 
         width: 100%; 
@@ -2533,7 +2616,14 @@ export class SlideRenderer {
         object-fit: cover; 
         display: block;
       }
-      .layout-caption .slot-caption { 
+      .layout-caption-contained .slot-image img { 
+        width: 100%; 
+        height: 100%; 
+        object-fit: contain; 
+        display: block;
+      }
+      .layout-caption .slot-caption,
+      .layout-caption-contained .slot-caption { 
         flex: 0 0 auto;
         padding: 0 calc(var(--slide-unit) * 2);
         background: transparent;
@@ -2544,7 +2634,8 @@ export class SlideRenderer {
         justify-content: flex-start;
         height: calc(var(--slide-unit) * 6);
       }
-      .layout-caption .slot-caption p {
+      .layout-caption .slot-caption p,
+      .layout-caption-contained .slot-caption p {
         margin: 0;
         padding: 0;
         line-height: 1.0;

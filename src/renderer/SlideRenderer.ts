@@ -1470,9 +1470,9 @@ export class SlideRenderer {
     const src = this.escapeHtml(this.resolveImageSrc(element));
     const alt = imageData?.alt ? this.escapeHtml(imageData.alt) : '';
 
-    // Check if this is a loading spinner (excalidraw:// without cached result)
-    const isLoading = src.startsWith('data:image/svg+xml;base64,') && 
-                      this.isLoadingSpinnerSvg(src);
+    // Check if this is a loading spinner OR any Excalidraw SVG data URL
+    const isExcalidrawSvg = src.startsWith('data:image/svg+xml');
+    const isLoading = isExcalidrawSvg && this.isLoadingSpinnerSvg(src);
 
     // Build inline styles for positioning
     const styles: string[] = [];
@@ -1508,9 +1508,9 @@ export class SlideRenderer {
 
     const styleAttr = styles.length > 0 ? ` style="${styles.join('; ')}"` : '';
 
-    // If loading spinner, wrap in a container with fixed size to prevent stretching
-    if (isLoading) {
-      return `<figure class="image-figure loading-spinner-container"><img src="${src}" alt="${alt}" class="loading-spinner-img" /></figure>`;
+    // If Excalidraw SVG (spinner or converted), wrap in container with fixed max size to prevent stretching
+    if (isExcalidrawSvg) {
+      return `<figure class="image-figure excalidraw-svg-container"><img src="${src}" alt="${alt}" class="excalidraw-svg-img" /></figure>`;
     }
 
     // Wrap in figure for semantic markup

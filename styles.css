@@ -1627,21 +1627,23 @@
 }
 
 /* ================================
-   Excalidraw Loading Spinner
+   Excalidraw SVG Container
    ================================ */
 
-/* Container for loading spinner - prevents stretching */
-.loading-spinner-container {
+/* Container for Excalidraw SVGs (both spinner and converted) */
+/* Prevents stretching while respecting slide layout */
+.excalidraw-svg-container {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100px;
+  width: 100%;
+  height: 100%;
 }
 
-/* Loading spinner image - fixed size, not stretched */
-.loading-spinner-img {
-  width: 60px;
-  height: 60px;
+/* Excalidraw SVG image - respects aspect ratio, max size constraint */
+.excalidraw-svg-img {
+  max-width: 95%;
+  max-height: 95%;
   object-fit: contain;
   object-position: center;
 }

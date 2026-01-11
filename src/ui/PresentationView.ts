@@ -8,6 +8,7 @@ import { getTheme } from '../themes';
 import type { ThemeLoader } from '../themes/ThemeLoader';
 import { PresentationWindow } from './PresentationWindow';
 import { getDebugService } from '../utils/DebugService';
+import type { ExcalidrawCacheEntry } from '../utils/ExcalidrawRenderer';
 
 export const PRESENTATION_VIEW_TYPE = 'perspecta-presentation';
 
@@ -30,7 +31,7 @@ export class PresentationView extends ItemView {
   private onStartPresenterView: ((file: TFile) => Promise<void>) | null = null;
   private onExportHTML: ((file: TFile) => Promise<void>) | null = null;
   private fontWeightsCache: Map<string, number[]> = new Map();
-  private excalidrawSvgCache: Map<string, string> | null = null;
+  private excalidrawSvgCache: Map<string, ExcalidrawCacheEntry> | null = null;
   private failedDecompressionFiles: Set<string> = new Set();
 
   // Live update related properties
@@ -89,7 +90,7 @@ export class PresentationView extends ItemView {
   /**
    * Set the Excalidraw SVG cache (for native Excalidraw rendering)
    */
-  setExcalidrawSvgCache(cache: Map<string, string>): void {
+  setExcalidrawSvgCache(cache: Map<string, ExcalidrawCacheEntry>): void {
     this.excalidrawSvgCache = cache;
   }
 

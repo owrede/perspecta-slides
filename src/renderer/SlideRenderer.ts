@@ -9,6 +9,7 @@ import type {
 import { ImageData } from '../types';
 import { generateThemeCSS } from '../themes';
 import { getDebugService } from '../utils/DebugService';
+import type { ExcalidrawCacheEntry } from '../utils/ExcalidrawRenderer';
 
 /**
  * SlideRenderer-Renders presentations to HTML
@@ -30,7 +31,7 @@ export class SlideRenderer {
   private customFontCSS: string = '';
   private systemColorScheme: 'light' | 'dark' = 'light';
   private fontWeightsCache: Map<string, number[]> = new Map(); // Cache of font name -> available weights
-  private excalidrawSvgCache: Map<string, string> | null = null; // Reference to ExcalidrawRenderer's cache
+  private excalidrawSvgCache: Map<string, ExcalidrawCacheEntry> | null = null; // Reference to ExcalidrawRenderer's cache
   private failedDecompressionFiles: Set<string> = new Set(); // Files that couldn't be auto-decompressed
 
   constructor(presentation: Presentation, theme?: Theme, resolveImagePath?: ImagePathResolver) {
@@ -117,7 +118,7 @@ export class SlideRenderer {
    * Set reference to ExcalidrawRenderer's SVG cache
    * This allows us to look up asynchronously-converted SVGs
    */
-  setExcalidrawSvgCache(cache: Map<string, string>): void {
+  setExcalidrawSvgCache(cache: Map<string, ExcalidrawCacheEntry>): void {
     this.excalidrawSvgCache = cache;
   }
 
@@ -157,10 +158,11 @@ export class SlideRenderer {
         if (this.excalidrawSvgCache.size > 0) {
           debug.log('excalidraw', `Cache keys:`, Array.from(this.excalidrawSvgCache.keys()));
         }
-        const cachedSvg = this.excalidrawSvgCache.get(filePath);
-        if (cachedSvg) {
+        const cacheEntry = this.excalidrawSvgCache.get(filePath);
+        if (cacheEntry) {
           debug.log('excalidraw', `✅ Found cached SVG for: ${filePath}`);
-          return cachedSvg;
+          // Cache entry contains dataUrl and cachedAt timestamp
+          return cacheEntry.dataUrl;
         }
         debug.log('excalidraw', `❌ SVG not in cache for: ${filePath}`);
       } else {
@@ -1678,13 +1680,10 @@ export class SlideRenderer {
       });
     }
 
-    // Convert newlines to <br /> tags
-    // Preserve escaped backslashes (\\n should display as \n)
-    const ESCAPED_BACKSLASH_PLACEHOLDER = '___ESCAPED_BACKSLASH___';
-    html = html.replace(/\\\\n/g, ESCAPED_BACKSLASH_PLACEHOLDER); // temporarily replace \\n
-    html = html.replace(/\\n/g, '<br />'); // replace unescaped \n with <br />
-    html = html.replace(/\n/g, '<br />'); // replace actual newline characters
-    html = html.replace(new RegExp(ESCAPED_BACKSLASH_PLACEHOLDER, 'g'), '\\n'); // restore escaped backslashes
+    // Convert Markdown soft line breaks to <br />
+    // Shift+Return in Obsidian creates: two trailing spaces + newline, or backslash + newline
+    html = html.replace(/  +\n/g, '<br />'); // Two or more trailing spaces before newline
+    html = html.replace(/\\\n/g, '<br />'); // Backslash before newline (CommonMark)
 
     return html;
   }

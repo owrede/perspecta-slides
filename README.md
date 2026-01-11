@@ -35,6 +35,15 @@ A powerful Obsidian plugin for creating beautiful presentations from Markdown. W
 - **Multiple images** - Grid and split layouts for photo-heavy slides
 - **Image filters** - Darken, lighten, blur, grayscale, and sepia effects
 
+### Excalidraw Integration
+
+- **Native rendering** - Embed Excalidraw drawings directly with automatic SVG conversion
+- **Frame references** - `![[drawing#^frame=FrameName]]` shows frame contents in full (elements not clipped)
+- **Clipped frames** - `![[drawing#^clippedframe=FrameName]]` clips elements at frame boundary like a window
+- **Group references** - `![[drawing#^group=elementID]]` shows grouped elements
+- **Area references** - `![[drawing#^area=elementID]]` shows cropped view around element
+- **Smart caching** - Automatic cache invalidation when Excalidraw files are modified
+
 ### Content Features
 
 - **Speaker notes** - Regular paragraphs become notes visible only to you
@@ -116,7 +125,7 @@ This is content on the slide!
 Notes:
 This paragraph is a speaker note.
 
-- This list appears on the slide (tab-indented)
+- This list appears in the speaker notes
 - So does this one
 
 More notes for the presenter.
@@ -129,6 +138,27 @@ More notes for the presenter.
 ![[folder/photo.jpg]]
 ![Alt text](path/to/image.png)
 ```
+
+### Excalidraw Drawings
+
+Embed Excalidraw drawings with optional reference types:
+
+```markdown
+![[drawing.excalidraw]]
+![[drawing#^frame=MyFrame]]
+![[drawing#^clippedframe=MyFrame]]
+![[drawing#^group=elementID]]
+![[drawing#^area=elementID]]
+```
+
+| Reference Type | Description |
+| --- | --- |
+| `frame=` | Shows frame contents in full (elements extend beyond frame if needed) |
+| `clippedframe=` | Clips elements at frame boundary like a window/mask, zero padding |
+| `group=` | Shows all elements in the same group |
+| `area=` | Cropped view around element's bounding box |
+
+Frames can be referenced by name or ID. Groups and areas can reference elements by ID or section heading (`# Heading`).
 
 ### Comments
 

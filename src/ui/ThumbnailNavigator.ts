@@ -3,6 +3,7 @@ import { ItemView } from 'obsidian';
 import type { Presentation, Slide, Theme } from '../types';
 import type { ImagePathResolver } from '../renderer/SlideRenderer';
 import { SlideRenderer } from '../renderer/SlideRenderer';
+import type { ExcalidrawCacheEntry } from '../utils/ExcalidrawRenderer';
 
 export const THUMBNAIL_VIEW_TYPE = 'perspecta-thumbnail-navigator';
 
@@ -20,7 +21,7 @@ export class ThumbnailNavigatorView extends ItemView {
   private imagePathResolver: ImagePathResolver | null = null;
   private customFontCSS: string = '';
   private fontWeightsCache: Map<string, number[]> = new Map();
-  private excalidrawSvgCache: Map<string, string> | null = null;
+  private excalidrawSvgCache: Map<string, ExcalidrawCacheEntry> | null = null;
   private failedDecompressionFiles: Set<string> = new Set();
 
   public getPresentation(): Presentation | null {
@@ -55,7 +56,7 @@ export class ThumbnailNavigatorView extends ItemView {
   /**
    * Set the Excalidraw SVG cache (for native Excalidraw rendering)
    */
-  setExcalidrawSvgCache(cache: Map<string, string>): void {
+  setExcalidrawSvgCache(cache: Map<string, ExcalidrawCacheEntry>): void {
     this.excalidrawSvgCache = cache;
   }
 

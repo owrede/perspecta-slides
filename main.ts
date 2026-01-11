@@ -81,15 +81,28 @@ export default class PerspectaSlidesPlugin extends Plugin {
   }
 
   /**
-   * Extract frame reference from path (e.g., "path#^frame=KhGXN0BZ" -> "KhGXN0BZ")
+   * Excalidraw reference types supported:
+   * - group=ID: Shows all elements sharing the same group
+   * - area=ID: Cropped view around element's bounding box
+   * - frame=ID: Shows contents of a frame (frame border may be visible)
+   * - clippedframe=ID: Like frame but clips elements at frame edges with zero padding
    */
-  private extractFrameReference(path: string): { filePath: string; frameId: string | null } {
-    const frameMatch = path.match(/#\^frame=([^#&]+)/);
-    if (frameMatch) {
+  private extractExcalidrawReference(path: string): { 
+    filePath: string; 
+    refType: 'group' | 'area' | 'frame' | 'clippedframe' | null;
+    refId: string | null;
+  } {
+    // Match any of the reference types: group=, area=, frame=, clippedframe=
+    const refMatch = path.match(/#\^(group|area|frame|clippedframe)=([^#&|]+)/);
+    if (refMatch) {
       const filePath = path.split('#')[0];
-      return { filePath, frameId: frameMatch[1] };
+      return { 
+        filePath, 
+        refType: refMatch[1] as 'group' | 'area' | 'frame' | 'clippedframe',
+        refId: refMatch[2] 
+      };
     }
-    return { filePath: path.split('#')[0], frameId: null };
+    return { filePath: path.split('#')[0], refType: null, refId: null };
   }
 
   /**
@@ -104,11 +117,11 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     // For wiki-links, resolve through Obsidian's system
     try {
-      // Extract frame reference if present (e.g., "#^frame=KhGXN0BZ")
-      const { filePath: pathWithoutFrame, frameId } = this.extractFrameReference(path);
+      // Extract Excalidraw reference if present (group=, area=, frame=, clippedframe=)
+      const { filePath: pathWithoutRef, refType, refId } = this.extractExcalidrawReference(path);
       
       // Strip other block references from path (e.g., "path#^blockid" -> "path")
-      const pathWithoutBlock = pathWithoutFrame.split('#')[0];
+      const pathWithoutBlock = pathWithoutRef.split('#')[0];
       
       // Decode any URL-encoded characters in the path (e.g., %20 for space)
       const decodedPath = decodeURIComponent(pathWithoutBlock);
@@ -133,12 +146,16 @@ export default class PerspectaSlidesPlugin extends Plugin {
             (linkedFile.path.includes('Excalidraw/') || linkedFile.name.includes('.excalidraw')));
 
         if (isExcalidrawFile) {
-          // Build cache key including frame reference if present
-          const cacheKey = frameId ? `${linkedFile.path}#^frame=${frameId}` : linkedFile.path;
+          // Build cache key including reference type and ID if present
+          const cacheKey = refType && refId 
+            ? `${linkedFile.path}#^${refType}=${refId}` 
+            : linkedFile.path;
           this.logExcalidraw(`Resolving Excalidraw drawing: ${cacheKey}`);
 
-          // Check if SVG is already cached or conversion is in progress
-          const isCached = this.excalidrawRenderer?.getSvgCache().has(cacheKey);
+          // Check if SVG is already cached (and not stale) or conversion is in progress
+          // Use file mtime to invalidate cache when Excalidraw file is modified
+          const fileMtime = linkedFile.stat.mtime;
+          const isCached = this.excalidrawRenderer?.hasCachedSvg(cacheKey, fileMtime);
           const isConverting = this.excalidrawConversionsInProgress.has(cacheKey);
 
           if (!isCached && !isConverting && this.excalidrawRenderer) {
@@ -149,7 +166,11 @@ export default class PerspectaSlidesPlugin extends Plugin {
             // Once complete, trigger a re-render so the cached SVG is displayed
             void (async () => {
               try {
-                await this.excalidrawRenderer!.toSvgDataUrl(linkedFile, frameId ?? undefined);
+                await this.excalidrawRenderer!.toSvgDataUrl(
+                  linkedFile, 
+                  refType ?? undefined, 
+                  refId ?? undefined
+                );
                 this.logExcalidraw(`✅ Converted to SVG: ${cacheKey}`);
                 // Trigger re-render to display the now-cached SVG
                 void this.rerenderPresentationWindow();
@@ -166,9 +187,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
             this.logExcalidraw(`Conversion already in progress for: ${cacheKey}`);
           }
 
-          // For frame references, skip PNG/SVG export lookup and use native rendering
-          if (frameId) {
-            this.logExcalidraw(`Frame reference detected, using native rendering: ${cacheKey}`);
+          // For any reference type, skip PNG/SVG export lookup and use native rendering
+          if (refType && refId) {
+            this.logExcalidraw(`${refType} reference detected, using native rendering: ${cacheKey}`);
             return `excalidraw://${cacheKey}`;
           }
 
@@ -256,11 +277,11 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     // For wiki-links and plain filenames, resolve to file:// URL
     try {
-      // Extract frame reference if present (e.g., "#^frame=KhGXN0BZ")
-      const { filePath: pathWithoutFrame, frameId } = this.extractFrameReference(path);
+      // Extract Excalidraw reference if present (group=, area=, frame=, clippedframe=)
+      const { filePath: pathWithoutRef, refType, refId } = this.extractExcalidrawReference(path);
       
       // Strip other block references from path (e.g., "path#^blockid" -> "path")
-      const pathWithoutBlock = pathWithoutFrame.split('#')[0];
+      const pathWithoutBlock = pathWithoutRef.split('#')[0];
       
       // Decode any URL-encoded characters in the path (e.g., %20 for space)
       const decodedPath = decodeURIComponent(pathWithoutBlock);
@@ -283,15 +304,18 @@ export default class PerspectaSlidesPlugin extends Plugin {
             (linkedFile.path.includes('Excalidraw/') || linkedFile.name.includes('.excalidraw')));
 
         if (isExcalidrawFile) {
-          // Build cache key including frame reference if present
-          const cacheKey = frameId ? `${linkedFile.path}#^frame=${frameId}` : linkedFile.path;
+          // Build cache key including reference type and ID if present
+          const cacheKey = refType && refId 
+            ? `${linkedFile.path}#^${refType}=${refId}` 
+            : linkedFile.path;
 
-          // For frame references, skip PNG/SVG export lookup and use native rendering
-          if (frameId) {
-            this.logExcalidraw(`Frame reference detected, using native rendering: ${cacheKey}`);
+          // For any reference type, skip PNG/SVG export lookup and use native rendering
+          if (refType && refId) {
+            this.logExcalidraw(`${refType} reference detected, using native rendering: ${cacheKey}`);
             
             // Check if SVG is already cached or conversion is in progress
-            const isCached = this.excalidrawRenderer?.getSvgCache().has(cacheKey);
+            const fileMtime = linkedFile.stat.mtime;
+            const isCached = this.excalidrawRenderer?.hasCachedSvg(cacheKey, fileMtime);
             const isConverting = this.excalidrawConversionsInProgress.has(cacheKey);
 
             if (!isCached && !isConverting && this.excalidrawRenderer) {
@@ -300,7 +324,11 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
               void (async () => {
                 try {
-                  await this.excalidrawRenderer!.toSvgDataUrl(linkedFile as TFile, frameId);
+                  await this.excalidrawRenderer!.toSvgDataUrl(
+                    linkedFile as TFile, 
+                    refType, 
+                    refId
+                  );
                   this.logExcalidraw(`✅ Converted to SVG: ${cacheKey}`);
                   void this.rerenderPresentationWindow();
                 } catch (e) {
@@ -314,7 +342,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
             return `excalidraw://${cacheKey}`;
           }
 
-          // For Excalidraw .md files without frame reference, look for PNG/SVG exports
+          // For Excalidraw .md files without reference, look for PNG/SVG exports
           const basePath = linkedFile.path.replace(/\.md$/, '');
           let exportFile: TFile | null = null;
 
@@ -368,7 +396,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
            );
 
            // Check if SVG is already cached or conversion is in progress
-           const isCached = this.excalidrawRenderer?.getSvgCache().has(cacheKey);
+           const fileMtime = linkedFile.stat.mtime;
+           const isCached = this.excalidrawRenderer?.hasCachedSvg(cacheKey, fileMtime);
            const isConverting = this.excalidrawConversionsInProgress.has(cacheKey);
 
            if (!isCached && !isConverting && this.excalidrawRenderer) {
@@ -378,7 +407,11 @@ export default class PerspectaSlidesPlugin extends Plugin {
              // Start async conversion immediately (non-blocking)
              void (async () => {
                try {
-                 await this.excalidrawRenderer!.toSvgDataUrl(linkedFile, frameId ?? undefined);
+                 await this.excalidrawRenderer!.toSvgDataUrl(
+                   linkedFile, 
+                   refType ?? undefined, 
+                   refId ?? undefined
+                 );
                  this.logExcalidraw(`✅ Converted to SVG: ${cacheKey}`);
                  // Trigger re-render to display the now-cached SVG
                  void this.rerenderPresentationWindow();

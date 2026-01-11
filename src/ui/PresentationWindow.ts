@@ -5,6 +5,7 @@ import type { Presentation, Theme, PresentationFrontmatter } from '../types';
 import type { ImagePathResolver } from '../renderer/SlideRenderer';
 import { SlideRenderer } from '../renderer/SlideRenderer';
 import type { PresentationCache } from '../utils/SlideHasher';
+import type { ExcalidrawCacheEntry } from '../utils/ExcalidrawRenderer';
 import {
   buildPresentationCache,
   diffPresentations,
@@ -33,7 +34,7 @@ export class PresentationWindow {
   private presentation: Presentation | null = null;
   private customFontCSS: string = '';
   private fontWeightsCache: Map<string, number[]> = new Map();
-  private excalidrawSvgCache: Map<string, string> | null = null;
+  private excalidrawSvgCache: Map<string, ExcalidrawCacheEntry> | null = null;
   private failedDecompressionFiles: Set<string> = new Set();
   private onSlideChanged: ((index: number) => void) | null = null;
   private forceReload: boolean = false;
@@ -54,7 +55,7 @@ export class PresentationWindow {
     this.fontWeightsCache = cache;
   }
 
-  setExcalidrawSvgCache(cache: Map<string, string>): void {
+  setExcalidrawSvgCache(cache: Map<string, ExcalidrawCacheEntry>): void {
     this.excalidrawSvgCache = cache;
   }
 

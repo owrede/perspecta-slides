@@ -9,8 +9,13 @@ declare const window: any;
  * Parse and render Excalidraw files to SVG
  * Supports both .excalidraw (JSON) and .excalidraw.md (markdown with JSON) files
  */
+export interface ExcalidrawCacheEntry {
+  dataUrl: string;
+  cachedAt: number; // timestamp when cached
+}
+
 export class ExcalidrawRenderer {
-  private svgCache: Map<string, string> = new Map();
+  private svgCache: Map<string, ExcalidrawCacheEntry> = new Map();
   private failedDecompressionCache: Set<string> = new Set();
   private decompressionInProgress: Set<string> = new Set();
 
@@ -29,9 +34,41 @@ export class ExcalidrawRenderer {
   }
 
   /**
-   * Get the SVG cache (used by SlideRenderer to look up converted SVGs)
+   * Get cached SVG data URL if valid (not stale)
+   * @param cacheKey The cache key (file path with optional frame reference)
+   * @param fileMtime The modification time of the source file
+   * @returns The cached data URL if valid, undefined if stale or not cached
    */
-  getSvgCache(): Map<string, string> {
+  getCachedSvg(cacheKey: string, fileMtime: number): string | undefined {
+    const entry = this.svgCache.get(cacheKey);
+    if (!entry) {
+      return undefined;
+    }
+    
+    // Check if cache is stale (file was modified after caching)
+    if (fileMtime > entry.cachedAt) {
+      this.log(`Cache stale for ${cacheKey}: file modified at ${fileMtime}, cached at ${entry.cachedAt}`);
+      this.svgCache.delete(cacheKey);
+      return undefined;
+    }
+    
+    return entry.dataUrl;
+  }
+
+  /**
+   * Check if a valid (non-stale) cache entry exists
+   * @param cacheKey The cache key (file path with optional frame reference)
+   * @param fileMtime The modification time of the source file
+   */
+  hasCachedSvg(cacheKey: string, fileMtime: number): boolean {
+    return this.getCachedSvg(cacheKey, fileMtime) !== undefined;
+  }
+
+  /**
+   * Get the raw SVG cache (used by SlideRenderer to look up converted SVGs)
+   * Note: Use getCachedSvg() for mtime-aware cache access
+   */
+  getSvgCache(): Map<string, ExcalidrawCacheEntry> {
     return this.svgCache;
   }
 
@@ -364,38 +401,285 @@ export class ExcalidrawRenderer {
   }
 
   /**
-   * Filter elements to only those contained within a specific frame
-   * In Excalidraw, frames have type "frame" and contain elements via frameId property
-   * 
-   * Note: We exclude the frame element itself to avoid rendering the frame border
-   * and label. Obsidian's Excalidraw preview also excludes these.
+   * Reference type for filtering elements
    */
-  private filterElementsByFrame(elements: any[], frameId: string): any[] {
-    // Find the frame element (for logging only, we don't include it in export)
-    const frameElement = elements.find(el => el.id === frameId && el.type === 'frame');
-    if (!frameElement) {
-      this.log(`⚠️ Frame not found: ${frameId}`);
-      // Return all elements if frame not found
+  public static readonly REF_TYPES = ['group', 'area', 'frame', 'clippedframe'] as const;
+  
+  /**
+   * Filter elements by group reference
+   * Shows all elements sharing the same group ID as the referenced element
+   */
+  private filterElementsByGroup(elements: any[], groupId: string): any[] {
+    // Find the referenced element (could be by ID or by section heading text)
+    let refElement = elements.find(el => el.id === groupId);
+    
+    // If not found by ID, try to find by section heading (text starting with #)
+    if (!refElement) {
+      refElement = elements.find(el => 
+        el.type === 'text' && 
+        el.text?.startsWith('# ') && 
+        el.text.slice(2).trim() === groupId
+      );
+    }
+    
+    if (!refElement) {
+      this.log(`⚠️ Group reference element not found: ${groupId}`);
       return elements;
     }
 
-    this.log(`Found frame: ${frameId}, name: ${frameElement.name || 'unnamed'}`);
+    // Get the group IDs this element belongs to
+    const elementGroupIds = refElement.groupIds || [];
+    if (elementGroupIds.length === 0) {
+      this.log(`⚠️ Referenced element has no groups: ${groupId}`);
+      // Return just this element if it has no groups
+      return [refElement];
+    }
+
+    this.log(`Found group reference: ${groupId}, groupIds: ${elementGroupIds.join(', ')}`);
+
+    // Get all elements that share any of the same group IDs
+    const groupedElements = elements.filter(el => {
+      const elGroupIds = el.groupIds || [];
+      return elGroupIds.some((gid: string) => elementGroupIds.includes(gid));
+    });
+    
+    this.log(`Group contains ${groupedElements.length} elements`);
+    return groupedElements;
+  }
+
+  /**
+   * Filter elements by area reference
+   * Cropped view around the referenced element's bounding box
+   */
+  private filterElementsByArea(elements: any[], areaId: string): any[] {
+    // Find the referenced element
+    let refElement = elements.find(el => el.id === areaId);
+    
+    // If not found by ID, try to find by section heading
+    if (!refElement) {
+      refElement = elements.find(el => 
+        el.type === 'text' && 
+        el.text?.startsWith('# ') && 
+        el.text.slice(2).trim() === areaId
+      );
+    }
+    
+    if (!refElement) {
+      this.log(`⚠️ Area reference element not found: ${areaId}`);
+      return elements;
+    }
+
+    this.log(`Found area reference: ${areaId}`);
+
+    // Get bounding box of the reference element
+    const refBounds = {
+      x1: refElement.x,
+      y1: refElement.y,
+      x2: refElement.x + (refElement.width || 0),
+      y2: refElement.y + (refElement.height || 0),
+    };
+
+    // Find all elements that intersect with this bounding box
+    const areaElements = elements.filter(el => {
+      if (el === refElement) return true; // Always include reference element
+      
+      const elBounds = {
+        x1: el.x,
+        y1: el.y,
+        x2: el.x + (el.width || 0),
+        y2: el.y + (el.height || 0),
+      };
+      
+      // Check for intersection
+      return !(elBounds.x2 < refBounds.x1 || 
+               elBounds.x1 > refBounds.x2 || 
+               elBounds.y2 < refBounds.y1 || 
+               elBounds.y1 > refBounds.y2);
+    });
+    
+    this.log(`Area contains ${areaElements.length} elements`);
+    return areaElements;
+  }
+
+  /**
+   * Filter elements by frame reference
+   * Shows all elements belonging to the frame in their ENTIRETY (even if extending beyond frame).
+   * Elements are rendered fully - no clipping. Uses normal padding.
+   * The frame border is excluded so only content is visible.
+   */
+  private filterElementsByFrame(elements: any[], frameId: string): any[] {
+    // Find frame by ID or by name
+    let frameElement = elements.find(el => el.id === frameId && el.type === 'frame');
+    if (!frameElement) {
+      // Try finding by frame name
+      frameElement = elements.find(el => el.type === 'frame' && el.name === frameId);
+    }
+    
+    if (!frameElement) {
+      this.log(`⚠️ Frame not found: ${frameId}`);
+      return elements;
+    }
+
+    this.log(`Found frame: ${frameElement.id}, name: ${frameElement.name || 'unnamed'}`);
 
     // Get all elements that belong to this frame (have frameId property matching)
-    // Exclude the frame element itself to hide the frame border and label
-    const frameElements = elements.filter(el => el.frameId === frameId);
+    // Elements are returned in full - no clipping, even if they extend beyond frame
+    const frameElements = elements.filter(el => el.frameId === frameElement.id);
     
-    this.log(`Frame contains ${frameElements.length} elements (frame border/label excluded)`);
+    // Do NOT include the frame element - just return the contents
+    // This shows elements in their entirety without the frame border
+    this.log(`Frame contains ${frameElements.length} elements (full elements, no clipping)`);
     return frameElements;
+  }
+
+  /**
+   * Filter elements by clipped frame reference
+   * Shows frame contents CLIPPED to the frame boundary (like a window/mask).
+   * Elements extending beyond the frame are cut off at the edge.
+   * Returns frame bounds for SVG clipping.
+   */
+  private filterElementsByClippedFrame(elements: any[], frameId: string): { 
+    elements: any[]; 
+    clipBounds: { x: number; y: number; width: number; height: number } | null 
+  } {
+    // Find frame by ID or by name
+    let frameElement = elements.find(el => el.id === frameId && el.type === 'frame');
+    if (!frameElement) {
+      // Try finding by frame name
+      frameElement = elements.find(el => el.type === 'frame' && el.name === frameId);
+    }
+    
+    if (!frameElement) {
+      this.log(`⚠️ Clipped frame not found: ${frameId}`);
+      return { elements, clipBounds: null };
+    }
+
+    this.log(`Found clipped frame: ${frameElement.id}, name: ${frameElement.name || 'unnamed'}`);
+    this.log(`Frame bounds: x=${frameElement.x}, y=${frameElement.y}, w=${frameElement.width}, h=${frameElement.height}`);
+
+    // Get all elements that belong to this frame
+    const frameElements = elements.filter(el => el.frameId === frameElement.id);
+    
+    // Return elements and the frame bounds for clipping
+    const clipBounds = {
+      x: frameElement.x,
+      y: frameElement.y,
+      width: frameElement.width,
+      height: frameElement.height,
+    };
+    
+    this.log(`Clipped frame contains ${frameElements.length} elements (will clip at frame boundary)`);
+    return { elements: frameElements, clipBounds };
+  }
+
+  /**
+   * Filter elements based on reference type and ID
+   */
+  private filterElements(
+    elements: any[], 
+    refType: 'group' | 'area' | 'frame' | 'clippedframe', 
+    refId: string
+  ): { 
+    elements: any[]; 
+    padding: number; 
+    clipBounds: { x: number; y: number; width: number; height: number } | null 
+  } {
+    switch (refType) {
+      case 'group':
+        return { elements: this.filterElementsByGroup(elements, refId), padding: 10, clipBounds: null };
+      case 'area':
+        return { elements: this.filterElementsByArea(elements, refId), padding: 10, clipBounds: null };
+      case 'frame':
+        return { elements: this.filterElementsByFrame(elements, refId), padding: 10, clipBounds: null };
+      case 'clippedframe': {
+        // Zero padding for clipped frames, with clip bounds
+        const result = this.filterElementsByClippedFrame(elements, refId);
+        return { elements: result.elements, padding: 0, clipBounds: result.clipBounds };
+      }
+      default:
+        return { elements, padding: 10, clipBounds: null };
+    }
+  }
+
+  /**
+   * Apply a clipping rectangle to an SVG string
+   * Used for clippedframe references to mask content at frame boundary
+   */
+  private applyClipToSvg(
+    svgString: string, 
+    clipBounds: { x: number; y: number; width: number; height: number },
+    elements: any[]
+  ): string {
+    // Calculate the bounding box of all elements to understand the SVG coordinate system
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const el of elements) {
+      if (el.x !== undefined && el.y !== undefined) {
+        minX = Math.min(minX, el.x);
+        minY = Math.min(minY, el.y);
+        maxX = Math.max(maxX, el.x + (el.width || 0));
+        maxY = Math.max(maxY, el.y + (el.height || 0));
+      }
+    }
+    
+    // The SVG viewBox starts at the minimum element coordinates (no padding for clippedframe)
+    // The clip rect needs to be in SVG coordinate space
+    const clipX = clipBounds.x - minX;
+    const clipY = clipBounds.y - minY;
+    
+    this.log(`Applying clip: frame(${clipBounds.x},${clipBounds.y},${clipBounds.width},${clipBounds.height}), elements minXY(${minX},${minY}), clipXY(${clipX},${clipY})`);
+
+    // Create a unique ID for the clipPath
+    const clipId = `clip-${Date.now()}`;
+    
+    // Create the clipPath definition
+    const clipPathDef = `<defs><clipPath id="${clipId}"><rect x="${clipX}" y="${clipY}" width="${clipBounds.width}" height="${clipBounds.height}"/></clipPath></defs>`;
+    
+    // Insert clipPath after opening <svg> tag and wrap content in a group with clip-path
+    // Find the end of the opening <svg ...> tag
+    const svgOpenMatch = svgString.match(/<svg[^>]*>/);
+    if (!svgOpenMatch) {
+      this.warn('Could not find SVG opening tag for clipping');
+      return svgString;
+    }
+    
+    const svgOpenTag = svgOpenMatch[0];
+    const svgOpenEnd = svgString.indexOf(svgOpenTag) + svgOpenTag.length;
+    const beforeContent = svgString.slice(0, svgOpenEnd);
+    const afterOpen = svgString.slice(svgOpenEnd);
+    
+    // Find the closing </svg> tag
+    const closingTagIndex = afterOpen.lastIndexOf('</svg>');
+    if (closingTagIndex === -1) {
+      this.warn('Could not find SVG closing tag for clipping');
+      return svgString;
+    }
+    
+    const svgContent = afterOpen.slice(0, closingTagIndex);
+    const closingTag = afterOpen.slice(closingTagIndex);
+    
+    // Wrap the content in a clipped group
+    const clippedSvg = `${beforeContent}${clipPathDef}<g clip-path="url(#${clipId})">${svgContent}</g>${closingTag}`;
+    
+    // Update the viewBox to match the clip bounds
+    const newViewBox = `${clipX} ${clipY} ${clipBounds.width} ${clipBounds.height}`;
+    const finalSvg = clippedSvg.replace(/viewBox="[^"]*"/, `viewBox="${newViewBox}"`);
+    
+    this.log(`Applied clip with viewBox: ${newViewBox}`);
+    return finalSvg;
   }
 
   /**
    * Convert Excalidraw file to SVG data URL
    * Returns data:image/svg+xml;base64,... for embedding in <img> tags
    * @param file The Excalidraw file to convert
-   * @param frameId Optional frame ID to export only elements within that frame
+   * @param refType Optional reference type (group, area, frame, clippedframe)
+   * @param refId Optional reference ID to filter elements
    */
-  async toSvgDataUrl(file: TFile, frameId?: string): Promise<string> {
+  async toSvgDataUrl(
+    file: TFile, 
+    refType?: 'group' | 'area' | 'frame' | 'clippedframe',
+    refId?: string
+  ): Promise<string> {
     try {
       const data = await this.parseExcalidrawFile(file);
 
@@ -404,11 +688,17 @@ export class ExcalidrawRenderer {
         throw new Error('Invalid Excalidraw file format: missing elements array');
       }
 
-      // Filter elements by frame if frameId is provided
+      // Filter elements based on reference type if provided
       let elementsToExport = data.elements;
-      if (frameId) {
-        this.log(`Filtering by frame: ${frameId}`);
-        elementsToExport = this.filterElementsByFrame(data.elements, frameId);
+      let exportPadding = 10;
+      let clipBounds: { x: number; y: number; width: number; height: number } | null = null;
+      
+      if (refType && refId) {
+        this.log(`Filtering by ${refType}: ${refId}`);
+        const filtered = this.filterElements(data.elements, refType, refId);
+        elementsToExport = filtered.elements;
+        exportPadding = filtered.padding;
+        clipBounds = filtered.clipBounds;
       }
 
       // Export to SVG string
@@ -416,20 +706,29 @@ export class ExcalidrawRenderer {
         elements: elementsToExport,
         appState: data.appState || {},
         files: data.files || {},
-        exportPadding: 10,
+        exportPadding,
       });
 
-      // Convert SVG to data URL
-      const svgString = svg.outerHTML;
+      // Apply clipping for clippedframe references
+      let svgString = svg.outerHTML;
+      if (clipBounds) {
+        svgString = this.applyClipToSvg(svgString, clipBounds, elementsToExport);
+      }
       this.log(`SVG string length: ${svgString.length}`);
       
       const base64 = btoa(unescape(encodeURIComponent(svgString)));
       const dataUrl = `data:image/svg+xml;base64,${base64}`;
 
-      // Cache it for SlideRenderer (include frameId in cache key if present)
-      const cacheKey = frameId ? `${file.path}#^frame=${frameId}` : file.path;
-      this.svgCache.set(cacheKey, dataUrl);
-      this.log(`✅ Cached SVG for: ${cacheKey}`);
+      // Cache it for SlideRenderer (include reference in cache key if present)
+      // Store with current timestamp for cache invalidation based on file mtime
+      const cacheKey = refType && refId 
+        ? `${file.path}#^${refType}=${refId}` 
+        : file.path;
+      this.svgCache.set(cacheKey, {
+        dataUrl,
+        cachedAt: Date.now(),
+      });
+      this.log(`✅ Cached SVG for: ${cacheKey} at ${Date.now()}`);
       this.log(`Cache now contains: ${this.svgCache.size} items`);
 
       return dataUrl;

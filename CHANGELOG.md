@@ -2,149 +2,100 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.11] - 2026-01-11
+
+- New: Excalidraw reference types support - group=, area=, frame=, clippedframe=
+- New: group= reference shows all elements sharing the same Excalidraw group
+- New: area= reference shows cropped view around element bounding box
+- New: frame= reference shows frame contents in their entirety (elements not clipped even if extending beyond frame)
+- New: clippedframe= reference clips elements at frame boundary like a window/mask, zero padding
+- New: Frames can be referenced by ID or name
+- New: Group/area can reference elements by ID or section heading (# Heading)
+- New: Excalidraw cache invalidation based on file modification time
+- Technical: Each reference type uses separate cache keys for proper invalidation
+- Changed: Soft line breaks now use standard Markdown syntax (Shift+Return / two trailing spaces) instead of \n
+
 ## [0.2.10] - 2026-01-10
 
-### New Features
+- New: "Create Demo Presentation" button in Settings → Presentation tab showcasing the default theme
+- New: Auto-install Inter font when creating demo presentation for seamless setup
+- New: Obsidian wiki-link stripping when links are disabled - [[page]] renders as "page", [[page|text]] renders as "text"
+- Improved: H3+ headlines in default layout now treated as slide content (column separators) instead of headers
+- Improved: Single-column default layout now uses consistent CSS styling (ratio-equal class) matching 1-column layout
+- Added: MIT License file
+- Removed: Description text from "Enable Obsidian Links" toggle for cleaner UI
 
-- **New**: "Create Demo Presentation" button in Settings → Presentation tab showcasing the default theme
-- **New**: Auto-install Inter font when creating demo presentation for seamless setup
-- **New**: Newline support - `\n` and actual newlines in slide content now render as `<br />` in HTML
-- **New**: Obsidian wiki-link stripping when links are disabled - `[[page]]` renders as "page", `[[page|text]]` renders as "text"
+## [0.2.9] - 2026-01-10
 
-### Improvements
-
-- **Improved**: H3+ headlines in default layout now treated as slide content (column separators) instead of headers
-- **Improved**: Single-column default layout now uses consistent CSS styling (ratio-equal class) matching 1-column layout
-- **Improved**: Cleaner UI with description text removed from "Enable Obsidian Links" toggle
-
-### Other
-
-- **Added**: MIT License file
+- Updated: README with revised slide content and speaker notes sections
+- Updated: Removed kickers section from README documentation
+- Improved: Added comprehensive notes section for presenter workflow
 
 ## [0.2.8] - 2026-01-09
 
-### Breaking Changes
-
-- **Changed**: Added new "Default" theme as the only built-in theme with Inter font and dynamic gradient backgrounds
-
-### Improvements
-
-- **Improved**: Cleaner codebase with all third-party references removed
-- **Improved**: Default theme features dynamic slide-position-based gradient backgrounds
+- Changed: Added new "Default" theme as the only built-in theme with Inter font and dynamic gradient backgrounds
+- Improved: Cleaner codebase with all third-party references removed
+- Improved: Default theme features dynamic slide-position-based gradient backgrounds
 
 ## [0.2.7] - 2026-01-09
 
-### New Features
-
-- **New**: Footnotes now respect column layouts - footnote width is automatically limited to first column width on multi-column slides
-- **New**: Smart footnote width calculation accounts for column count, gaps, and content margins for 2-column, 3-column, and ratio layouts (1+2, 2+1)
-
-### Bug Fixes
-
-- **Fix**: Half-image layout content now properly aligns with header and footer when using custom `content-left`/`content-right` frontmatter values
-- **Fix**: `.half-content-panel .slide-body` CSS now uses `--content-left`/`--content-right` variables instead of hardcoded `--content-width`
+- New: Footnotes now respect column layouts - footnote width automatically limited to first column width
+- New: Smart footnote width calculation for 2-column, 3-column, and ratio layouts (1+2, 2+1)
 
 ## [0.2.6] - 2026-01-09
 
-### New Features
-
-- **New**: Footnote support - reference footnotes with `[^id]` syntax and define with `[^id]: content`
-- **New**: Footnotes render as superscript in slide content with theme link color and bold styling
-- **New**: Per-slide footnotes section with hanging numbers, separator line, and proper content margin alignment
-- **New**: Multi-line footnote definitions supported (indented continuation lines)
-- **New**: Named footnotes supported (e.g., `[^note1]`, `[^reference]`)
-
-### Improvements
-
-- **Improved**: Presentation preview now debounces updates to 1 second, reducing flicker during typing
-- **Improved**: Preview updates only refresh slide content, not the entire view
-- **Improved**: Footnotes grow upward from footer area with 2.25em spacing
-- **Improved**: Footnote numbers "hang" outside content margin for clean text alignment
-
-### Bug Fixes
-
-- **Fix**: PresentationView parser now uses correct content mode from plugin settings
-- **Fix**: Content no longer incorrectly treated as speaker notes in preview when using advanced-slides mode
-- **Fix**: Removed console.log debug messages from inter-window communication
-
-### Technical Details
-
-- **New**: `Footnote` interface added to types.ts with `id` and `content` fields
-- **New**: `footnotes` array added to `Slide` interface
-- **New**: `extractFootnoteDefinitions()` parses all footnote definitions from document
-- **New**: `extractFootnoteReferences()` finds footnote references per slide
-- **New**: `renderFootnotes()` generates footnote HTML with separator and hanging numbers
-- **New**: `.footnote-ref` CSS class for in-content superscript references
-- **New**: `.slide-footnotes`, `.footnotes-separator`, `.footnote-number`, `.footnote-text` CSS classes
-- **Improved**: `PresentationView.setDefaultContentMode()` syncs parser settings with plugin
-- **Improved**: Debounce timer cleanup on view close
+- New: Footnote support - reference footnotes with [^id] syntax and define with [^id]: content
+- New: Footnotes render as superscript in slide content with theme link color and bold styling
+- New: Per-slide footnotes section with hanging numbers, separator line, and proper content margin alignment
+- New: Multi-line footnote definitions supported (indented continuation lines)
+- New: Named footnotes supported (e.g., [^note1], [^reference])
+- Improved: Presentation preview now debounces updates to 1 second, reducing flicker during typing
+- Improved: Preview updates only refresh slide content, not the entire view
+- Improved: Footnotes grow upward from footer area with 2.25em spacing
+- Improved: Footnote numbers "hang" outside content margin for clean text alignment
+- Fix: PresentationView parser now uses correct content mode from plugin settings
+- Fix: Content no longer incorrectly treated as speaker notes in preview when using advanced-slides mode
+- Fix: Removed console.log debug messages from inter-window communication
 
 ## [0.2.5] - 2026-01-08
 
-### New Features
+- New: HTML export functionality - export presentations to standalone HTML with embedded styles and navigation
+- New: Export command "Export presentation to HTML" creates folder with index.html and external images
+- New: Exported presentations include responsive navigation: keyboard controls, click-based navigation, URL hash support
+- New: Speaker notes embedded as HTML comments in exported slides for searching without displaying
+- New: Exported presentations include help overlay (press ?) with keyboard shortcut reference
+- New: Images extracted as separate files to images/ subdirectory
+- New: Theme colors and custom fonts fully embedded in exported HTML
+- New: Double-click fullscreen support in exported presentations
+- New: Progress bar showing current slide position in exported presentations
 
-- **New**: HTML export functionality - export presentations to standalone HTML with embedded styles and navigation
-- **New**: Export command `Export presentation to HTML` creates folder with index.html and external images
-- **New**: Exported presentations include responsive navigation: keyboard controls (arrows, space, home/end), click-based navigation (left/right thirds), URL hash support for bookmarking
-- **New**: Speaker notes embedded as HTML comments in exported slides for searching without displaying
-- **New**: Exported presentations include help overlay (press ?) with keyboard shortcut reference
-- **New**: Images extracted as separate files to images/ subdirectory, keeping HTML file sizes minimal
-- **New**: Theme colors and custom fonts fully embedded in exported HTML
-- **New**: Double-click fullscreen support in exported presentations
-- **New**: Progress bar showing current slide position in exported presentations
+## [0.2.4] - 2026-01-07
 
-### Technical Details
-
-- **New**: ExportService class handles all export operations (image extraction, path resolution, HTML generation)
-- **New**: Image path resolver integrated with Obsidian vault system - supports wiki-links and relative paths
-- **New**: Slide counter and progress tracking in exported HTML viewer
-- **New**: Responsive CSS in exported presentations works across all screen sizes
-- **New**: Exported folder structure: `presentation-name-export/index.html` and `images/` subfolder
+- Fix: PresenterWindow refactored with improved layout stability
+- Improved: Speaker view layout reorganization for better readability
 
 ## [0.2.3] - 2026-01-07
 
-### Bug Fixes
-
-- **Fix**: Variable font files now stored as single file per style (not expanded per weight)
-- **Fix**: Bold text (weight 700) now persists when changing body font weight
-- **Fix**: @font-face CSS now always includes weight 700 for body font to support `<strong>` and `<b>` tags
-- **Fix**: Font cache reload after deletion - can now re-download deleted fonts immediately
-
-### New Features
-
-- **New**: Font download dialog now accepts plain font names (e.g., "Saira", "Open Sans") instead of requiring URLs
-- **New**: Font names with spaces are fully supported in both download and display
-- **New**: Fonts sorted alphabetically in Settings Downloaded Fonts list
-- **New**: Fonts sorted alphabetically in all Inspector font dropdowns
-
-### Technical Improvements
-
-- **Improved**: Font expansion logic simplified - variable fonts detected by checking weights array from cache
+- Fix: Variable font files now stored as single file per style (not expanded per weight)
+- Fix: Bold text (weight 700) now persists when changing body font weight
+- Fix: @font-face CSS now always includes weight 700 for body font to support <strong> and <b> tags
+- Fix: Font cache reload after deletion - can now re-download deleted fonts immediately
+- New: Font download dialog now accepts plain font names (e.g., "Saira", "Open Sans") instead of requiring URLs
+- New: Font names with spaces are fully supported in both download and display
+- New: Fonts sorted alphabetically in Settings Downloaded Fonts list
+- New: Fonts sorted alphabetically in all Inspector font dropdowns
+- Improved: Font expansion logic simplified - variable fonts detected by checking weights array from cache
 
 ## [0.2.2] - 2026-01-07
 
-### Bug Fixes
-
-- **Fix**: Unsafe type assertions on view casts - added `instanceof` checks throughout codebase to prevent "is not a function" errors
-- **Fix**: Image path resolution in presentation window - plain filenames and wiki-link style paths now properly resolve to vault files
-- **Fix**: PresentationWindow type guard checks for ThumbnailNavigatorView, PresentationView, and InspectorPanelView
-- **Fix**: handleCursorPositionChange, updateSidebarsWithPresentation, applyContentUpdate, and applyStructuralUpdate now use proper type guards
-
-### New Features
-
-- **New**: Lock Aspect Ratio toggle in Inspector Presentation tab - maintains slideshow aspect ratio with letterbox/pillarbox black bars
-- **New**: Aspect ratio locking respects 16:9, 4:3, and 16:10 formats while filling window with centered slides
-- **New**: Global Text Scale slider in Inspector Typography tab (0.5x to 2.0x) - multiplies all typography sizes without changing theme defaults
-- **New**: Typography scaling now uses geometric mean approximation for orientation-independent sizing
-- **New**: Bold text color customization with lightBoldColor and darkBoldColor frontmatter properties
-- **New**: Startup view initialization fixed - presentation views now load with correct theme colors when Obsidian restarts with visible panels
-
-### Technical Improvements
-
-- **Improved**: All view.getLeavesOfType() loops now check instance type before calling methods
-- **Improved**: Background image paths now resolve through same system as wiki-link images
-- **Improved**: Presentation window aspect ratio CSS cascades properly with base styles
-- **Improved**: Font-size scaling uses `calc((1vw + 1vh) / 2)` for better aspect-ratio independence
+- Fix: Unsafe type assertions on view casts - added instanceof checks throughout codebase
+- Fix: Image path resolution in presentation window - plain filenames and wiki-link paths now properly resolve
+- New: Lock Aspect Ratio toggle in Inspector Presentation tab - maintains slideshow aspect ratio with letterbox/pillarbox
+- New: Aspect ratio locking respects 16:9, 4:3, and 16:10 formats with centered slides
+- New: Global Text Scale slider in Inspector Typography tab (0.5x to 2.0x)
+- New: Typography scaling uses geometric mean approximation for orientation-independent sizing
+- New: Bold text color customization with lightBoldColor and darkBoldColor frontmatter properties
+- New: Startup view initialization fixed - presentation views load with correct theme colors on Obsidian restart
 
 ## [0.2.1] - 2026-01-06
 
@@ -160,126 +111,105 @@ All notable changes to Perspecta Slides will be documented in this file.
 
 ## [0.2.0] - 2026-01-06
 
-### Theme System Overhaul
-
-- **New**: Semantic colors replace generic accent colors (link, bullet, blockquote border, table header, code border, progress bar)
-- **New**: Save current presentation as self-contained theme package with all assets
-- **New**: Theme export includes: `theme.json`, `theme.css`, fonts/, images, and `<themename>-demo.md`
-- **New**: Images automatically copied with `<themename>-` prefix for uniqueness
-- **New**: Demo markdown file with clean frontmatter (only theme reference) and updated image paths
-- **New**: All slider values become theme defaults - can be reset via "Reset" icons
-- **New**: Sensible CSS defaults when no theme is loaded
-
-### Custom Themes
-
-- **New**: Custom themes saved to configurable folder (default: `perspecta-themes/`)
-- **New**: Custom themes include all settings: fonts, colors, typography, margins, and spacing
-- **New**: Bundled fonts - custom themes automatically include cached Google Fonts in `fonts/` subfolder
-- **New**: Existing themes can be overwritten after user confirmation
-- **New**: Custom themes appear in all theme dropdowns with ★ marker
-
-### Inspector Improvements
-
-- **New**: Semantic Colors section with explicit color pickers for links, bullets, blockquotes, tables, code, progress bar
-- **Improved**: Font dropdowns now show theme default font name (e.g., "Theme Default (Barlow)")
-- **Improved**: Header/Footer font dropdowns show inherited font (e.g., "Inherit from Body (Helvetica)")
-- **Improved**: Theme color and typography settings from custom themes now apply correctly to slides
-
-### Technical
-
-- **New**: ThemeLoader supports loading from new `theme.json` format (Perspecta custom themes)
-- **New**: Custom theme fonts loaded from theme's `fonts/` folder (not just global cache)
-- **New**: Theme presets data preserved for per-heading colors and layout-specific backgrounds
-- **New**: ThemeExporter creates complete, shareable theme packages ready to become built-in themes
-- **Fix**: Theme resolution unified across all components (main, Inspector, PresentationView)
+- New: Semantic colors replace generic accent colors (link, bullet, blockquote border, table header, code border, progress bar)
+- New: Save current presentation as self-contained theme package with all assets
+- New: Theme export includes: theme.json, theme.css, fonts/, images, and <themename>-demo.md
+- New: Images automatically copied with <themename>- prefix for uniqueness
+- New: Demo markdown file with clean frontmatter (only theme reference) and updated image paths
+- New: All slider values become theme defaults - can be reset via "Reset" icons
+- New: Sensible CSS defaults when no theme is loaded
+- New: Custom themes saved to configurable folder (default: perspecta-themes/)
+- New: Custom themes include all settings: fonts, colors, typography, margins, and spacing
+- New: Bundled fonts - custom themes automatically include cached Google Fonts in fonts/ subfolder
+- New: Existing themes can be overwritten after user confirmation
+- New: Custom themes appear in all theme dropdowns with ★ marker
+- New: Semantic Colors section with explicit color pickers for links, bullets, blockquotes, tables, code, progress bar
+- Improved: Font dropdowns now show theme default font name (e.g., "Theme Default (Barlow)")
+- Improved: Header/Footer font dropdowns show inherited font (e.g., "Inherit from Body (Helvetica)")
+- Improved: Theme color and typography settings from custom themes now apply correctly to slides
+- New: ThemeLoader supports loading from new theme.json format (Perspecta custom themes)
+- New: Custom theme fonts loaded from theme's fonts/ folder (not just global cache)
+- New: Theme presets data preserved for per-heading colors and layout-specific backgrounds
+- New: ThemeExporter creates complete, shareable theme packages ready to become built-in themes
+- Fix: Theme resolution unified across all components (main, Inspector, PresentationView)
 
 ## [0.1.9] - 2026-01-04
 
-- **New**: Google Fonts integration - download and cache fonts locally for offline use
-- **New**: Typography tab in Inspector with FONTS, SIZES, SPACING, and OFFSETS sections
-- **New**: Font debugging toggle in Settings → Debug tab
-- **New**: Heading colors now addable/removable - headlines use Title color by default
-- **New**: Layout backgrounds now addable/removable - layouts use theme Background by default
-- **Improved**: Inspector reorganized into 4 tabs: Presentation, Typography, Theme, Slide
-- **Improved**: Slide tab "Appearance" section renamed to "Overrides" with Mode reset button
-- **Improved**: Slide background settings moved from Images tab to Slide tab
-- **Fix**: Text input fields in Inspector now save on blur instead of onChange (fixes single character bug)
-- **Fix**: Font names properly quoted in CSS variables for correct font loading
-- **Removed**: Images and Text tabs from Inspector (functionality consolidated)
+- New: Google Fonts integration - download and cache fonts locally for offline use
+- New: Typography tab in Inspector with FONTS, SIZES, SPACING, and OFFSETS sections
+- New: Font debugging toggle in Settings → Debug tab
+- New: Heading colors now addable/removable - headlines use Title color by default
+- New: Layout backgrounds now addable/removable - layouts use theme Background by default
+- Improved: Inspector reorganized into 4 tabs: Presentation, Typography, Theme, Slide
+- Improved: Slide tab "Appearance" section renamed to "Overrides" with Mode reset button
+- Improved: Slide background settings moved from Images tab to Slide tab
+- Fix: Text input fields in Inspector now save on blur instead of onChange (fixes single character bug)
+- Fix: Font names properly quoted in CSS variables for correct font loading
+- Removed: Images and Text tabs from Inspector (functionality consolidated)
 
 ## [0.1.8] - 2026-01-03
 
-- **New**: Support for dynamic background gradients in both light and dark modes
-- **Fix**: Resolved issue where font colors were not applying to themes
-- **Improved**: Theme-specific CSS classes correctly applied to presentation body for consistent typography
-- **Improved**: Automatic selection of active appearance mode (Light/Dark) in Inspector panel
+- New: Support for dynamic background gradients in both light and dark modes
+- Fix: Resolved issue where font colors were not applying to themes
+- Improved: Theme-specific CSS classes correctly applied to presentation body
+- Improved: Automatic selection of active appearance mode (Light/Dark) in Inspector panel
 
 ## [0.1.7] - 2026-01-03
 
-- **New**: `half-image` layout - vertical split with image on left or right (based on content order)
-- **New**: `half-image-horizontal` layout - horizontal split with image on top or bottom
-- **New**: Image position auto-detection: image first = image on left/top, text first = image on right/bottom
-- **New**: Image metadata parsing - add properties on lines after images
-- **New**: `size: cover | contain` - control how images fill their container
-- **New**: `x:` and `y:` positioning - control image focal point (left/center/right, top/center/bottom, or %)
-- **New**: `filter:` effects - darken, lighten, blur, grayscale, sepia
-- **New**: `opacity:` control (0-100%)
-- **Improved**: Half-image layouts now use edge-to-edge images with exact 50% splits
-- **Improved**: Inspector panel now has 4 image layout buttons (Full, Caption, Half, Half horiz.)
+- New: half-image layout - vertical split with image on left or right
+- New: half-image-horizontal layout - horizontal split with image on top or bottom
+- New: Image position auto-detection based on content order
+- New: Image metadata parsing - size (cover/contain), focal point (x, y), and filters
+- Improved: Inspector panel now has 4 image layout buttons
 
 ## [0.1.6] - 2026-01-03
 
-- **New**: Global font size offset setting (-50% to +50%) for scaling all text
-- **New**: Content top offset setting (0-50%) to push column content down
-- **New**: Reorganized Inspector tabs: Presentation, Design (theme/typography/colors), Slide (per-slide layout)
-- **Improved**: Slide header now has proper margin-bottom spacing from headline
+- New: Global font size offset setting (-50% to +50%) for scaling all text
+- New: Content top offset setting (0-50%) to push column content down
+- New: Reorganized Inspector tabs: Presentation, Design (theme/typography/colors), Slide (per-slide layout)
+- Improved: Slide header now has proper margin-bottom spacing from headline
 
 ## [0.1.5] - 2026-01-03
 
-- **Improved**: Presentation window now uses incremental updates - only redraws when displayed slide changes
-- **Improved**: Editing a slide no longer causes presentation window to jump back to first slide
-- **Improved**: Much smoother live updates while presenting - no flicker for unrelated edits
-- **Changed**: Presentation window uses drag overlay for cleaner interaction
-- **New**: Click+drag anywhere moves the window (default mode)
-- **New**: Double-click enters text selection mode, Escape exits it
-- **New**: Obsidian wiki-link image syntax (`![[image.png]]`) now supported
-- **New**: Full-image layout fills entire slide with `object-fit: cover` (no letterboxing)
-- **New**: Image metadata system (size, x, y positioning) for future enhancements
-- **Fix**: Wiki-link images now resolve correctly using Obsidian vault paths
-- **Technical**: Presentation window uses content hashing to detect changes
+- Improved: Presentation window now uses incremental updates - only redraws when displayed slide changes
+- Improved: Editing a slide no longer causes presentation window to jump back to first slide
+- Improved: Much smoother live updates while presenting - no flicker for unrelated edits
+- Changed: Presentation window uses drag overlay for cleaner interaction
+- New: Click+drag anywhere moves the window (default mode)
+- New: Double-click enters text selection mode, Escape exits it
+- New: Obsidian wiki-link image syntax (![[image.png]]) now supported
+- New: Full-image layout fills entire slide with object-fit: cover (no letterboxing)
+- New: Image metadata system (size, x, y positioning) for future enhancements
+- Fix: Wiki-link images now resolve correctly using Obsidian vault paths
+- Technical: Presentation window uses content hashing to detect changes
 
 ## [0.1.4] - 2026-01-03
 
-- **New**: Frameless presentation window - clean, distraction-free presenting
-- **New**: macOS traffic light buttons appear on hover and auto-hide after 3 seconds
-- **New**: Window draggable by clicking any non-interactive area
-- **New**: Double-click thumbnail in navigator to start presentation at that slide
-- **New**: Click navigation in presentation (left third = back, right third = forward)
-- **Improved**: ESC key behavior - exits fullscreen first, then closes window
-- **Improved**: Keyboard navigation (arrows, space, PageUp/PageDown, Home/End)
-- **Improved**: Presentation window opens at optimal 16:9 size for screen
-- **Fix**: Keyboard events now work reliably in presentation window
+- New: Frameless presentation window - clean, distraction-free presenting
+- New: macOS traffic light buttons appear on hover and auto-hide after 3 seconds
+- New: Window draggable by clicking any non-interactive area
+- New: Double-click thumbnail in navigator to start presentation at that slide
+- New: Click navigation in presentation (left third = back, right third = forward)
+- Improved: ESC key behavior - exits fullscreen first, then closes window
+- Improved: Keyboard navigation (arrows, space, PageUp/PageDown, Home/End)
+- Improved: Presentation window opens at optimal 16:9 size for screen
+- Fix: Keyboard events now work reliably in presentation window
 
 ## [0.1.3] - 2026-01-02
 
-- **Improved**: Built-in themes now have proper light/dark mode support
-- **Improved**: Theme loading and color variable handling
+- Improved: Built-in themes now have proper light/dark mode support
+- Improved: Theme loading and color variable handling
 
 ## [0.1.2] - 2026-01-02
 
-- **Major Fix**: Unified rendering pipeline for thumbnails and presentation preview
-- **Major Fix**: Fixed theme application inconsistencies between contexts
-- **Major Fix**: Implemented proper font scaling system with --slide-unit CSS variable
-- **New**: Context-aware theme CSS generation (thumbnail vs preview vs export)
-- **New**: Dynamic font scaling that adapts to container size
-- **New**: Proper light/dark mode support for themes
-- **Fix**: Preview navigation now correctly updates current slide
-- **Fix**: Speaker notes hidden from thumbnails and preview contexts
-- **Fix**: Font sizes now proportional between thumbnails and preview
-- **Improved**: Thumbnail text scaling now matches preview proportions
-- **Improved**: Better performance with iframe-based rendering
-- **Technical**: Refactored SlideRenderer for context-dependent rendering
-- **Technical**: Enhanced theme system with proper CSS cascade management
+- Major Fix: Unified rendering pipeline for thumbnails and preview
+- Major Fix: Fixed theme application inconsistencies
+- Major Fix: Implemented proper font scaling with --slide-unit CSS variable
+- New: Context-aware theme CSS generation
+- New: Dynamic font scaling that adapts to container size
+- Fix: Preview navigation now correctly updates current slide
+- Fix: Speaker notes hidden from thumbnails and preview
+- Improved: Thumbnail text scaling matches preview proportions
 
 ## [0.1.1] - 2026-01-02
 
@@ -288,10 +218,9 @@ All notable changes to Perspecta Slides will be documented in this file.
 - New: GitHub Actions workflow for automated releases
 - Fix: Present/Presenter View buttons now use temp file approach for reliable browser launch
 - Fix: Thumbnail iframes no longer cause console warnings
-- Fix: Theme colors now properly apply to thumbnails and preview slides
 - Improved: Thumbnail Navigator redesigned with integrated SVG circle number badge
 - Improved: Dynamic font sizing using --slide-unit CSS variable for responsive scaling
-- Improved: Theme system now properly applies colors to all slide elements
+- Improved: PresentationView now uses container class pattern
 
 ## [0.1.0] - 2026-01-01
 

@@ -1,4 +1,5 @@
-import { App, Modal, Setting } from 'obsidian';
+import type { App } from 'obsidian';
+import { Modal, Setting } from 'obsidian';
 
 /**
  * Modal for selecting font weights and styles during discovery
@@ -41,7 +42,7 @@ export class FontDiscoveryModal extends Modal {
     // Description
     contentEl.createEl('p', {
       text: 'Select which font weights and styles you want to download. Smaller selections mean faster downloads.',
-      cls: 'modal-description'
+      cls: 'modal-description',
     });
 
     // Weights Section
@@ -57,21 +58,21 @@ export class FontDiscoveryModal extends Modal {
       600: 'Semi Bold',
       700: 'Bold',
       800: 'Extra Bold',
-      900: 'Black'
+      900: 'Black',
     };
 
     for (const weight of this.availableWeights) {
       const label = weightLabels[weight] || `Weight ${weight}`;
       const checkboxContainer = weightsContainer.createDiv({ cls: 'weight-checkbox' });
-      
+
       const checkbox = checkboxContainer.createEl('input', {
         type: 'checkbox',
         attr: {
           id: `weight-${weight}`,
-          checked: true
-        }
+          checked: true,
+        },
       });
-      
+
       checkbox.addEventListener('change', (e) => {
         const isChecked = (e.target as HTMLInputElement).checked;
         if (isChecked) {
@@ -83,7 +84,7 @@ export class FontDiscoveryModal extends Modal {
 
       const labelEl = checkboxContainer.createEl('label', {
         text: `${weight} - ${label}`,
-        attr: { for: `weight-${weight}` }
+        attr: { for: `weight-${weight}` },
       });
     }
 
@@ -95,15 +96,15 @@ export class FontDiscoveryModal extends Modal {
       for (const style of this.availableStyles) {
         const styleLabel = style === 'italic' ? 'Italic' : 'Normal';
         const checkboxContainer = stylesContainer.createDiv({ cls: 'style-checkbox' });
-        
+
         const checkbox = checkboxContainer.createEl('input', {
           type: 'checkbox',
           attr: {
             id: `style-${style}`,
-            checked: true
-          }
+            checked: true,
+          },
         });
-        
+
         checkbox.addEventListener('change', (e) => {
           const isChecked = (e.target as HTMLInputElement).checked;
           if (isChecked) {
@@ -115,7 +116,7 @@ export class FontDiscoveryModal extends Modal {
 
         const labelEl = checkboxContainer.createEl('label', {
           text: styleLabel,
-          attr: { for: `style-${style}` }
+          attr: { for: `style-${style}` },
         });
       }
     }
@@ -126,13 +127,15 @@ export class FontDiscoveryModal extends Modal {
       const numWeights = this.selectedWeights.size;
       const numStyles = this.selectedStyles.size;
       const total = numWeights * numStyles;
-      summary.setText(`Will download: ${total} font file(s) (${numWeights} weight${numWeights !== 1 ? 's' : ''} × ${numStyles} style${numStyles !== 1 ? 's' : ''})`);
+      summary.setText(
+        `Will download: ${total} font file(s) (${numWeights} weight${numWeights !== 1 ? 's' : ''} × ${numStyles} style${numStyles !== 1 ? 's' : ''})`
+      );
     };
     updateSummary();
 
     // Update summary when selections change
     const allCheckboxes = contentEl.querySelectorAll('input[type="checkbox"]');
-    allCheckboxes.forEach(checkbox => {
+    allCheckboxes.forEach((checkbox) => {
       checkbox.addEventListener('change', updateSummary);
     });
 
@@ -141,7 +144,7 @@ export class FontDiscoveryModal extends Modal {
 
     const cancelBtn = buttonContainer.createEl('button', {
       text: 'Cancel',
-      cls: 'mod-default'
+      cls: 'mod-default',
     });
     cancelBtn.addEventListener('click', () => {
       this.onCancel();
@@ -150,13 +153,10 @@ export class FontDiscoveryModal extends Modal {
 
     const confirmBtn = buttonContainer.createEl('button', {
       text: 'Download',
-      cls: 'mod-cta'
+      cls: 'mod-cta',
     });
     confirmBtn.addEventListener('click', () => {
-      this.onConfirm(
-        Array.from(this.selectedWeights),
-        Array.from(this.selectedStyles)
-      );
+      this.onConfirm(Array.from(this.selectedWeights), Array.from(this.selectedStyles));
       this.close();
     });
   }

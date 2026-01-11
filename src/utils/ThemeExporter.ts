@@ -1,7 +1,14 @@
-import { App, TFile, TFolder, Modal, Setting, Notice, FileSystemAdapter } from 'obsidian';
-import { PresentationFrontmatter, Theme, ThemePreset, DEFAULT_SEMANTIC_COLORS } from '../types';
-import { ThemeJsonFile, ThemeModePreset, ThemeBackground, ThemeSemanticColors, DEFAULT_SEMANTIC_COLORS_LIGHT, DEFAULT_SEMANTIC_COLORS_DARK } from '../themes/ThemeSchema';
-import { FontManager } from './FontManager';
+import type { App } from 'obsidian';
+import { TFile, TFolder, Modal, Setting, Notice, FileSystemAdapter } from 'obsidian';
+import type { PresentationFrontmatter, Theme } from '../types';
+import { ThemePreset, DEFAULT_SEMANTIC_COLORS } from '../types';
+import type { ThemeJsonFile, ThemeModePreset, ThemeBackground } from '../themes/ThemeSchema';
+import {
+  ThemeSemanticColors,
+  DEFAULT_SEMANTIC_COLORS_LIGHT,
+  DEFAULT_SEMANTIC_COLORS_DARK,
+} from '../themes/ThemeSchema';
+import type { FontManager } from './FontManager';
 import { getTheme } from '../themes';
 
 /**
@@ -23,7 +30,13 @@ export class SaveThemeModal extends Modal {
   private customThemeNames: string[];
   private customThemesFolder: string;
 
-  constructor(app: App, existingThemes: string[], customThemeNames: string[], customThemesFolder: string, onSave: (name: string, overwrite: boolean) => Promise<void>) {
+  constructor(
+    app: App,
+    existingThemes: string[],
+    customThemeNames: string[],
+    customThemesFolder: string,
+    onSave: (name: string, overwrite: boolean) => Promise<void>
+  ) {
     super(app);
     this.existingThemes = existingThemes;
     this.customThemeNames = customThemeNames;
@@ -36,25 +49,23 @@ export class SaveThemeModal extends Modal {
     contentEl.addClass('perspecta-save-theme-modal');
 
     contentEl.createEl('h2', { text: 'Save as Custom Theme' });
-    contentEl.createEl('p', { 
+    contentEl.createEl('p', {
       text: 'This will save all current settings (fonts, colors, typography, margins) as a reusable theme.',
-      cls: 'modal-description'
+      cls: 'modal-description',
     });
 
     new Setting(contentEl)
       .setName('Theme Name')
       .setDesc('Choose a unique name for your theme')
-      .addText(text => {
-        text
-          .setPlaceholder('My Custom Theme')
-          .onChange(value => {
-            this.themeName = value.trim();
-          });
+      .addText((text) => {
+        text.setPlaceholder('My Custom Theme').onChange((value) => {
+          this.themeName = value.trim();
+        });
         text.inputEl.focus();
       });
 
     const footer = contentEl.createDiv({ cls: 'modal-button-container' });
-    
+
     const cancelBtn = footer.createEl('button', { text: 'Cancel' });
     cancelBtn.addEventListener('click', () => this.close());
 
@@ -67,12 +78,14 @@ export class SaveThemeModal extends Modal {
 
       // Check for name conflicts with built-in themes
       const normalizedName = this.themeName.toLowerCase().replace(/\s+/g, '-');
-      const builtInConflict = this.existingThemes.some(t => 
-        t.toLowerCase() === normalizedName && !t.includes('(custom)')
+      const builtInConflict = this.existingThemes.some(
+        (t) => t.toLowerCase() === normalizedName && !t.includes('(custom)')
       );
-      
+
       if (builtInConflict) {
-        new Notice(`A built-in theme named "${this.themeName}" exists. Your custom theme will be saved as "${this.themeName} (custom)".`);
+        new Notice(
+          `A built-in theme named "${this.themeName}" exists. Your custom theme will be saved as "${this.themeName} (custom)".`
+        );
       }
 
       // Check if theme folder actually exists right now (re-check, don't rely on cached state)
@@ -80,7 +93,7 @@ export class SaveThemeModal extends Modal {
       const themeFolderPath = `${this.customThemesFolder}/${folderName}`;
       const themeFolder = this.app.vault.getAbstractFileByPath(themeFolderPath);
       const folderActuallyExists = themeFolder instanceof TFolder;
-      
+
       // Only show overwrite dialog if folder actually exists
       if (folderActuallyExists) {
         this.showOverwriteConfirmation(saveBtn, this.themeName);
@@ -93,17 +106,17 @@ export class SaveThemeModal extends Modal {
 
   private showOverwriteConfirmation(saveBtn: HTMLButtonElement, themeName: string) {
     const { contentEl } = this;
-    
+
     // Create confirmation dialog
     const confirmContainer = contentEl.createDiv({ cls: 'perspecta-confirm-overwrite' });
     confirmContainer.createEl('h3', { text: 'Confirm Update' });
-    confirmContainer.createEl('p', { 
+    confirmContainer.createEl('p', {
       text: `A custom theme named "${themeName}" already exists. Do you want to update it with the new values and content?`,
-      cls: 'modal-description'
+      cls: 'modal-description',
     });
 
     const confirmFooter = confirmContainer.createDiv({ cls: 'modal-button-container' });
-    
+
     const cancelConfirmBtn = confirmFooter.createEl('button', { text: 'Cancel' });
     cancelConfirmBtn.addEventListener('click', () => {
       confirmContainer.remove();
@@ -176,14 +189,14 @@ export class ThemeExporter {
     // Create theme folder
     const folderName = themeName.toLowerCase().replace(/\s+/g, '-');
     const themePath = `${this.customThemesFolder}/${folderName}`;
-    
+
     // If overwriting, delete and recreate the entire folder
     if (overwrite) {
       await this.deleteThemeFolderCompletely(themePath);
       // Wait for vault to process deletions
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    
+
     await this.ensureFolder(themePath);
 
     // Generate theme.json
@@ -205,9 +218,9 @@ export class ThemeExporter {
     if (imageRefs.length > 0) {
       await this.copyImages(themePath, imageRefs, sourceFile);
     }
-    
-    // Create demo markdown file with updated image paths
-    await this.createDemoFile(themePath, themeName, markdownContent, imageRefs);
+
+    // Create demo markdown file with COMPLETE frontmatter and updated image paths
+    await this.createDemoFile(themePath, themeName, markdownContent, imageRefs, frontmatter);
 
     new Notice(`Theme "${themeName}" saved to ${themePath}`);
     return themePath;
@@ -280,18 +293,42 @@ export class ThemeExporter {
         footer: fm.lightFooterText || '#666666',
       },
       backgrounds: {
-        general: this.buildBackground(fm.lightBackground, basePreset?.LightBackgroundColor || '#ffffff'),
-        cover: this.buildBackground(fm.lightBgCover, fm.lightBackground || basePreset?.LightBackgroundColor || '#ffffff'),
-        title: this.buildBackground(fm.lightBgTitle, fm.lightBackground || basePreset?.LightBackgroundColor || '#ffffff'),
+        general: this.buildBackground(
+          fm.lightBackground,
+          basePreset?.LightBackgroundColor || '#ffffff'
+        ),
+        cover: this.buildBackground(
+          fm.lightBgCover,
+          fm.lightBackground || basePreset?.LightBackgroundColor || '#ffffff'
+        ),
+        title: this.buildBackground(
+          fm.lightBgTitle,
+          fm.lightBackground || basePreset?.LightBackgroundColor || '#ffffff'
+        ),
         section: this.buildBackground(fm.lightBgSection, '#000000'),
       },
       semanticColors: {
         link: fm.lightLinkColor || basePreset?.LightLinkColor || DEFAULT_SEMANTIC_COLORS_LIGHT.link,
-        bullet: fm.lightBulletColor || basePreset?.LightBulletColor || DEFAULT_SEMANTIC_COLORS_LIGHT.bullet,
-        blockquoteBorder: fm.lightBlockquoteBorder || basePreset?.LightBlockquoteBorder || DEFAULT_SEMANTIC_COLORS_LIGHT.blockquoteBorder,
-        tableHeaderBg: fm.lightTableHeaderBg || basePreset?.LightTableHeaderBg || DEFAULT_SEMANTIC_COLORS_LIGHT.tableHeaderBg,
-        codeBorder: fm.lightCodeBorder || basePreset?.LightCodeBorder || DEFAULT_SEMANTIC_COLORS_LIGHT.codeBorder,
-        progressBar: fm.lightProgressBar || basePreset?.LightProgressBar || DEFAULT_SEMANTIC_COLORS_LIGHT.progressBar,
+        bullet:
+          fm.lightBulletColor ||
+          basePreset?.LightBulletColor ||
+          DEFAULT_SEMANTIC_COLORS_LIGHT.bullet,
+        blockquoteBorder:
+          fm.lightBlockquoteBorder ||
+          basePreset?.LightBlockquoteBorder ||
+          DEFAULT_SEMANTIC_COLORS_LIGHT.blockquoteBorder,
+        tableHeaderBg:
+          fm.lightTableHeaderBg ||
+          basePreset?.LightTableHeaderBg ||
+          DEFAULT_SEMANTIC_COLORS_LIGHT.tableHeaderBg,
+        codeBorder:
+          fm.lightCodeBorder ||
+          basePreset?.LightCodeBorder ||
+          DEFAULT_SEMANTIC_COLORS_LIGHT.codeBorder,
+        progressBar:
+          fm.lightProgressBar ||
+          basePreset?.LightProgressBar ||
+          DEFAULT_SEMANTIC_COLORS_LIGHT.progressBar,
       },
     };
 
@@ -307,18 +344,40 @@ export class ThemeExporter {
         footer: fm.darkFooterText || '#999999',
       },
       backgrounds: {
-        general: this.buildBackground(fm.darkBackground, basePreset?.DarkBackgroundColor || '#1a1a1a'),
-        cover: this.buildBackground(fm.darkBgCover, fm.darkBackground || basePreset?.DarkBackgroundColor || '#1a1a1a'),
-        title: this.buildBackground(fm.darkBgTitle, fm.darkBackground || basePreset?.DarkBackgroundColor || '#1a1a1a'),
+        general: this.buildBackground(
+          fm.darkBackground,
+          basePreset?.DarkBackgroundColor || '#1a1a1a'
+        ),
+        cover: this.buildBackground(
+          fm.darkBgCover,
+          fm.darkBackground || basePreset?.DarkBackgroundColor || '#1a1a1a'
+        ),
+        title: this.buildBackground(
+          fm.darkBgTitle,
+          fm.darkBackground || basePreset?.DarkBackgroundColor || '#1a1a1a'
+        ),
         section: this.buildBackground(fm.darkBgSection, '#ffffff'),
       },
       semanticColors: {
         link: fm.darkLinkColor || basePreset?.DarkLinkColor || DEFAULT_SEMANTIC_COLORS_DARK.link,
-        bullet: fm.darkBulletColor || basePreset?.DarkBulletColor || DEFAULT_SEMANTIC_COLORS_DARK.bullet,
-        blockquoteBorder: fm.darkBlockquoteBorder || basePreset?.DarkBlockquoteBorder || DEFAULT_SEMANTIC_COLORS_DARK.blockquoteBorder,
-        tableHeaderBg: fm.darkTableHeaderBg || basePreset?.DarkTableHeaderBg || DEFAULT_SEMANTIC_COLORS_DARK.tableHeaderBg,
-        codeBorder: fm.darkCodeBorder || basePreset?.DarkCodeBorder || DEFAULT_SEMANTIC_COLORS_DARK.codeBorder,
-        progressBar: fm.darkProgressBar || basePreset?.DarkProgressBar || DEFAULT_SEMANTIC_COLORS_DARK.progressBar,
+        bullet:
+          fm.darkBulletColor || basePreset?.DarkBulletColor || DEFAULT_SEMANTIC_COLORS_DARK.bullet,
+        blockquoteBorder:
+          fm.darkBlockquoteBorder ||
+          basePreset?.DarkBlockquoteBorder ||
+          DEFAULT_SEMANTIC_COLORS_DARK.blockquoteBorder,
+        tableHeaderBg:
+          fm.darkTableHeaderBg ||
+          basePreset?.DarkTableHeaderBg ||
+          DEFAULT_SEMANTIC_COLORS_DARK.tableHeaderBg,
+        codeBorder:
+          fm.darkCodeBorder ||
+          basePreset?.DarkCodeBorder ||
+          DEFAULT_SEMANTIC_COLORS_DARK.codeBorder,
+        progressBar:
+          fm.darkProgressBar ||
+          basePreset?.DarkProgressBar ||
+          DEFAULT_SEMANTIC_COLORS_DARK.progressBar,
       },
     };
 
@@ -356,87 +415,61 @@ export class ThemeExporter {
         light: lightPreset,
         dark: darkPreset,
       },
-    };
+    } as ThemeJsonFile;
   }
 
   /**
-   * Generate theme.css with typography and margin defaults
-   */
+    * Generate theme.css with COMPLETE set of ALL typography and margin parameters
+    * Always includes every parameter with explicit values (from frontmatter or defaults)
+    */
   private generateThemeCss(fm: PresentationFrontmatter, baseTheme: Theme | undefined): string {
     const lines: string[] = [
-      `/* Custom Theme CSS */`,
-      `/* Generated from presentation settings */`,
+      `/* Custom Theme CSS - Complete Theme Parameters */`,
+      `/* Generated from presentation settings - ALL parameters explicitly set */`,
       ``,
     ];
 
-    // Root variables for typography defaults
     const rootVars: string[] = [];
 
-    // Font weights
-    if (fm.titleFontWeight !== undefined) {
-      rootVars.push(`  --title-font-weight: ${fm.titleFontWeight};`);
-    }
-    if (fm.bodyFontWeight !== undefined) {
-      rootVars.push(`  --body-font-weight: ${fm.bodyFontWeight};`);
-    }
-    if (fm.headerFontWeight !== undefined) {
-      rootVars.push(`  --header-font-weight: ${fm.headerFontWeight};`);
-    }
-    if (fm.footerFontWeight !== undefined) {
-      rootVars.push(`  --footer-font-weight: ${fm.footerFontWeight};`);
-    }
+    // ===== TYPOGRAPHY - FONTS (weights) =====
+    rootVars.push(`  /* Typography - Font Weights */`);
+    rootVars.push(`  --title-font-weight: ${fm.titleFontWeight ?? 700};`);
+    rootVars.push(`  --body-font-weight: ${fm.bodyFontWeight ?? 400};`);
+    rootVars.push(`  --header-font-weight: ${fm.headerFontWeight ?? 400};`);
+    rootVars.push(`  --footer-font-weight: ${fm.footerFontWeight ?? 400};`);
+    rootVars.push(``);
 
-    // Font size offsets
-    if (fm.titleFontSize !== undefined) {
-      rootVars.push(`  --title-font-size-offset: ${fm.titleFontSize};`);
-    }
-    if (fm.bodyFontSize !== undefined) {
-      rootVars.push(`  --body-font-size-offset: ${fm.bodyFontSize};`);
-    }
-    if (fm.headerFontSize !== undefined) {
-      rootVars.push(`  --header-font-size-offset: ${fm.headerFontSize};`);
-    }
-    if (fm.footerFontSize !== undefined) {
-      rootVars.push(`  --footer-font-size-offset: ${fm.footerFontSize};`);
-    }
+    // ===== TYPOGRAPHY - FONT SIZES =====
+    rootVars.push(`  /* Typography - Font Sizes (as percentage offset) */`);
+    rootVars.push(`  --title-font-size-offset: ${fm.titleFontSize ?? -40};`);
+    rootVars.push(`  --body-font-size-offset: ${fm.bodyFontSize ?? -20};`);
+    rootVars.push(`  --header-font-size-offset: ${fm.headerFontSize ?? 0};`);
+    rootVars.push(`  --footer-font-size-offset: ${fm.footerFontSize ?? 0};`);
+    rootVars.push(`  --text-scale: ${fm.textScale ?? 1};`);
+    rootVars.push(``);
 
-    // Spacing
-    if (fm.headlineSpacingBefore !== undefined) {
-      rootVars.push(`  --headline-spacing-before: ${fm.headlineSpacingBefore};`);
-    }
-    if (fm.headlineSpacingAfter !== undefined) {
-      rootVars.push(`  --headline-spacing-after: ${fm.headlineSpacingAfter};`);
-    }
-    if (fm.listItemSpacing !== undefined) {
-      rootVars.push(`  --list-item-spacing: ${fm.listItemSpacing};`);
-    }
-    if (fm.lineHeight !== undefined) {
-      rootVars.push(`  --line-height: ${fm.lineHeight};`);
-    }
+    // ===== TYPOGRAPHY - SPACING =====
+    rootVars.push(`  /* Typography - Spacing (in em) */`);
+    rootVars.push(`  --headline-spacing-before: ${fm.headlineSpacingBefore ?? 0};`);
+    rootVars.push(`  --headline-spacing-after: ${fm.headlineSpacingAfter ?? 1.3};`);
+    rootVars.push(`  --list-item-spacing: ${fm.listItemSpacing ?? 1.2};`);
+    rootVars.push(`  --line-height: ${fm.lineHeight ?? 1.2};`);
+    rootVars.push(``);
 
-    // Margins
-    if (fm.headerTop !== undefined) {
-      rootVars.push(`  --header-top: ${fm.headerTop};`);
-    }
-    if (fm.footerBottom !== undefined) {
-      rootVars.push(`  --footer-bottom: ${fm.footerBottom};`);
-    }
-    if (fm.titleTop !== undefined) {
-      rootVars.push(`  --title-top: ${fm.titleTop};`);
-    }
-    if (fm.contentTop !== undefined) {
-      rootVars.push(`  --content-top: ${fm.contentTop};`);
-    }
+    // ===== TYPOGRAPHY - MARGINS =====
+    rootVars.push(`  /* Typography - Margins (in em, absolute distance from slide edge) */`);
+    rootVars.push(`  --header-top: ${fm.headerTop ?? 3};`);
+    rootVars.push(`  --footer-bottom: ${fm.footerBottom ?? 2.5};`);
+    rootVars.push(`  --title-top: ${fm.titleTop ?? 6.4};`);
+    rootVars.push(`  --content-top: ${fm.contentTop ?? 22};`);
+    
     // Content margins: Support asymmetric left/right, with contentWidth as legacy fallback
-    const contentLeft = fm.contentLeft ?? fm.contentWidth;
-    const contentRight = fm.contentRight ?? fm.contentWidth;
-    if (contentLeft !== undefined) {
-      rootVars.push(`  --content-left: ${contentLeft};`);
-    }
-    if (contentRight !== undefined) {
-      rootVars.push(`  --content-right: ${contentRight};`);
-    }
-    // Legacy: still output --content-width if defined for backwards compatibility
+    const contentLeft = fm.contentLeft ?? fm.contentWidth ?? 4;
+    const contentRight = fm.contentRight ?? fm.contentWidth ?? 4;
+    rootVars.push(`  --content-left: ${contentLeft};`);
+    rootVars.push(`  --content-right: ${contentRight};`);
+    
+    // Legacy: still output --content-width for backwards compatibility
     if (fm.contentWidth !== undefined) {
       rootVars.push(`  --content-width: ${fm.contentWidth};`);
     }
@@ -448,7 +481,7 @@ export class ThemeExporter {
       lines.push(``);
     }
 
-    // Include base theme CSS if available (without font-size declarations that would override)
+    // Include base theme CSS if available
     if (baseTheme?.css) {
       lines.push(`/* Base theme styles */`);
       lines.push(baseTheme.css);
@@ -461,26 +494,33 @@ export class ThemeExporter {
    * Copy cached fonts to the theme folder
    */
   private async copyFonts(themePath: string, fm: PresentationFrontmatter): Promise<void> {
-    if (!this.fontManager) return;
+    if (!this.fontManager) {
+      return;
+    }
 
     const fontsFolder = `${themePath}/fonts`;
-    const fontsToCopy = [fm.titleFont, fm.bodyFont, fm.headerFont, fm.footerFont]
-      .filter((f): f is string => !!f && this.fontManager!.isCached(f));
+    const fontsToCopy = [fm.titleFont, fm.bodyFont, fm.headerFont, fm.footerFont].filter(
+      (f): f is string => !!f && this.fontManager!.isCached(f)
+    );
 
-    if (fontsToCopy.length === 0) return;
+    if (fontsToCopy.length === 0) {
+      return;
+    }
 
     await this.ensureFolder(fontsFolder);
 
     for (const fontName of fontsToCopy) {
       const cachedFont = this.fontManager.getCachedFont(fontName);
-      if (!cachedFont) continue;
+      if (!cachedFont) {
+        continue;
+      }
 
       for (const file of cachedFont.files) {
         const sourceFile = this.app.vault.getAbstractFileByPath(file.localPath);
         if (sourceFile instanceof TFile) {
           const fileName = file.localPath.split('/').pop() || `${fontName}.woff2`;
           const destPath = `${fontsFolder}/${fileName}`;
-          
+
           // Check if destination already exists
           const existing = this.app.vault.getAbstractFileByPath(destPath);
           if (!existing) {
@@ -514,11 +554,11 @@ export class ThemeExporter {
 
     // Common system font stacks
     const fontStacks: Record<string, string> = {
-      'Helvetica': 'Helvetica Neue, Helvetica, Arial, sans-serif',
-      'Arial': 'Arial, Helvetica, sans-serif',
-      'Georgia': 'Georgia, Times New Roman, serif',
+      Helvetica: 'Helvetica Neue, Helvetica, Arial, sans-serif',
+      Arial: 'Arial, Helvetica, sans-serif',
+      Georgia: 'Georgia, Times New Roman, serif',
       'Times New Roman': 'Times New Roman, Times, serif',
-      'Courier': 'Courier New, Courier, monospace',
+      Courier: 'Courier New, Courier, monospace',
     };
 
     return fontStacks[fontName] || `'${fontName}', sans-serif`;
@@ -541,12 +581,14 @@ export class ThemeExporter {
    */
   private async ensureFolder(path: string): Promise<void> {
     const existing = this.app.vault.getAbstractFileByPath(path);
-    if (existing instanceof TFolder) return;
+    if (existing instanceof TFolder) {
+      return;
+    }
 
     // Create parent folders if needed
     const parts = path.split('/');
     let currentPath = '';
-    
+
     for (const part of parts) {
       currentPath = currentPath ? `${currentPath}/${part}` : part;
       const folder = this.app.vault.getAbstractFileByPath(currentPath);
@@ -569,7 +611,7 @@ export class ThemeExporter {
    */
   private extractImageReferences(content: string): ImageReference[] {
     const refs: ImageReference[] = [];
-    
+
     // Match standard markdown images: ![alt](path)
     const mdImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
     let match;
@@ -583,7 +625,7 @@ export class ThemeExporter {
         });
       }
     }
-    
+
     // Match Obsidian wiki-link images: ![[path]] or ![[path|alt]]
     const wikiImageRegex = /!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
     while ((match = wikiImageRegex.exec(content)) !== null) {
@@ -596,7 +638,7 @@ export class ThemeExporter {
         });
       }
     }
-    
+
     return refs;
   }
 
@@ -611,23 +653,26 @@ export class ThemeExporter {
   ): Promise<Map<string, string>> {
     const pathMap = new Map<string, string>();
     const folderName = themePath.split('/').pop() || 'theme';
-    
+
     for (const ref of imageRefs) {
       try {
         // Resolve the image file
         const decodedPath = decodeURIComponent(ref.originalPath);
         let imageFile = this.app.metadataCache.getFirstLinkpathDest(decodedPath, sourceFile.path);
         if (!imageFile) {
-          imageFile = this.app.metadataCache.getFirstLinkpathDest(ref.originalPath, sourceFile.path);
+          imageFile = this.app.metadataCache.getFirstLinkpathDest(
+            ref.originalPath,
+            sourceFile.path
+          );
         }
-        
+
         if (imageFile instanceof TFile) {
           // Generate new filename with theme prefix
           const ext = imageFile.extension;
           const baseName = imageFile.basename;
           const newFileName = `${folderName}-${baseName}.${ext}`;
           const destPath = `${themePath}/${newFileName}`;
-          
+
           // Check if already copied (same original path)
           if (!pathMap.has(ref.originalPath)) {
             // Check if destination exists
@@ -643,23 +688,24 @@ export class ThemeExporter {
         console.warn(`Failed to copy image: ${ref.originalPath}`, e);
       }
     }
-    
+
     return pathMap;
   }
 
   /**
-   * Create a demo markdown file with:
-   * - Clean frontmatter (only theme reference)
-   * - Updated image paths pointing to local theme folder images
-   */
+    * Create a demo markdown file with:
+    * - COMPLETE frontmatter (all design parameters captured)
+    * - Updated image paths pointing to local theme folder images
+    */
   private async createDemoFile(
     themePath: string,
     themeName: string,
     markdownContent: string,
-    imageRefs: ImageReference[]
+    imageRefs: ImageReference[],
+    fm?: PresentationFrontmatter
   ): Promise<void> {
     const folderName = themePath.split('/').pop() || 'theme';
-    
+
     // Build image path map from refs
     const pathMap = new Map<string, string>();
     for (const ref of imageRefs) {
@@ -668,21 +714,140 @@ export class ThemeExporter {
       const newFileName = `${folderName}-${baseName}.${ext}`;
       pathMap.set(ref.originalPath, newFileName);
     }
-    
-    // Replace frontmatter with clean version (just theme reference)
-    let demoContent = markdownContent;
-    const frontmatterRegex = /^---\s*\n[\s\S]*?\n---\s*\n/;
-    const cleanFrontmatter = `---
-theme: ${folderName}
----
-`;
-    
-    if (frontmatterRegex.test(demoContent)) {
-      demoContent = demoContent.replace(frontmatterRegex, cleanFrontmatter);
-    } else {
-      demoContent = cleanFrontmatter + demoContent;
+
+    // Create complete frontmatter with all design parameters
+    let demoFrontmatter = `---
+  # Theme reference
+  theme: ${folderName}
+  `;
+
+    // Add all available frontmatter parameters from source if provided
+    if (fm) {
+      if (fm.title) demoFrontmatter += `title: ${fm.title}\n`;
+      if (fm.author) demoFrontmatter += `author: ${fm.author}\n`;
+      if (fm.date) demoFrontmatter += `date: ${fm.date}\n`;
+      if (fm.contentMode) demoFrontmatter += `contentMode: ${fm.contentMode}\n`;
+      
+      demoFrontmatter += `\n# Typography - Fonts\n`;
+      if (fm.titleFont) demoFrontmatter += `titleFont: ${fm.titleFont}\n`;
+      if (fm.titleFontWeight !== undefined) demoFrontmatter += `titleFontWeight: ${fm.titleFontWeight}\n`;
+      if (fm.bodyFont) demoFrontmatter += `bodyFont: ${fm.bodyFont}\n`;
+      if (fm.bodyFontWeight !== undefined) demoFrontmatter += `bodyFontWeight: ${fm.bodyFontWeight}\n`;
+      if (fm.headerFont) demoFrontmatter += `headerFont: ${fm.headerFont}\n`;
+      if (fm.headerFontWeight !== undefined) demoFrontmatter += `headerFontWeight: ${fm.headerFontWeight}\n`;
+      if (fm.footerFont) demoFrontmatter += `footerFont: ${fm.footerFont}\n`;
+      if (fm.footerFontWeight !== undefined) demoFrontmatter += `footerFontWeight: ${fm.footerFontWeight}\n`;
+      
+      demoFrontmatter += `\n# Typography - Font Sizes\n`;
+      if (fm.titleFontSize !== undefined) demoFrontmatter += `titleFontSize: ${fm.titleFontSize}\n`;
+      if (fm.bodyFontSize !== undefined) demoFrontmatter += `bodyFontSize: ${fm.bodyFontSize}\n`;
+      if (fm.headerFontSize !== undefined) demoFrontmatter += `headerFontSize: ${fm.headerFontSize}\n`;
+      if (fm.footerFontSize !== undefined) demoFrontmatter += `footerFontSize: ${fm.footerFontSize}\n`;
+      if (fm.textScale !== undefined) demoFrontmatter += `textScale: ${fm.textScale}\n`;
+      
+      demoFrontmatter += `\n# Typography - Spacing\n`;
+      if (fm.headlineSpacingBefore !== undefined) demoFrontmatter += `headlineSpacingBefore: ${fm.headlineSpacingBefore}\n`;
+      if (fm.headlineSpacingAfter !== undefined) demoFrontmatter += `headlineSpacingAfter: ${fm.headlineSpacingAfter}\n`;
+      if (fm.listItemSpacing !== undefined) demoFrontmatter += `listItemSpacing: ${fm.listItemSpacing}\n`;
+      if (fm.lineHeight !== undefined) demoFrontmatter += `lineHeight: ${fm.lineHeight}\n`;
+      
+      demoFrontmatter += `\n# Typography - Margins\n`;
+      if (fm.headerTop !== undefined) demoFrontmatter += `headerTop: ${fm.headerTop}\n`;
+      if (fm.footerBottom !== undefined) demoFrontmatter += `footerBottom: ${fm.footerBottom}\n`;
+      if (fm.titleTop !== undefined) demoFrontmatter += `titleTop: ${fm.titleTop}\n`;
+      if (fm.contentTop !== undefined) demoFrontmatter += `contentTop: ${fm.contentTop}\n`;
+      if (fm.contentLeft !== undefined) demoFrontmatter += `contentLeft: ${fm.contentLeft}\n`;
+      if (fm.contentRight !== undefined) demoFrontmatter += `contentRight: ${fm.contentRight}\n`;
+      
+      demoFrontmatter += `\n# Colors - Light Mode\n`;
+      if (fm.lightBackground) demoFrontmatter += `lightBackground: ${fm.lightBackground}\n`;
+      if (fm.lightTitleText) demoFrontmatter += `lightTitleText: ${fm.lightTitleText}\n`;
+      if (fm.lightBodyText) demoFrontmatter += `lightBodyText: ${fm.lightBodyText}\n`;
+      if (fm.lightH1Color) demoFrontmatter += `lightH1Color: [${fm.lightH1Color.map(c => `'${c}'`).join(', ')}]\n`;
+      if (fm.lightH2Color) demoFrontmatter += `lightH2Color: [${fm.lightH2Color.map(c => `'${c}'`).join(', ')}]\n`;
+      if (fm.lightH3Color) demoFrontmatter += `lightH3Color: [${fm.lightH3Color.map(c => `'${c}'`).join(', ')}]\n`;
+      if (fm.lightH4Color) demoFrontmatter += `lightH4Color: [${fm.lightH4Color.map(c => `'${c}'`).join(', ')}]\n`;
+      if (fm.lightHeaderText) demoFrontmatter += `lightHeaderText: ${fm.lightHeaderText}\n`;
+      if (fm.lightFooterText) demoFrontmatter += `lightFooterText: ${fm.lightFooterText}\n`;
+      if (fm.lightBgCover) demoFrontmatter += `lightBgCover: ${fm.lightBgCover}\n`;
+      if (fm.lightBgTitle) demoFrontmatter += `lightBgTitle: ${fm.lightBgTitle}\n`;
+      if (fm.lightBgSection) demoFrontmatter += `lightBgSection: ${fm.lightBgSection}\n`;
+      
+      demoFrontmatter += `\n# Colors - Dark Mode\n`;
+      if (fm.darkBackground) demoFrontmatter += `darkBackground: ${fm.darkBackground}\n`;
+      if (fm.darkTitleText) demoFrontmatter += `darkTitleText: ${fm.darkTitleText}\n`;
+      if (fm.darkBodyText) demoFrontmatter += `darkBodyText: ${fm.darkBodyText}\n`;
+      if (fm.darkH1Color) demoFrontmatter += `darkH1Color: [${fm.darkH1Color.map(c => `'${c}'`).join(', ')}]\n`;
+      if (fm.darkH2Color) demoFrontmatter += `darkH2Color: [${fm.darkH2Color.map(c => `'${c}'`).join(', ')}]\n`;
+      if (fm.darkH3Color) demoFrontmatter += `darkH3Color: [${fm.darkH3Color.map(c => `'${c}'`).join(', ')}]\n`;
+      if (fm.darkH4Color) demoFrontmatter += `darkH4Color: [${fm.darkH4Color.map(c => `'${c}'`).join(', ')}]\n`;
+      if (fm.darkHeaderText) demoFrontmatter += `darkHeaderText: ${fm.darkHeaderText}\n`;
+      if (fm.darkFooterText) demoFrontmatter += `darkFooterText: ${fm.darkFooterText}\n`;
+      if (fm.darkBgCover) demoFrontmatter += `darkBgCover: ${fm.darkBgCover}\n`;
+      if (fm.darkBgTitle) demoFrontmatter += `darkBgTitle: ${fm.darkBgTitle}\n`;
+      if (fm.darkBgSection) demoFrontmatter += `darkBgSection: ${fm.darkBgSection}\n`;
+      
+      demoFrontmatter += `\n# Semantic Colors - Light Mode\n`;
+      if (fm.lightLinkColor) demoFrontmatter += `lightLinkColor: ${fm.lightLinkColor}\n`;
+      if (fm.lightBulletColor) demoFrontmatter += `lightBulletColor: ${fm.lightBulletColor}\n`;
+      if (fm.lightBlockquoteBorder) demoFrontmatter += `lightBlockquoteBorder: ${fm.lightBlockquoteBorder}\n`;
+      if (fm.lightTableHeaderBg) demoFrontmatter += `lightTableHeaderBg: ${fm.lightTableHeaderBg}\n`;
+      if (fm.lightCodeBorder) demoFrontmatter += `lightCodeBorder: ${fm.lightCodeBorder}\n`;
+      if (fm.lightProgressBar) demoFrontmatter += `lightProgressBar: ${fm.lightProgressBar}\n`;
+      if (fm.lightBoldColor) demoFrontmatter += `lightBoldColor: ${fm.lightBoldColor}\n`;
+      
+      demoFrontmatter += `\n# Semantic Colors - Dark Mode\n`;
+      if (fm.darkLinkColor) demoFrontmatter += `darkLinkColor: ${fm.darkLinkColor}\n`;
+      if (fm.darkBulletColor) demoFrontmatter += `darkBulletColor: ${fm.darkBulletColor}\n`;
+      if (fm.darkBlockquoteBorder) demoFrontmatter += `darkBlockquoteBorder: ${fm.darkBlockquoteBorder}\n`;
+      if (fm.darkTableHeaderBg) demoFrontmatter += `darkTableHeaderBg: ${fm.darkTableHeaderBg}\n`;
+      if (fm.darkCodeBorder) demoFrontmatter += `darkCodeBorder: ${fm.darkCodeBorder}\n`;
+      if (fm.darkProgressBar) demoFrontmatter += `darkProgressBar: ${fm.darkProgressBar}\n`;
+      if (fm.darkBoldColor) demoFrontmatter += `darkBoldColor: ${fm.darkBoldColor}\n`;
+      
+      demoFrontmatter += `\n# Dynamic Backgrounds\n`;
+      if (fm.lightDynamicBackground && fm.lightDynamicBackground.length > 0) {
+        demoFrontmatter += `lightDynamicBackground: [${fm.lightDynamicBackground.map(c => `'${c}'`).join(', ')}]\n`;
+      }
+      if (fm.darkDynamicBackground && fm.darkDynamicBackground.length > 0) {
+        demoFrontmatter += `darkDynamicBackground: [${fm.darkDynamicBackground.map(c => `'${c}'`).join(', ')}]\n`;
+      }
+      if (fm.useDynamicBackground) demoFrontmatter += `useDynamicBackground: ${fm.useDynamicBackground}\n`;
+      if (fm.dynamicBackgroundRestartAtSection !== undefined) demoFrontmatter += `dynamicBackgroundRestartAtSection: ${fm.dynamicBackgroundRestartAtSection}\n`;
+      
+      demoFrontmatter += `\n# Header/Footer & Logo\n`;
+      if (fm.headerLeft) demoFrontmatter += `headerLeft: ${fm.headerLeft}\n`;
+      if (fm.headerMiddle) demoFrontmatter += `headerMiddle: ${fm.headerMiddle}\n`;
+      if (fm.headerRight) demoFrontmatter += `headerRight: ${fm.headerRight}\n`;
+      if (fm.footerLeft) demoFrontmatter += `footerLeft: ${fm.footerLeft}\n`;
+      if (fm.footerMiddle) demoFrontmatter += `footerMiddle: ${fm.footerMiddle}\n`;
+      if (fm.footerRight) demoFrontmatter += `footerRight: ${fm.footerRight}\n`;
+      if (fm.logo) demoFrontmatter += `logo: ${fm.logo}\n`;
+      if (fm.logoSize) demoFrontmatter += `logoSize: ${fm.logoSize}\n`;
+      
+      demoFrontmatter += `\n# Presentation Settings\n`;
+      if (fm.aspectRatio) demoFrontmatter += `aspectRatio: ${fm.aspectRatio}\n`;
+      if (fm.lockAspectRatio !== undefined) demoFrontmatter += `lockAspectRatio: ${fm.lockAspectRatio}\n`;
+      if (fm.showProgress !== undefined) demoFrontmatter += `showProgress: ${fm.showProgress}\n`;
+      if (fm.showSlideNumbers !== undefined) demoFrontmatter += `showSlideNumbers: ${fm.showSlideNumbers}\n`;
+      if (fm.transition) demoFrontmatter += `transition: ${fm.transition}\n`;
+      if (fm.showFootnotesOnSlides !== undefined) demoFrontmatter += `showFootnotesOnSlides: ${fm.showFootnotesOnSlides}\n`;
+      if (fm.enableObsidianLinks !== undefined) demoFrontmatter += `enableObsidianLinks: ${fm.enableObsidianLinks}\n`;
+      if (fm.mode) demoFrontmatter += `mode: ${fm.mode}\n`;
     }
     
+    demoFrontmatter += `---\n`;
+
+    // Replace frontmatter with complete version
+    let demoContent = markdownContent;
+    const frontmatterRegex = /^---\s*\n[\s\S]*?\n---\s*\n/;
+
+    if (frontmatterRegex.test(demoContent)) {
+      demoContent = demoContent.replace(frontmatterRegex, demoFrontmatter);
+    } else {
+      demoContent = demoFrontmatter + demoContent;
+    }
+
     // Update image references to use local paths
     for (const ref of imageRefs) {
       const newFileName = pathMap.get(ref.originalPath);
@@ -703,7 +868,7 @@ theme: ${folderName}
         }
       }
     }
-    
+
     // Save demo file
     const demoPath = `${themePath}/${folderName}-demo.md`;
     await this.createOrModifyFile(demoPath, demoContent);

@@ -6,7 +6,16 @@ import { exportToSvg } from '@excalidraw/utils';
  * Supports both .excalidraw (JSON) and .excalidraw.md (markdown with JSON) files
  */
 export class ExcalidrawRenderer {
+  private svgCache: Map<string, string> = new Map();
+
   constructor(private vault: Vault) {}
+
+  /**
+   * Get the SVG cache (used by SlideRenderer to look up converted SVGs)
+   */
+  getSvgCache(): Map<string, string> {
+    return this.svgCache;
+  }
 
   /**
    * Check if a file is an Excalidraw file
@@ -92,12 +101,16 @@ export class ExcalidrawRenderer {
       // Convert SVG to data URL
       const svgString = svg.outerHTML;
       const base64 = btoa(unescape(encodeURIComponent(svgString)));
+      const dataUrl = `data:image/svg+xml;base64,${base64}`;
+
+      // Cache it for SlideRenderer
+      this.svgCache.set(file.path, dataUrl);
 
       console.log(
         `[Perspecta] ✅ Converted Excalidraw to SVG: ${file.path}`
       );
 
-      return `data:image/svg+xml;base64,${base64}`;
+      return dataUrl;
     } catch (e) {
       console.error(
         `[Perspecta] Failed to convert Excalidraw to SVG: ${file.path}`,

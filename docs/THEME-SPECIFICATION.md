@@ -34,7 +34,7 @@ The new unified theme configuration file that replaces the separate `template.js
   "version": "2.0.0",
   "author": "Perspecta",
   "description": "Minimal Swiss design with fixed-size headings",
-  
+
   "fonts": {
     "title": {
       "name": "Helvetica",
@@ -45,9 +45,9 @@ The new unified theme configuration file that replaces the separate `template.js
       "css": "Helvetica Neue, Helvetica, Arial, sans-serif"
     }
   },
-  
+
   "cssClasses": "fixed-size-headings",
-  
+
   "presets": {
     "light": {
       "text": {
@@ -91,16 +91,16 @@ The new unified theme configuration file that replaces the separate `template.js
 
 ### Top-Level Fields
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | ✓ | Display name of the theme |
-| `version` | string | ✓ | Semantic version (e.g., "2.0.0") |
-| `author` | string | ✓ | Theme creator |
-| `description` | string | ✓ | Brief description for theme picker |
-| `fonts` | object | ✓ | Font definitions (see below) |
-| `cssClasses` | string | | Space-separated CSS classes to apply |
-| `presets` | object | ✓ | Light and dark mode presets |
-| `overlays` | object | | Image overlay settings (optional) |
+| Field         | Type   | Required | Description                          |
+| ------------- | ------ | -------- | ------------------------------------ |
+| `name`        | string | ✓        | Display name of the theme            |
+| `version`     | string | ✓        | Semantic version (e.g., "2.0.0")     |
+| `author`      | string | ✓        | Theme creator                        |
+| `description` | string | ✓        | Brief description for theme picker   |
+| `fonts`       | object | ✓        | Font definitions (see below)         |
+| `cssClasses`  | string |          | Space-separated CSS classes to apply |
+| `presets`     | object | ✓        | Light and dark mode presets          |
+| `overlays`    | object |          | Image overlay settings (optional)    |
 
 ### cssClasses Options
 
@@ -125,10 +125,10 @@ The new unified theme configuration file that replaces the separate `template.js
 }
 ```
 
-| Field | Description |
-|-------|-------------|
+| Field  | Description                             |
+| ------ | --------------------------------------- |
 | `name` | Human-readable font name for UI display |
-| `css` | CSS `font-family` value with fallbacks |
+| `css`  | CSS `font-family` value with fallbacks  |
 
 ---
 
@@ -143,8 +143,8 @@ Heading colors support arrays for gradient text effects:
 ```json
 {
   "text": {
-    "h1": ["#000000"],              // Solid color
-    "h2": ["#ff6b9d", "#c678dd"],   // Gradient (left to right)
+    "h1": ["#000000"], // Solid color
+    "h2": ["#ff6b9d", "#c678dd"], // Gradient (left to right)
     "h3": ["#333333"],
     "h4": ["#333333"],
     "body": "#333333",
@@ -154,15 +154,15 @@ Heading colors support arrays for gradient text effects:
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `h1` | string[] | H1 heading color(s) - array enables gradients |
-| `h2` | string[] | H2 heading color(s) |
-| `h3` | string[] | H3 heading color(s) |
-| `h4` | string[] | H4 heading color(s) |
-| `body` | string | Body text color |
-| `header` | string | Slide header text color |
-| `footer` | string | Slide footer text color |
+| Field    | Type     | Description                                   |
+| -------- | -------- | --------------------------------------------- |
+| `h1`     | string[] | H1 heading color(s) - array enables gradients |
+| `h2`     | string[] | H2 heading color(s)                           |
+| `h3`     | string[] | H3 heading color(s)                           |
+| `h4`     | string[] | H4 heading color(s)                           |
+| `body`   | string   | Body text color                               |
+| `header` | string   | Slide header text color                       |
+| `footer` | string   | Slide footer text color                       |
 
 ### Backgrounds Object
 
@@ -179,40 +179,53 @@ Layout-specific backgrounds with support for solid colors, gradients, and dynami
 }
 ```
 
-| Layout | Description |
-|--------|-------------|
-| `general` | Default background for all slides |
-| `cover` | Background for cover layout slides |
-| `title` | Background for title layout slides |
+| Layout    | Description                           |
+| --------- | ------------------------------------- |
+| `general` | Default background for all slides     |
+| `cover`   | Background for cover layout slides    |
+| `title`   | Background for title layout slides    |
 | `section` | Background for section divider slides |
 
 ### Background Types
 
 **Solid Background**
+
 ```json
 { "type": "solid", "color": "#ffffff" }
 ```
 
 **Gradient Background**
+
 ```json
-{ 
-  "type": "gradient", 
-  "colors": ["#D3E9F8", "#E4DBEA"] 
+{
+  "type": "gradient",
+  "colors": ["#D3E9F8", "#E4DBEA"]
 }
 ```
+
 Renders as `linear-gradient(135deg, #D3E9F8, #E4DBEA)`.
 
 **Dynamic Background**
+
 ```json
 {
   "type": "dynamic",
   "colors": [
-    "#D3E9F8", "#CFDEED", "#E4DBEA", "#E9CDD7",
-    "#F1DEDD", "#F8E6DE", "#F5E8E5", "#F2E9DA",
-    "#F1F0D8", "#E6F1E5", "#E2EDEB"
+    "#D3E9F8",
+    "#CFDEED",
+    "#E4DBEA",
+    "#E9CDD7",
+    "#F1DEDD",
+    "#F8E6DE",
+    "#F5E8E5",
+    "#F2E9DA",
+    "#F1F0D8",
+    "#E6F1E5",
+    "#E2EDEB"
   ]
 }
 ```
+
 Dynamic backgrounds cycle through the color palette based on slide index, creating visual variety while maintaining theme coherence. Used prominently in themes like **Kyoto**.
 
 ### Accents Array
@@ -225,14 +238,14 @@ Six accent colors used for emphasis, links, section backgrounds, and other highl
 }
 ```
 
-| Index | CSS Variable | Typical Use |
-|-------|--------------|-------------|
-| 0 | `--accent1` | Primary accent, section backgrounds |
-| 1 | `--accent2` | Secondary accent, kickers |
-| 2 | `--accent3` | Tertiary accent, links |
-| 3 | `--accent4` | Quaternary accent |
-| 4 | `--accent5` | Quinary accent |
-| 5 | `--accent6` | Senary accent |
+| Index | CSS Variable | Typical Use                         |
+| ----- | ------------ | ----------------------------------- |
+| 0     | `--accent1`  | Primary accent, section backgrounds |
+| 1     | `--accent2`  | Secondary accent, kickers           |
+| 2     | `--accent3`  | Tertiary accent, links              |
+| 3     | `--accent4`  | Quaternary accent                   |
+| 4     | `--accent5`  | Quinary accent                      |
+| 5     | `--accent6`  | Senary accent                       |
 
 ---
 
@@ -243,9 +256,9 @@ The theme system generates CSS custom properties from the theme.json presets:
 ```css
 :root {
   /* Fonts */
-  --title-font: "Helvetica Neue", sans-serif;
-  --body-font: "Helvetica Neue", sans-serif;
-  
+  --title-font: 'Helvetica Neue', sans-serif;
+  --body-font: 'Helvetica Neue', sans-serif;
+
   /* Legacy color variables (for backward compatibility) */
   --dark-body-text: #ffffff;
   --light-body-text: #333333;
@@ -253,7 +266,7 @@ The theme system generates CSS custom properties from the theme.json presets:
   --light-title-text: #000000;
   --dark-background: #000000;
   --light-background: #ffffff;
-  
+
   /* Accent colors */
   --dark-accent1: #ffffff;
   --light-accent1: #000000;
@@ -263,7 +276,7 @@ The theme system generates CSS custom properties from the theme.json presets:
   --accent4: #90be6d;
   --accent5: #f8961e;
   --accent6: #577590;
-  
+
   /* Per-heading colors (light mode) */
   --light-h1-color: #000000;
   --light-h2-color: #000000;
@@ -271,7 +284,7 @@ The theme system generates CSS custom properties from the theme.json presets:
   --light-h4-color: #333333;
   --light-header-text: #666666;
   --light-footer-text: #666666;
-  
+
   /* Per-heading colors (dark mode) */
   --dark-h1-color: #ffffff;
   --dark-h2-color: #ffffff;
@@ -279,17 +292,17 @@ The theme system generates CSS custom properties from the theme.json presets:
   --dark-h4-color: #ffffff;
   --dark-header-text: #999999;
   --dark-footer-text: #999999;
-  
+
   /* Layout-specific backgrounds (light mode) */
   --light-bg-cover: #ffffff;
   --light-bg-title: #ffffff;
   --light-bg-section: #000000;
-  
+
   /* Layout-specific backgrounds (dark mode) */
   --dark-bg-cover: #000000;
   --dark-bg-title: #000000;
   --dark-bg-section: #ffffff;
-  
+
   /* Background gradients (if dynamic) */
   --light-bg-gradient: none;
   --dark-bg-gradient: none;
@@ -308,8 +321,12 @@ The CSS file provides theme-specific styling. Use the generated CSS variables fo
 /* Zurich Theme - Minimal Swiss Design */
 
 /* Fixed-size headings - all headings same size */
-.slide h1, .slide h2, .slide h3, 
-.slide h4, .slide h5, .slide h6 {
+.slide h1,
+.slide h2,
+.slide h3,
+.slide h4,
+.slide h5,
+.slide h6 {
   font-size: 2.5rem;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -322,7 +339,8 @@ The CSS file provides theme-specific styling. Use the generated CSS variables fo
   text-align: center;
 }
 
-.layout-cover h1, .layout-cover h2 {
+.layout-cover h1,
+.layout-cover h2 {
   font-size: 4.5rem;
 }
 
@@ -349,7 +367,8 @@ The CSS file provides theme-specific styling. Use the generated CSS variables fo
 For gradient text effects (like Kyoto theme):
 
 ```css
-.slide h1, .slide h2 {
+.slide h1,
+.slide h2 {
   background: linear-gradient(135deg, var(--accent1), var(--accent2));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -373,21 +392,21 @@ pre {
 
 Each layout type has a container class and a content class:
 
-| Layout | Container Class | Content Class |
-|--------|-----------------|---------------|
-| Cover | `.cover-container` | `.layout-cover` |
-| Title | `.title-container` | `.layout-title` |
-| Section | `.section-container` | `.layout-section` |
-| Default | `.default-container` | `.layout-default` |
-| 1-Column | `.columns-container` | `.layout-1-column` |
-| 2-Columns | `.columns-container` | `.layout-2-columns` |
-| 3-Columns | `.columns-container` | `.layout-3-columns` |
+| Layout          | Container Class      | Content Class           |
+| --------------- | -------------------- | ----------------------- |
+| Cover           | `.cover-container`   | `.layout-cover`         |
+| Title           | `.title-container`   | `.layout-title`         |
+| Section         | `.section-container` | `.layout-section`       |
+| Default         | `.default-container` | `.layout-default`       |
+| 1-Column        | `.columns-container` | `.layout-1-column`      |
+| 2-Columns       | `.columns-container` | `.layout-2-columns`     |
+| 3-Columns       | `.columns-container` | `.layout-3-columns`     |
 | 2-Columns (1+2) | `.columns-container` | `.layout-2-columns-1-2` |
 | 2-Columns (2+1) | `.columns-container` | `.layout-2-columns-2-1` |
-| Full Image | `.image-container` | `.layout-full-image` |
-| Half Image | `.split-container` | `.layout-half-image` |
-| Caption | `.caption-container` | `.layout-caption` |
-| Grid | `.grid-container` | `.layout-grid` |
+| Full Image      | `.image-container`   | `.layout-full-image`    |
+| Half Image      | `.split-container`   | `.layout-half-image`    |
+| Caption         | `.caption-container` | `.layout-caption`       |
+| Grid            | `.grid-container`    | `.layout-grid`          |
 
 ### Appearance Classes
 
@@ -409,7 +428,7 @@ Each layout type has a container class and a content class:
     <span class="header-middle"></span>
     <span class="header-right">Logo</span>
   </div>
-  
+
   <div class="slide-content layout-default">
     <div class="slot-header">
       <span class="kicker">Kicker Text</span>
@@ -420,7 +439,7 @@ Each layout type has a container class and a content class:
       <div class="column" data-column="2">...</div>
     </div>
   </div>
-  
+
   <div class="slide-footer">
     <span class="footer-left"></span>
     <span class="footer-middle"></span>
@@ -431,24 +450,34 @@ Each layout type has a container class and a content class:
 
 ### Slot Classes
 
-| Slot | Class | Description |
-|------|-------|-------------|
-| Header | `.slot-header` | Title, kicker, headings |
-| Columns | `.slot-columns` | Column container |
-| Column | `.column` | Individual column |
-| Image | `.slot-image` | Image container |
-| Text | `.slot-text` | Text content area |
-| Title Bar | `.slot-title-bar` | Caption layout title |
-| Caption | `.slot-caption` | Caption text |
+| Slot      | Class             | Description             |
+| --------- | ----------------- | ----------------------- |
+| Header    | `.slot-header`    | Title, kicker, headings |
+| Columns   | `.slot-columns`   | Column container        |
+| Column    | `.column`         | Individual column       |
+| Image     | `.slot-image`     | Image container         |
+| Text      | `.slot-text`      | Text content area       |
+| Title Bar | `.slot-title-bar` | Caption layout title    |
+| Caption   | `.slot-caption`   | Caption text            |
 
 ### Column Modifiers
 
 ```css
-.slot-columns.columns-1 { /* Single column */ }
-.slot-columns.columns-2 { /* Two equal columns */ }
-.slot-columns.columns-3 { /* Three equal columns */ }
-.slot-columns.ratio-1-2 { /* 1/3 + 2/3 split */ }
-.slot-columns.ratio-2-1 { /* 2/3 + 1/3 split */ }
+.slot-columns.columns-1 {
+  /* Single column */
+}
+.slot-columns.columns-2 {
+  /* Two equal columns */
+}
+.slot-columns.columns-3 {
+  /* Three equal columns */
+}
+.slot-columns.ratio-1-2 {
+  /* 1/3 + 2/3 split */
+}
+.slot-columns.ratio-2-1 {
+  /* 2/3 + 1/3 split */
+}
 ```
 
 ---
@@ -457,22 +486,22 @@ Each layout type has a container class and a content class:
 
 Perspecta Slides includes 14 built-in themes:
 
-| Theme | Style | Fonts | Special Features |
-|-------|-------|-------|------------------|
-| **Zurich** | Minimal Swiss | Helvetica | Fixed-size headings |
-| **Kyoto** | Dynamic/Pastel | System UI | Dynamic gradient backgrounds, gradient text |
-| **Berlin** | Professional | Source Sans Pro | Deep blue tones, gradient cover |
-| **Minimal** | Ultra-clean | Inter | Maximum whitespace |
-| **Helvetica** | Classic | Helvetica | Traditional corporate |
-| **Basel** | Swiss Grid | System | Grid-focused layout |
-| **Copenhagen** | Nordic | System | Clean Scandinavian |
-| **Garamond** | Elegant | EB Garamond | Serif typography |
-| **LA** | Warm | System | California vibes |
-| **Milano** | Fashion | System | High contrast |
-| **New York** | Editorial | System | Magazine style |
-| **Paris** | Romantic | Cormorant Garamond | Soft, elegant |
-| **San Francisco** | Tech | SF Pro | Apple-inspired |
-| **Vancouver** | Nature | System | Organic, natural |
+| Theme             | Style          | Fonts              | Special Features                            |
+| ----------------- | -------------- | ------------------ | ------------------------------------------- |
+| **Zurich**        | Minimal Swiss  | Helvetica          | Fixed-size headings                         |
+| **Kyoto**         | Dynamic/Pastel | System UI          | Dynamic gradient backgrounds, gradient text |
+| **Berlin**        | Professional   | Source Sans Pro    | Deep blue tones, gradient cover             |
+| **Minimal**       | Ultra-clean    | Inter              | Maximum whitespace                          |
+| **Helvetica**     | Classic        | Helvetica          | Traditional corporate                       |
+| **Basel**         | Swiss Grid     | System             | Grid-focused layout                         |
+| **Copenhagen**    | Nordic         | System             | Clean Scandinavian                          |
+| **Garamond**      | Elegant        | EB Garamond        | Serif typography                            |
+| **LA**            | Warm           | System             | California vibes                            |
+| **Milano**        | Fashion        | System             | High contrast                               |
+| **New York**      | Editorial      | System             | Magazine style                              |
+| **Paris**         | Romantic       | Cormorant Garamond | Soft, elegant                               |
+| **San Francisco** | Tech           | SF Pro             | Apple-inspired                              |
+| **Vancouver**     | Nature         | System             | Organic, natural                            |
 
 ---
 

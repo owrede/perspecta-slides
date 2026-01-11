@@ -5,7 +5,7 @@ content-mode: advanced-slides
 
 layout: 1-column
 
-## 1-column Layout 
+## 1-column Layout
 
 ### Column 1
 
@@ -23,7 +23,7 @@ layout: 1-column
 
 layout: 2-columns
 
-## 2-column Layout 
+## 2-column Layout
 
 ### Column 1
 

@@ -1,12 +1,14 @@
-import { TFile, Notice } from 'obsidian';
+import type { TFile } from 'obsidian';
+import { Notice } from 'obsidian';
 import { getDebugService } from '../utils/DebugService';
-import { Presentation, Theme, PresentationFrontmatter } from '../types';
-import { SlideRenderer, ImagePathResolver } from '../renderer/SlideRenderer';
+import type { Presentation, Theme, PresentationFrontmatter } from '../types';
+import type { ImagePathResolver } from '../renderer/SlideRenderer';
+import { SlideRenderer } from '../renderer/SlideRenderer';
+import type { PresentationCache } from '../utils/SlideHasher';
 import {
-  PresentationCache,
   buildPresentationCache,
   diffPresentations,
-  requiresFullRender
+  requiresFullRender,
 } from '../utils/SlideHasher';
 
 // Access Electron from the global require in Obsidian's context
@@ -15,7 +17,7 @@ declare const require: NodeRequire;
 
 /**
  * PresentationWindow - Opens a frameless Electron window for fullscreen presentation
- * 
+ *
  * Features:
  * - Frameless window with draggable titlebar
  * - Keyboard navigation (arrow keys, space, escape to close)
@@ -31,6 +33,7 @@ export class PresentationWindow {
   private presentation: Presentation | null = null;
   private customFontCSS: string = '';
   private fontWeightsCache: Map<string, number[]> = new Map();
+  private excalidrawSvgCache: Map<string, string> | null = null;
   private onSlideChanged: ((index: number) => void) | null = null;
 
   public getPresentation(): Presentation | null {
@@ -49,6 +52,10 @@ export class PresentationWindow {
     this.fontWeightsCache = cache;
   }
 
+  setExcalidrawSvgCache(cache: Map<string, string>): void {
+    this.excalidrawSvgCache = cache;
+  }
+
   setOnSlideChanged(callback: (index: number) => void): void {
     this.onSlideChanged = callback;
   }
@@ -65,6 +72,9 @@ export class PresentationWindow {
     if (this.fontWeightsCache.size > 0) {
       renderer.setFontWeightsCache(this.fontWeightsCache);
     }
+    if (this.excalidrawSvgCache) {
+      renderer.setExcalidrawSvgCache(this.excalidrawSvgCache);
+    }
     renderer.setSystemColorScheme(this.getSystemColorScheme());
     return renderer;
   }
@@ -76,7 +86,12 @@ export class PresentationWindow {
     return 'light';
   }
 
-  async open(presentation: Presentation, theme: Theme | null, sourceFile?: TFile, startSlide: number = 0): Promise<void> {
+  async open(
+    presentation: Presentation,
+    theme: Theme | null,
+    sourceFile?: TFile,
+    startSlide: number = 0
+  ): Promise<void> {
     this.presentation = presentation;
     this.currentSlideIndex = startSlide;
     this.currentTheme = theme;
@@ -183,7 +198,9 @@ export class PresentationWindow {
             break;
           case 'end':
             event.preventDefault();
-            this.goToSlide(this.presentation?.slides.length ? this.presentation.slides.length - 1 : 0);
+            this.goToSlide(
+              this.presentation?.slides.length ? this.presentation.slides.length - 1 : 0
+            );
             break;
           case 'escape':
             event.preventDefault();
@@ -218,17 +235,24 @@ export class PresentationWindow {
   }
 
   private nextSlide(): void {
-    if (!this.presentation) return;
+    if (!this.presentation) {
+      return;
+    }
     let nextIndex = this.currentSlideIndex + 1;
     // Skip hidden slides
-    while (nextIndex < this.presentation.slides.length && this.presentation.slides[nextIndex].hidden) {
+    while (
+      nextIndex < this.presentation.slides.length &&
+      this.presentation.slides[nextIndex].hidden
+    ) {
       nextIndex++;
     }
     this.goToSlide(nextIndex);
   }
 
   private previousSlide(): void {
-    if (!this.presentation) return;
+    if (!this.presentation) {
+      return;
+    }
     let prevIndex = this.currentSlideIndex - 1;
     // Skip hidden slides
     while (prevIndex >= 0 && this.presentation.slides[prevIndex].hidden) {
@@ -245,9 +269,13 @@ export class PresentationWindow {
       debug.warn('presentation-window', '[PresentationWindow.goToSlide] No presentation loaded');
       return;
     }
-    if (index < 0) index = 0;
-    if (index >= this.presentation.slides.length) index = this.presentation.slides.length - 1;
-    
+    if (index < 0) {
+      index = 0;
+    }
+    if (index >= this.presentation.slides.length) {
+      index = this.presentation.slides.length - 1;
+    }
+
     // If the target slide is hidden, skip to next non-hidden slide
     while (index < this.presentation.slides.length && this.presentation.slides[index].hidden) {
       index++;
@@ -263,19 +291,37 @@ export class PresentationWindow {
 
     // Notify any listeners that slide changed (e.g., presenter window)
     if (this.onSlideChanged) {
-      debug.log('presentation-window', `[PresentationWindow.goToSlide] Invoking onSlideChanged callback with index ${index}`);
+      debug.log(
+        'presentation-window',
+        `[PresentationWindow.goToSlide] Invoking onSlideChanged callback with index ${index}`
+      );
       this.onSlideChanged(index);
     }
 
     if (this.win && !this.win.isDestroyed()) {
-      debug.log('presentation-window', `[PresentationWindow.goToSlide] Executing showSlide(${index}) in window`);
-      this.win.webContents.executeJavaScript(`showSlide(${index})`).then(() => {
-        debug.log('presentation-window', `[PresentationWindow.goToSlide] showSlide(${index}) executed successfully`);
-      }).catch((e: any) => {
-        debug.error('presentation-window', `[PresentationWindow.goToSlide] Error executing showSlide: ${e}`);
-      });
+      debug.log(
+        'presentation-window',
+        `[PresentationWindow.goToSlide] Executing showSlide(${index}) in window`
+      );
+      this.win.webContents
+        .executeJavaScript(`showSlide(${index})`)
+        .then(() => {
+          debug.log(
+            'presentation-window',
+            `[PresentationWindow.goToSlide] showSlide(${index}) executed successfully`
+          );
+        })
+        .catch((e: any) => {
+          debug.error(
+            'presentation-window',
+            `[PresentationWindow.goToSlide] Error executing showSlide: ${e}`
+          );
+        });
     } else {
-      debug.warn('presentation-window', '[PresentationWindow.goToSlide] Window is null or destroyed');
+      debug.warn(
+        'presentation-window',
+        '[PresentationWindow.goToSlide] Window is null or destroyed'
+      );
     }
   }
 
@@ -304,7 +350,12 @@ export class PresentationWindow {
     }
   }
 
-  private generatePresentationHTML(presentation: Presentation, renderer: SlideRenderer, theme: Theme | null, startSlide: number = 0): string {
+  private generatePresentationHTML(
+    presentation: Presentation,
+    renderer: SlideRenderer,
+    theme: Theme | null,
+    startSlide: number = 0
+  ): string {
     const slidesHTML = presentation.slides.map((slide, index) => {
       // Skip hidden slides in presentation
       if (slide.hidden) {
@@ -332,7 +383,9 @@ export class PresentationWindow {
   <div class="titlebar"></div>
   <div class="presentation-container">
     <div class="slides-container" id="slidesContainer">
-      ${presentation.slides.map((slide, index) => `
+      ${presentation.slides
+        .map(
+          (slide, index) => `
         <div class="slide-frame ${index === startSlide ? 'active' : ''}" data-index="${index}">
           <iframe 
             srcdoc="${this.escapeAttr(slidesHTML[index])}" 
@@ -340,10 +393,12 @@ export class PresentationWindow {
             scrolling="no"
           ></iframe>
         </div>
-      `).join('')}
+      `
+        )
+        .join('')}
     </div>
     <div class="slide-counter" id="slideCounter">
-      <span id="currentSlide">${startSlide + 1}</span> / <span id="totalSlides">${presentation.slides.filter(s => !s.hidden).length}</span>
+      <span id="currentSlide">${startSlide + 1}</span> / <span id="totalSlides">${presentation.slides.filter((s) => !s.hidden).length}</span>
     </div>
   </div>
   <script>
@@ -446,15 +501,18 @@ export class PresentationWindow {
 
   private getPresentationWindowScript(totalSlides: number, startSlide: number = 0): string {
     // Count non-hidden slides
-    const visibleCount = this.presentation?.slides.filter(s => !s.hidden).length || totalSlides;
-    
+    const visibleCount = this.presentation?.slides.filter((s) => !s.hidden).length || totalSlides;
+
     return `
       window.currentSlide = ${startSlide};
       window.totalSlides = ${totalSlides};
       window.visibleSlidesCount = ${visibleCount};
       
       // Array to map visible slide numbers to actual indices
-      window.visibleSlideIndices = [${(this.presentation?.slides || []).map((s, i) => !s.hidden ? i : null).filter(i => i !== null).join(', ')}];
+      window.visibleSlideIndices = [${(this.presentation?.slides || [])
+        .map((s, i) => (!s.hidden ? i : null))
+        .filter((i) => i !== null)
+        .join(', ')}];
       
       function showSlide(index) {
         if (index < 0) index = 0;
@@ -530,7 +588,9 @@ export class PresentationWindow {
 
   private generateThemeVariables(theme: Theme): string {
     const preset = theme.presets[0];
-    if (!preset) return '';
+    if (!preset) {
+      return '';
+    }
 
     return `
       :root {
@@ -564,11 +624,11 @@ export class PresentationWindow {
     }
 
     const aspectRatio = frontmatter.aspectRatio || '16:9';
-    const ratios: Record<string, { width: number, height: number }> = {
+    const ratios: Record<string, { width: number; height: number }> = {
       '16:9': { width: 16, height: 9 },
       '4:3': { width: 4, height: 3 },
       '16:10': { width: 16, height: 10 },
-      'auto': { width: 0, height: 0 }
+      auto: { width: 0, height: 0 },
     };
 
     const ratio = ratios[aspectRatio];
@@ -616,7 +676,9 @@ export class PresentationWindow {
 
   async updateContent(presentation: Presentation, theme: Theme | null): Promise<void> {
     const debug = getDebugService();
-    if (!this.win || this.win.isDestroyed()) return;
+    if (!this.win || this.win.isDestroyed()) {
+      return;
+    }
 
     if (!presentation.slides || presentation.slides.length === 0) {
       debug.warn('presentation-window', 'Cannot update presentation window: no slides');
@@ -656,7 +718,10 @@ export class PresentationWindow {
 
           if (currentSlideModified) {
             const renderer = this.createRenderer(presentation, theme);
-            const slideHTML = renderer.renderPresentationSlideHTML(presentation.slides[currentSlide], currentSlide);
+            const slideHTML = renderer.renderPresentationSlideHTML(
+              presentation.slides[currentSlide],
+              currentSlide
+            );
             const escapedHTML = JSON.stringify(slideHTML);
             await this.win.webContents.executeJavaScript(
               `window.updateSlideContent(${currentSlide}, ${escapedHTML})`
@@ -670,13 +735,16 @@ export class PresentationWindow {
       }
 
       await this.fullReload(presentation, theme, currentSlide);
-
     } catch (error) {
       debug.error('presentation-window', `Failed to update presentation content: ${error}`);
     }
   }
 
-  private async fullReload(presentation: Presentation, theme: Theme | null, currentSlide: number): Promise<void> {
+  private async fullReload(
+    presentation: Presentation,
+    theme: Theme | null,
+    currentSlide: number
+  ): Promise<void> {
     this.presentation = presentation;
 
     const renderer = this.createRenderer(presentation, theme);

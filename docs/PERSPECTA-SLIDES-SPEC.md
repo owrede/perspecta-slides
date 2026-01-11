@@ -14,46 +14,46 @@ Every presentation starts with YAML frontmatter:
 
 ```yaml
 ---
-title: "Presentation Title"
-author: "Author Name"
+title: 'Presentation Title'
+author: 'Author Name'
 theme: zurich
 contentMode: advanced-slides
 
 # Typography (optional)
-titleFont: "Helvetica, Arial, sans-serif"
-bodyFont: "Georgia, serif"
+titleFont: 'Helvetica, Arial, sans-serif'
+bodyFont: 'Georgia, serif'
 fontSizeOffset: 0
 contentTopOffset: 0
 
 # Colors (optional - override theme)
-accent1: "#000000"
-accent2: "#43aa8b"
-accent3: "#f9c74f"
+accent1: '#000000'
+accent2: '#43aa8b'
+accent3: '#f9c74f'
 
 # Header/Footer (optional)
-headerLeft: "Company Name"
-headerMiddle: ""
-headerRight: ""
-footerLeft: ""
-footerMiddle: ""
+headerLeft: 'Company Name'
+headerMiddle: ''
+headerRight: ''
+footerLeft: ''
+footerMiddle: ''
 showSlideNumbers: true
 
 # Settings
-aspectRatio: "16:9"
+aspectRatio: '16:9'
 transition: fade
 ---
 ```
 
 ### Key Frontmatter Properties
 
-| Property | Values | Description |
-|----------|--------|-------------|
-| `theme` | `zurich`, `kyoto`, `berlin`, `minimal`, `helvetica`, `basel`, `copenhagen` | Visual theme |
-| `contentMode` | `ia-presenter`, `advanced-slides` | How content vs notes are distinguished |
-| `fontSizeOffset` | -50 to 50 | Percentage to scale all fonts |
-| `contentTopOffset` | 0 to 20 | Push column content down (%) |
-| `transition` | `fade`, `slide`, `none` | Slide transition effect |
-| `aspectRatio` | `16:9`, `4:3`, `16:10` | Slide aspect ratio |
+| Property           | Values                                                                     | Description                            |
+| ------------------ | -------------------------------------------------------------------------- | -------------------------------------- |
+| `theme`            | `zurich`, `kyoto`, `berlin`, `minimal`, `helvetica`, `basel`, `copenhagen` | Visual theme                           |
+| `contentMode`      | `ia-presenter`, `advanced-slides`                                          | How content vs notes are distinguished |
+| `fontSizeOffset`   | -50 to 50                                                                  | Percentage to scale all fonts          |
+| `contentTopOffset` | 0 to 20                                                                    | Push column content down (%)           |
+| `transition`       | `fade`, `slide`, `none`                                                    | Slide transition effect                |
+| `aspectRatio`      | `16:9`, `4:3`, `16:10`                                                     | Slide aspect ratio                     |
 
 ---
 
@@ -97,31 +97,31 @@ class: my-custom-class
 
 ### Standard Layouts
 
-| Layout | Use Case |
-|--------|----------|
+| Layout    | Use Case                                     |
+| --------- | -------------------------------------------- |
 | `default` | Standard content slide, auto-detects columns |
-| `title` | Centered title slide with large heading |
-| `cover` | Opening/closing slide, centered |
-| `section` | Chapter divider with accent background |
+| `title`   | Centered title slide with large heading      |
+| `cover`   | Opening/closing slide, centered              |
+| `section` | Chapter divider with accent background       |
 
 ### Column Layouts
 
-| Layout | Description |
-|--------|-------------|
-| `1-column` | Single column, no auto-detection |
-| `2-columns` | Two equal columns (50/50) |
-| `3-columns` | Three equal columns |
+| Layout          | Description                         |
+| --------------- | ----------------------------------- |
+| `1-column`      | Single column, no auto-detection    |
+| `2-columns`     | Two equal columns (50/50)           |
+| `3-columns`     | Three equal columns                 |
 | `2-columns-1+2` | Narrow left (1/3), wide right (2/3) |
 | `2-columns-2+1` | Wide left (2/3), narrow right (1/3) |
 
 ### Image Layouts
 
-| Layout | Description |
-|--------|-------------|
-| `full-image` | Image(s) fill entire slide edge-to-edge |
-| `half-image` | Vertical split: left/right halves (image first = image on left) |
+| Layout                  | Description                                                      |
+| ----------------------- | ---------------------------------------------------------------- |
+| `full-image`            | Image(s) fill entire slide edge-to-edge                          |
+| `half-image`            | Vertical split: left/right halves (image first = image on left)  |
 | `half-image-horizontal` | Horizontal split: top/bottom halves (image first = image on top) |
-| `caption` | Image with title bar on top, optional caption below |
+| `caption`               | Image with title bar on top, optional caption below              |
 
 ---
 
@@ -133,10 +133,15 @@ In `advanced-slides` mode, all content is visible on the slide by default. Use `
 
 ```markdown
 # H1 - Main Title (largest)
+
 ## H2 - Section Title
+
 ### H3 - Subsection / Column Header
+
 #### H4 - Smaller heading
+
 ##### H5 - Even smaller
+
 ###### H6 - Smallest
 ```
 
@@ -144,7 +149,7 @@ In `advanced-slides` mode, all content is visible on the slide by default. Use `
 
 ```markdown
 **Bold text**
-*Italic text*
+_Italic text_
 ==Highlighted text==
 `inline code`
 [Link text](https://example.com)
@@ -174,7 +179,7 @@ In `advanced-slides` mode, all content is visible on the slide by default. Use `
 
 ````markdown
 ```javascript
-const greeting = "Hello World";
+const greeting = 'Hello World';
 console.log(greeting);
 ```
 ````
@@ -203,12 +208,15 @@ Columns are auto-detected when you use multiple H3 headings:
 layout: default
 
 ### Column 1
+
 Content for first column
 
 ### Column 2
+
 Content for second column
 
 ### Column 3
+
 Content for third column
 ```
 
@@ -220,10 +228,12 @@ Or explicitly set the layout:
 layout: 2-columns
 
 ### Left Side
+
 - Point A
 - Point B
 
 ### Right Side
+
 - Point X
 - Point Y
 ```
@@ -361,12 +371,12 @@ mode: dark
 
 ```markdown
 ---
-title: "Product Launch 2024"
-author: "Marketing Team"
+title: 'Product Launch 2024'
+author: 'Marketing Team'
 theme: zurich
 contentMode: advanced-slides
 fontSizeOffset: -5
-headerLeft: "Acme Corp"
+headerLeft: 'Acme Corp'
 showSlideNumbers: true
 transition: fade
 ---
@@ -375,6 +385,7 @@ layout: cover
 mode: dark
 
 # Product Launch 2024
+
 ## Revolutionizing the Industry
 
 ---
@@ -388,12 +399,15 @@ layout: section
 # Current Challenges
 
 ### Pain Point 1
+
 Users struggle with complex interfaces
 
 ### Pain Point 2
+
 Slow processing times
 
 ### Pain Point 3
+
 Limited integrations
 
 note:
@@ -420,16 +434,19 @@ Introducing ProductX - Simple. Fast. Connected.
 # Key Features
 
 ### Speed
+
 - 10x faster processing
 - Real-time updates
 - Instant sync
 
 ### Simplicity
+
 - One-click actions
 - Intuitive design
 - Zero learning curve
 
 ### Integration
+
 - 500+ connectors
 - Open API
 - Custom webhooks
@@ -473,12 +490,12 @@ contact@acme.com
 
 ## Theme Reference
 
-| Theme | Style |
-|-------|-------|
-| `zurich` | Minimal Swiss design, clean typography |
-| `kyoto` | Dynamic gradient theme with soft pastel colors |
-| `berlin` | Professional, deep blue tones |
-| `minimal` | Ultra-clean with generous whitespace |
-| `helvetica` | Classic typography focus |
-| `basel` | Swiss serif with Noto Serif font |
-| `copenhagen` | Nordic elegance, Albert Sans font |
+| Theme        | Style                                          |
+| ------------ | ---------------------------------------------- |
+| `zurich`     | Minimal Swiss design, clean typography         |
+| `kyoto`      | Dynamic gradient theme with soft pastel colors |
+| `berlin`     | Professional, deep blue tones                  |
+| `minimal`    | Ultra-clean with generous whitespace           |
+| `helvetica`  | Classic typography focus                       |
+| `basel`      | Swiss serif with Noto Serif font               |
+| `copenhagen` | Nordic elegance, Albert Sans font              |

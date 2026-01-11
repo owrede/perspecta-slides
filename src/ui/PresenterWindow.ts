@@ -1,12 +1,15 @@
-import { TFile, Notice } from 'obsidian';
+import type { TFile } from 'obsidian';
+import { Notice } from 'obsidian';
 import { getDebugService } from '../utils/DebugService';
-import { Presentation, Theme, PresentationFrontmatter, Slide } from '../types';
-import { SlideRenderer, ImagePathResolver } from '../renderer/SlideRenderer';
+import type { Presentation, Theme, Slide } from '../types';
+import { PresentationFrontmatter } from '../types';
+import type { ImagePathResolver } from '../renderer/SlideRenderer';
+import { SlideRenderer } from '../renderer/SlideRenderer';
+import type { PresentationCache } from '../utils/SlideHasher';
 import {
-  PresentationCache,
   buildPresentationCache,
   diffPresentations,
-  requiresFullRender
+  requiresFullRender,
 } from '../utils/SlideHasher';
 
 // Access Electron from the global require in Obsidian's context
@@ -15,7 +18,7 @@ declare const require: NodeRequire;
 
 /**
  * PresenterWindow - Opens an Electron window for presenter view
- * 
+ *
  * Features:
  * - Vertical list of all slides with small thumbnails on the left
  * - Slide number badge next to each thumbnail
@@ -32,7 +35,9 @@ export class PresenterWindow {
   private customFontCSS: string = '';
   private fontWeightsCache: Map<string, number[]> = new Map();
   private onSlideChanged: ((index: number) => void) | null = null;
-  private onWindowBoundsChanged: ((bounds: { x: number; y: number; width: number; height: number }) => void) | null = null;
+  private onWindowBoundsChanged:
+    | ((bounds: { x: number; y: number; width: number; height: number }) => void)
+    | null = null;
   private onOpenPresentationWindow: (() => void) | null = null;
   private windowBounds: { x: number; y: number; width: number; height: number } | null = null;
   private ipcMainRef: any = null; // Cache ipcMain reference
@@ -57,7 +62,9 @@ export class PresenterWindow {
     this.onSlideChanged = callback;
   }
 
-  setOnWindowBoundsChanged(callback: (bounds: { x: number; y: number; width: number; height: number }) => void): void {
+  setOnWindowBoundsChanged(
+    callback: (bounds: { x: number; y: number; width: number; height: number }) => void
+  ): void {
     this.onWindowBoundsChanged = callback;
   }
 
@@ -77,7 +84,10 @@ export class PresenterWindow {
       return;
     }
 
-    debug.log('presentation-window', `[PresenterWindow.notifySlideChange] Updating presenter view to slide ${slideIndex}`);
+    debug.log(
+      'presentation-window',
+      `[PresenterWindow.notifySlideChange] Updating presenter view to slide ${slideIndex}`
+    );
 
     // Execute the setActiveSlide function in the presenter window
     const jsCode = `setActiveSlide(${slideIndex});`;
@@ -92,11 +102,17 @@ export class PresenterWindow {
     debug.log('presentation-window', '[PresenterWindow.injectCallbacksIntoWindow] CALLED');
 
     if (!this.win || this.win.isDestroyed()) {
-      debug.warn('presentation-window', '[PresenterWindow] Cannot inject callbacks: window is destroyed');
+      debug.warn(
+        'presentation-window',
+        '[PresenterWindow] Cannot inject callbacks: window is destroyed'
+      );
       return;
     }
 
-    debug.log('presentation-window', '[PresenterWindow] Setting up callback handlers via direct invocation');
+    debug.log(
+      'presentation-window',
+      '[PresenterWindow] Setting up callback handlers via direct invocation'
+    );
 
     try {
       // Define handlers that will be called from the presenter window
@@ -147,12 +163,21 @@ export class PresenterWindow {
               debug.log('presentation-window', `[Poll] Result: ${JSON.stringify(result)}`);
             }
 
-            if (result && result.lastChange && result.lastChange.timestamp > ((this as any).__lastCheckTime || 0)) {
+            if (
+              result?.lastChange &&
+              result.lastChange.timestamp > ((this as any).__lastCheckTime || 0)
+            ) {
               (this as any).__lastCheckTime = result.lastChange.timestamp;
-              debug.log('presentation-window', `[Poll] Detected slide change to ${result.lastChange.index}`);
+              debug.log(
+                'presentation-window',
+                `[Poll] Detected slide change to ${result.lastChange.index}`
+              );
               slideChangedHandler(result.lastChange.index);
             }
-            if (result && result.lastOpen && result.lastOpen.timestamp > ((this as any).__lastCheckOpenTime || 0)) {
+            if (
+              result?.lastOpen &&
+              result.lastOpen.timestamp > ((this as any).__lastCheckOpenTime || 0)
+            ) {
               (this as any).__lastCheckOpenTime = result.lastOpen.timestamp;
               debug.log('presentation-window', `[Poll] Detected open presentation request`);
               openPresentationHandler();
@@ -179,7 +204,10 @@ export class PresenterWindow {
 
   private setupIPCHandlers(ipcMain: any, debug: any): void {
     if (!ipcMain) {
-      debug.error('presentation-window', '[PresenterWindow] Cannot setup IPC: ipcMain is null/undefined');
+      debug.error(
+        'presentation-window',
+        '[PresenterWindow] Cannot setup IPC: ipcMain is null/undefined'
+      );
       return;
     }
 
@@ -196,7 +224,10 @@ export class PresenterWindow {
 
     // Listen for slide changes from the presenter window UI
     ipcMain.on('presenter:slide-changed', (event: any, slideIndex: number) => {
-      debug.log('presentation-window', `[PresenterWindow] IPC: slide-changed received with index ${slideIndex}`);
+      debug.log(
+        'presentation-window',
+        `[PresenterWindow] IPC: slide-changed received with index ${slideIndex}`
+      );
       if (this.onSlideChanged) {
         debug.log('presentation-window', `[PresenterWindow] Invoking onSlideChanged callback`);
         this.onSlideChanged(slideIndex);
@@ -209,10 +240,16 @@ export class PresenterWindow {
     ipcMain.on('presenter:open-presentation', (event: any) => {
       debug.log('presentation-window', '[PresenterWindow] IPC: open-presentation received');
       if (this.onOpenPresentationWindow) {
-        debug.log('presentation-window', '[PresenterWindow] Invoking onOpenPresentationWindow callback');
+        debug.log(
+          'presentation-window',
+          '[PresenterWindow] Invoking onOpenPresentationWindow callback'
+        );
         this.onOpenPresentationWindow();
       } else {
-        debug.warn('presentation-window', '[PresenterWindow] onOpenPresentationWindow callback not set');
+        debug.warn(
+          'presentation-window',
+          '[PresenterWindow] onOpenPresentationWindow callback not set'
+        );
       }
     });
 
@@ -285,7 +322,7 @@ export class PresenterWindow {
     const primaryDisplay = screen.getPrimaryDisplay();
 
     let targetDisplay = primaryDisplay;
-    let isFullscreen = fullscreenOnSecondaryDisplay;
+    const isFullscreen = fullscreenOnSecondaryDisplay;
 
     if (fullscreenOnSecondaryDisplay && displays.length > 1) {
       targetDisplay = displays[1];
@@ -307,7 +344,10 @@ export class PresenterWindow {
       windowHeight = this.windowBounds.height;
     }
 
-    debug.log('presentation-window', `[PresenterWindow] Creating window: ${windowWidth}x${windowHeight}`);
+    debug.log(
+      'presentation-window',
+      `[PresenterWindow] Creating window: ${windowWidth}x${windowHeight}`
+    );
 
     try {
       this.win = new BrowserWindow({
@@ -364,7 +404,10 @@ export class PresenterWindow {
           this.win.focus();
 
           // After window is shown, inject the actual callbacks
-          debug.log('presentation-window', '[PresenterWindow] Window shown, calling injectCallbacksIntoWindow()');
+          debug.log(
+            'presentation-window',
+            '[PresenterWindow] Window shown, calling injectCallbacksIntoWindow()'
+          );
           this.injectCallbacksIntoWindow();
         }
       };
@@ -374,8 +417,11 @@ export class PresenterWindow {
 
       // If window is already ready, call handler immediately
       // (this can happen if ready-to-show fired before we registered the handler)
-      if (this.win.isReady && this.win.isReady()) {
-        debug.log('presentation-window', '[PresenterWindow] Window already ready, calling handler immediately');
+      if (this.win.isReady?.()) {
+        debug.log(
+          'presentation-window',
+          '[PresenterWindow] Window already ready, calling handler immediately'
+        );
         readyHandler();
       }
 
@@ -413,14 +459,20 @@ export class PresenterWindow {
         this.win.focus();
 
         // Inject callbacks after window is shown via fallback
-        debug.log('presentation-window', '[PresenterWindow] Fallback: calling injectCallbacksIntoWindow()');
+        debug.log(
+          'presentation-window',
+          '[PresenterWindow] Fallback: calling injectCallbacksIntoWindow()'
+        );
         this.injectCallbacksIntoWindow();
       }
     }, 1000);
 
     try {
       if (!this.win || this.win.isDestroyed()) {
-        debug.error('presentation-window', '[PresenterWindow] Window was destroyed before setting up handlers');
+        debug.error(
+          'presentation-window',
+          '[PresenterWindow] Window was destroyed before setting up handlers'
+        );
         throw new Error('Window was destroyed');
       }
 
@@ -465,14 +517,20 @@ export class PresenterWindow {
       debug.log('presentation-window', `[PresenterWindow] ipcMain available: ${!!ipcMain}`);
 
       if (ipcMain) {
-        debug.log('presentation-window', '[PresenterWindow] Setting up IPC handlers from presenter window');
+        debug.log(
+          'presentation-window',
+          '[PresenterWindow] Setting up IPC handlers from presenter window'
+        );
         this.setupIPCHandlers(ipcMain, debug);
       } else {
         // ipcMain is not available in renderer/plugin process
         // The presenter window will send messages via ipcRenderer.send()
         // and the main Obsidian process will receive them via ipcMain.on()
         // (handlers set up in main.ts onload)
-        debug.log('presentation-window', '[PresenterWindow] ipcMain not available - using ipcRenderer to send messages to main process');
+        debug.log(
+          'presentation-window',
+          '[PresenterWindow] ipcMain not available - using ipcRenderer to send messages to main process'
+        );
       }
     } catch (error) {
       debug.error('presentation-window', `[PresenterWindow] Error during IPC setup: ${error}`);
@@ -563,7 +621,7 @@ export class PresenterWindow {
                    <path fill="currentColor" d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/>
                  </svg>
                </button>
-               <span id="slideCounter">Slide 1 of ${presentation.slides.filter(s => !s.hidden).length}</span>
+               <span id="slideCounter">Slide 1 of ${presentation.slides.filter((s) => !s.hidden).length}</span>
              </div>
            </div>
 
@@ -633,7 +691,7 @@ export class PresenterWindow {
              const slideRow = slides[index];
              if (slideRow && slideRow.dataset.hidden === 'false') {
                const visibleIndex = Array.from(slides).slice(0, index + 1).filter(s => s.dataset.hidden === 'false').length;
-               document.getElementById('slideCounter').textContent = 'Slide ' + visibleIndex + ' of ${presentation.slides.filter(s => !s.hidden).length}';
+               document.getElementById('slideCounter').textContent = 'Slide ' + visibleIndex + ' of ${presentation.slides.filter((s) => !s.hidden).length}';
              }
              
              window.currentSlideIndex = index;
@@ -792,10 +850,12 @@ export class PresenterWindow {
       const slide = presentation.slides[slideIdx];
       const slideHTML = renderer.renderPresentationSlideHTML(slide, slideIdx);
       const isFirst = slideIdx === 0 ? 'active' : '';
-      
+
       // Calculate visible slide number (count only non-hidden slides up to this one)
-      const visibleNumber = presentation.slides.slice(0, slideIdx + 1).filter(s => !s.hidden).length;
-      
+      const visibleNumber = presentation.slides
+        .slice(0, slideIdx + 1)
+        .filter((s) => !s.hidden).length;
+
       // If slide is hidden, render it but with display: none
       const hiddenClass = slide.hidden ? 'hidden' : '';
       const displayStyle = slide.hidden ? 'style="display: none;"' : '';
@@ -822,7 +882,9 @@ export class PresenterWindow {
   }
 
   private renderSlideContent(slide: Slide): string {
-    if (!slide.rawContent) return '';
+    if (!slide.rawContent) {
+      return '';
+    }
 
     const lines = slide.rawContent.split('\n');
     let html = '';
@@ -834,7 +896,7 @@ export class PresenterWindow {
       if (!trimmed) {
         // Flush any pending list
         if (inList && listItems.length > 0) {
-          html += `<ul>${listItems.map(item => `<li>${item}</li>`).join('')}</ul>`;
+          html += `<ul>${listItems.map((item) => `<li>${item}</li>`).join('')}</ul>`;
           listItems = [];
           inList = false;
         }
@@ -849,7 +911,7 @@ export class PresenterWindow {
       if (trimmed.match(/^#+\s/)) {
         // Flush any pending list
         if (inList && listItems.length > 0) {
-          html += `<ul>${listItems.map(item => `<li>${item}</li>`).join('')}</ul>`;
+          html += `<ul>${listItems.map((item) => `<li>${item}</li>`).join('')}</ul>`;
           listItems = [];
           inList = false;
         }
@@ -865,7 +927,7 @@ export class PresenterWindow {
       } else {
         // Flush any pending list
         if (inList && listItems.length > 0) {
-          html += `<ul>${listItems.map(item => `<li>${item}</li>`).join('')}</ul>`;
+          html += `<ul>${listItems.map((item) => `<li>${item}</li>`).join('')}</ul>`;
           listItems = [];
           inList = false;
         }
@@ -875,7 +937,7 @@ export class PresenterWindow {
 
     // Flush any remaining list
     if (inList && listItems.length > 0) {
-      html += `<ul>${listItems.map(item => `<li>${item}</li>`).join('')}</ul>`;
+      html += `<ul>${listItems.map((item) => `<li>${item}</li>`).join('')}</ul>`;
     }
 
     return html;
@@ -883,10 +945,7 @@ export class PresenterWindow {
 
   private renderMarkdown(text: string): string {
     // Escape HTML special characters but preserve markdown formatting
-    let result = text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    let result = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
     // Process markdown: bold **text**, italic *text*, code `text`
     result = result
@@ -903,11 +962,13 @@ export class PresenterWindow {
     }
 
     const notesHTML = slide.speakerNotes
-      .filter(note => note.trim())
-      .map(note => `<p>${this.escapeHtml(note)}</p>`)
+      .filter((note) => note.trim())
+      .map((note) => `<p>${this.escapeHtml(note)}</p>`)
       .join('');
 
-    if (!notesHTML) return '';
+    if (!notesHTML) {
+      return '';
+    }
 
     return `
       <div class="speaker-notes">
@@ -1325,7 +1386,9 @@ export class PresenterWindow {
 
   private generateThemeVariables(theme: Theme): string {
     const preset = theme.presets[0];
-    if (!preset) return '';
+    if (!preset) {
+      return '';
+    }
     return `
       :root {
         --light-background: ${preset.LightBackgroundColor};
@@ -1336,7 +1399,9 @@ export class PresenterWindow {
 
   async updateContent(presentation: Presentation, theme: Theme | null): Promise<void> {
     const debug = getDebugService();
-    if (!this.win || this.win.isDestroyed()) return;
+    if (!this.win || this.win.isDestroyed()) {
+      return;
+    }
 
     if (!presentation.slides || presentation.slides.length === 0) {
       debug.warn('presentation-window', 'Cannot update presenter window: no slides');

@@ -105,7 +105,7 @@ More content
 ### Speaker Notes vs. Visible Content
 
 - **Headings** (`#`, `##`, etc.) → Visible on slide
-- **Tab-indented content** → Visible on slide  
+- **Tab-indented content** → Visible on slide
 - **Regular paragraphs** → Speaker notes (only you see them)
 
 ```markdown
@@ -165,15 +165,15 @@ textScale: 1.0
 lineHeight: 1.1
 
 # Colors (optional overrides)
-lightLinkColor: "#0066cc"
-darkLinkColor: "#66b3ff"
+lightLinkColor: '#0066cc'
+darkLinkColor: '#66b3ff'
 
 # Header/Footer
-headerLeft: "Company Name"
-footerRight: "{{slideNumber}}"
+headerLeft: 'Company Name'
+footerRight: '{{slideNumber}}'
 
 # Settings
-aspectRatio: "16:9"
+aspectRatio: '16:9'
 lockAspectRatio: true
 transition: fade
 mode: light
@@ -201,22 +201,22 @@ With a background image
 
 ### Available Layouts
 
-| Layout | Description |
-|--------|-------------|
-| `default` | Auto-detects columns from content |
-| `title` | Centered title slide |
-| `section` | Section divider with accent background |
-| `cover` | Opening/closing slide (no header/footer) |
-| `half-image` | Vertical split (image + text side by side) |
-| `half-image-horizontal` | Horizontal split (stacked) |
-| `caption` | Full image with title bar and caption |
-| `full-image` | Edge-to-edge image(s) |
-| `1-column` | Single column layout |
-| `2-columns` | Two equal columns |
-| `3-columns` | Three equal columns |
-| `2-columns-1+2` | Narrow left, wide right |
-| `2-columns-2+1` | Wide left, narrow right |
-| `footnotes` | Slide with footnotes section at bottom |
+| Layout                  | Description                                |
+| ----------------------- | ------------------------------------------ |
+| `default`               | Auto-detects columns from content          |
+| `title`                 | Centered title slide                       |
+| `section`               | Section divider with accent background     |
+| `cover`                 | Opening/closing slide (no header/footer)   |
+| `half-image`            | Vertical split (image + text side by side) |
+| `half-image-horizontal` | Horizontal split (stacked)                 |
+| `caption`               | Full image with title bar and caption      |
+| `full-image`            | Edge-to-edge image(s)                      |
+| `1-column`              | Single column layout                       |
+| `2-columns`             | Two equal columns                          |
+| `3-columns`             | Three equal columns                        |
+| `2-columns-1+2`         | Narrow left, wide right                    |
+| `2-columns-2+1`         | Wide left, narrow right                    |
+| `footnotes`             | Slide with footnotes section at bottom     |
 
 ---
 
@@ -244,16 +244,16 @@ Custom themes include fonts, colors, typography, and margin settings. They appea
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
+| Command                | Description                             |
+| ---------------------- | --------------------------------------- |
 | Open presentation view | Opens current file in presentation view |
-| Toggle slide navigator | Show/hide thumbnail navigator |
-| Toggle slide inspector | Show/hide inspector panel |
-| Start presentation | Fullscreen presentation window |
-| Start presenter view | Speaker view with notes and timer |
-| Export to HTML | Export as standalone HTML |
-| Save as custom theme | Save current settings as theme |
-| Insert slide separator | Insert `---` at cursor |
+| Toggle slide navigator | Show/hide thumbnail navigator           |
+| Toggle slide inspector | Show/hide inspector panel               |
+| Start presentation     | Fullscreen presentation window          |
+| Start presenter view   | Speaker view with notes and timer       |
+| Export to HTML         | Export as standalone HTML               |
+| Save as custom theme   | Save current settings as theme          |
+| Insert slide separator | Insert `---` at cursor                  |
 
 ---
 
@@ -261,19 +261,19 @@ Custom themes include fonts, colors, typography, and margin settings. They appea
 
 ### In Presentation Mode
 
-| Key | Action |
-|-----|--------|
-| `→` `↓` `Space` `PageDown` | Next slide |
-| `←` `↑` `PageUp` | Previous slide |
-| `Home` | First slide |
-| `End` | Last slide |
-| `Escape` | Exit fullscreen / Close window |
+| Key                        | Action                         |
+| -------------------------- | ------------------------------ |
+| `→` `↓` `Space` `PageDown` | Next slide                     |
+| `←` `↑` `PageUp`           | Previous slide                 |
+| `Home`                     | First slide                    |
+| `End`                      | Last slide                     |
+| `Escape`                   | Exit fullscreen / Close window |
 
 ### In Presenter View
 
-| Key | Action |
-|-----|--------|
-| `↑` `↓` | Navigate slides |
+| Key     | Action              |
+| ------- | ------------------- |
+| `↑` `↓` | Navigate slides     |
 | `←` `→` | Navigate paragraphs |
 
 ---

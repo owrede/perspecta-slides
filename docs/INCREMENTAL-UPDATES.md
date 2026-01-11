@@ -24,9 +24,9 @@ Track a hash/fingerprint for each slide to detect actual changes:
 
 ```typescript
 interface SlideFingerprint {
-  contentHash: string;      // Hash of slide text content
-  metadataHash: string;     // Hash of slide metadata (layout, mode, etc.)
-  combinedHash: string;     // Combined for quick comparison
+  contentHash: string; // Hash of slide text content
+  metadataHash: string; // Hash of slide metadata (layout, mode, etc.)
+  combinedHash: string; // Combined for quick comparison
 }
 
 interface PresentationCache {
@@ -43,15 +43,15 @@ Compare old and new presentations to determine minimal updates:
 ```typescript
 interface SlideDiff {
   type: 'none' | 'content-only' | 'structural';
-  
+
   // For content-only changes
   modifiedIndices: number[];    // Slides whose content changed
-  
+
   // For structural changes
   added: { index: number, slide: Slide }[];
   removed: number[];            // Old indices that were removed
   moved: { from: number, to: number }[];
-  
+
   // Metadata
   frontmatterChanged: boolean;
   themeChanged: boolean;
@@ -61,7 +61,7 @@ function diffPresentations(oldCache: PresentationCache, newPresentation: Present
   // 1. Check frontmatter changes
   const newFrontmatterHash = hashFrontmatter(newPresentation.frontmatter);
   const frontmatterChanged = newFrontmatterHash !== oldCache.frontmatterHash;
-  
+
   // 2. Quick check: same slide count?
   if (newPresentation.slides.length === oldCache.slideCount) {
     // Compare hashes slide by slide
@@ -72,14 +72,14 @@ function diffPresentations(oldCache: PresentationCache, newPresentation: Present
         modified.push(i);
       }
     }
-    
+
     if (modified.length === 0 && !frontmatterChanged) {
       return { type: 'none', ... };
     }
-    
+
     return { type: 'content-only', modifiedIndices: modified, ... };
   }
-  
+
   // 3. Structural change: slides added/removed
   // Use LCS (Longest Common Subsequence) or simpler heuristic
   return computeStructuralDiff(oldCache, newPresentation);
@@ -89,10 +89,12 @@ function diffPresentations(oldCache: PresentationCache, newPresentation: Present
 ### 3. Update Strategies
 
 #### A. No Changes (`type: 'none'`)
+
 - Do nothing
 - Most common case when user is just navigating
 
 #### B. Content-Only Changes (`type: 'content-only'`)
+
 - Only re-render thumbnails for `modifiedIndices`
 - Only re-render preview if current slide is in `modifiedIndices`
 - Update inspector if current slide changed
@@ -102,7 +104,7 @@ async applyContentOnlyUpdate(diff: SlideDiff, presentation: Presentation) {
   for (const idx of diff.modifiedIndices) {
     // Update thumbnail at index (no DOM restructuring)
     thumbnailNav.updateSlideContent(idx, presentation.slides[idx]);
-    
+
     // Update preview only if this is the current slide
     if (idx === this.currentSlideIndex) {
       previewView.updateSlideContent(idx, presentation.slides[idx]);
@@ -112,6 +114,7 @@ async applyContentOnlyUpdate(diff: SlideDiff, presentation: Presentation) {
 ```
 
 #### C. Structural Changes (`type: 'structural'`)
+
 - More complex DOM updates needed
 - Process in order: removes, then adds, then moves
 - Use document fragments for batch DOM operations
@@ -122,17 +125,17 @@ async applyStructuralUpdate(diff: SlideDiff, presentation: Presentation) {
   for (const idx of diff.removed.sort((a, b) => b - a)) {
     thumbnailNav.removeSlideAt(idx);
   }
-  
+
   // 2. Add new slides
   for (const { index, slide } of diff.added) {
     thumbnailNav.insertSlideAt(index, slide);
   }
-  
+
   // 3. Update remaining modified content
   for (const idx of diff.modifiedIndices) {
     thumbnailNav.updateSlideContent(idx, presentation.slides[idx]);
   }
-  
+
   // 4. Re-number all slides (simple loop, no iframe reload)
   thumbnailNav.renumberSlides();
 }
@@ -145,40 +148,40 @@ Add methods for granular DOM manipulation:
 ```typescript
 class ThumbnailNavigatorView {
   private slideElements: Map<number, HTMLElement> = new Map();
-  
+
   // Update just the iframe content of a specific slide
   updateSlideContent(index: number, slide: Slide): void {
     const element = this.slideElements.get(index);
     if (!element) return;
-    
+
     const iframe = element.querySelector('.thumbnail-iframe');
     iframe.srcdoc = this.renderer.renderThumbnailHTML(slide, index);
   }
-  
+
   // Remove a slide element from the DOM
   removeSlideAt(index: number): void {
     const element = this.slideElements.get(index);
     element?.remove();
-    
+
     // Shift map indices down
     this.reindexSlideElements();
   }
-  
+
   // Insert a new slide element at position
   insertSlideAt(index: number, slide: Slide): void {
     const newElement = this.createThumbnailItem(slide, index);
     const container = this.getListContainer();
-    
+
     const existingElement = this.slideElements.get(index);
     if (existingElement) {
       container.insertBefore(newElement, existingElement);
     } else {
       container.appendChild(newElement);
     }
-    
+
     this.reindexSlideElements();
   }
-  
+
   // Just update the number badge (no iframe reload)
   renumberSlides(): void {
     this.slideElements.forEach((el, idx) => {
@@ -200,7 +203,7 @@ class PresentationView {
     if (!diff.modifiedIndices.includes(this.currentSlideIndex)) {
       return; // Current slide unchanged, skip
     }
-    
+
     // Re-render just the current slide content
     const slideEl = this.getCurrentSlideElement();
     this.renderSlideContent(slideEl, presentation.slides[this.currentSlideIndex]);
@@ -217,14 +220,14 @@ function hashString(str: string): string {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32-bit integer
   }
   return hash.toString(36);
 }
 
 function hashSlide(slide: Slide): string {
-  const content = slide.elements.map(e => e.content).join('|');
+  const content = slide.elements.map((e) => e.content).join('|');
   const metadata = JSON.stringify(slide.metadata);
   return hashString(content + '||' + metadata);
 }
@@ -239,31 +242,31 @@ function hashFrontmatter(fm: PresentationFrontmatter): string {
 ```typescript
 class PerspectaSlidesPlugin {
   private presentationCache: PresentationCache | null = null;
-  
+
   private async updateSidebarsIncremental(file: TFile) {
     const content = await this.app.vault.read(file);
     const presentation = this.parser.parse(content);
-    
+
     // Compute diff
-    const diff = this.presentationCache 
+    const diff = this.presentationCache
       ? diffPresentations(this.presentationCache, presentation)
       : { type: 'structural', ... }; // First load = full render
-    
+
     // Apply minimal updates based on diff type
     switch (diff.type) {
       case 'none':
         // Nothing changed, skip
         return;
-        
+
       case 'content-only':
         await this.applyContentOnlyUpdate(diff, presentation);
         break;
-        
+
       case 'structural':
         await this.applyStructuralUpdate(diff, presentation);
         break;
     }
-    
+
     // Update cache for next comparison
     this.presentationCache = buildCache(presentation);
   }
@@ -272,14 +275,14 @@ class PerspectaSlidesPlugin {
 
 ### 8. Performance Expectations
 
-| Scenario | Current | Proposed |
-|----------|---------|----------|
-| Type a character in slide 3 of 20 | Re-render all 20 thumbnails | Re-render 1 thumbnail |
-| Navigate between slides | Re-render all | No re-render |
-| Add a new slide | Re-render all | Add 1 DOM element, renumber |
-| Delete a slide | Re-render all | Remove 1 DOM element, renumber |
-| Change theme | Re-render all | Re-render all (correct) |
-| No actual change (cursor move) | Re-render current | No re-render |
+| Scenario                          | Current                     | Proposed                       |
+| --------------------------------- | --------------------------- | ------------------------------ |
+| Type a character in slide 3 of 20 | Re-render all 20 thumbnails | Re-render 1 thumbnail          |
+| Navigate between slides           | Re-render all               | No re-render                   |
+| Add a new slide                   | Re-render all               | Add 1 DOM element, renumber    |
+| Delete a slide                    | Re-render all               | Remove 1 DOM element, renumber |
+| Change theme                      | Re-render all               | Re-render all (correct)        |
+| No actual change (cursor move)    | Re-render current           | No re-render                   |
 
 ### 9. Edge Cases
 

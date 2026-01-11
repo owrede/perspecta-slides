@@ -216,59 +216,59 @@
 }
 
 .perspecta-thumbnail-navigator .slide-layout {
-   font-size: 10px;
-   color: var(--text-muted);
-   text-transform: capitalize;
- }
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
 
 /* Add slide button container */
 .perspecta-thumbnail-navigator .add-slide-item-container {
-   padding: 6px;
-   margin-top: auto;
-   order: 999;
- }
+  padding: 6px;
+  margin-top: auto;
+  order: 999;
+}
 
 /* Add slide button */
 .perspecta-thumbnail-navigator .add-slide-item {
-   display: flex;
-   align-items: center;
-   gap: 10px;
-   cursor: pointer;
-   transition: all 0.15s ease;
-   position: relative;
- }
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+}
 
 .perspecta-thumbnail-navigator .add-slide-item:active .add-slide-preview {
-   transform: scale(0.98);
- }
+  transform: scale(0.98);
+}
 
 .perspecta-thumbnail-navigator .badge-placeholder {
-   flex-shrink: 0;
-   width: 28px;
-   height: 28px;
- }
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+}
 
 .perspecta-thumbnail-navigator .add-slide-preview {
-   flex: 1;
-   background: transparent;
-   border-radius: 6px;
-   display: flex;
-   align-items: center;
-   justify-content: center;
-   aspect-ratio: 16 / 9;
-   border: 2px dashed var(--text-muted);
-   cursor: pointer;
-   transition: all 0.15s ease;
-   opacity: 0.7;
-   color: var(--text-muted);
-   font-size: 24px;
- }
+  flex: 1;
+  background: transparent;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 9;
+  border: 2px dashed var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  opacity: 0.7;
+  color: var(--text-muted);
+  font-size: 24px;
+}
 
 .perspecta-thumbnail-navigator .add-slide-item:hover .add-slide-preview {
-   border-color: var(--interactive-accent);
-   background: var(--background-modifier-hover);
-   opacity: 1;
- }
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+  opacity: 1;
+}
 
 /* ================================
    Inspector Panel
@@ -1234,7 +1234,9 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .perspecta-slides-settings-tab:hover {
@@ -1558,7 +1560,7 @@
   width: 100%;
 }
 
-.perspecta-save-theme-modal .setting-item-control input[type="text"] {
+.perspecta-save-theme-modal .setting-item-control input[type='text'] {
   width: 100%;
 }
 

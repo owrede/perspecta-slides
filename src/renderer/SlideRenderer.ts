@@ -1508,9 +1508,11 @@ export class SlideRenderer {
 
     const styleAttr = styles.length > 0 ? ` style="${styles.join('; ')}"` : '';
 
-    // If Excalidraw SVG (spinner or converted), wrap in container with fixed max size to prevent stretching
+    // If Excalidraw SVG (spinner or converted), use special inline styles to prevent stretching
     if (isExcalidrawSvg) {
-      return `<figure class="image-figure excalidraw-svg-container"><img src="${src}" alt="${alt}" class="excalidraw-svg-img" /></figure>`;
+      const containerStyle = 'display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;';
+      const imgStyle = 'max-width: 95%; max-height: 95%; object-fit: contain; object-position: center;';
+      return `<figure class="image-figure" style="${containerStyle}"><img src="${src}" alt="${alt}" style="${imgStyle}" /></figure>`;
     }
 
     // Wrap in figure for semantic markup

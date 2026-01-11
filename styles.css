@@ -1626,24 +1626,4 @@
   gap: 8px;
 }
 
-/* ================================
-   Excalidraw SVG Container
-   ================================ */
 
-/* Container for Excalidraw SVGs (both spinner and converted) */
-/* Prevents stretching while respecting slide layout */
-.excalidraw-svg-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-}
-
-/* Excalidraw SVG image - respects aspect ratio, max size constraint */
-.excalidraw-svg-img {
-  max-width: 95%;
-  max-height: 95%;
-  object-fit: contain;
-  object-position: center;
-}

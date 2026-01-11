@@ -106,12 +106,13 @@ export default class PerspectaSlidesPlugin extends Plugin {
           // Trigger async conversion if renderer is available
           if (this.excalidrawRenderer) {
             // Start async conversion immediately (non-blocking)
-            // This will populate the cache for rendering
+            // Once complete, trigger a re-render so the cached SVG is displayed
             void (async () => {
               try {
                 const svgDataUrl = await this.excalidrawRenderer!.toSvgDataUrl(linkedFile as TFile);
                 console.log(`[Perspecta] ✅ Converted to SVG: ${linkedFile.path}`);
-                // Note: SlideRenderer will pick this up from cache when rendering
+                // Trigger re-render to display the now-cached SVG
+                void this.rerenderPresentationWindow();
               } catch (e) {
                 console.error(`[Perspecta] Failed to convert Excalidraw to SVG: ${linkedFile.path}`, e);
               }
@@ -1860,6 +1861,24 @@ export default class PerspectaSlidesPlugin extends Plugin {
       return;
     }
     const content = await this.app.vault.read(this.currentPresentationFile);
+    await this.updatePresentationWindowWithContent(this.currentPresentationFile, content);
+  }
+
+  /**
+   * Re-render the presentation window (used when async conversions complete)
+   * Re-parses and re-renders the current slide with updated cache
+   */
+  private async rerenderPresentationWindow() {
+    if (!this.presentationWindow || !this.presentationWindow.isOpen()) {
+      return;
+    }
+    if (!this.currentPresentationFile) {
+      return;
+    }
+    // Re-read the file to ensure we have latest content
+    const content = await this.app.vault.read(this.currentPresentationFile);
+    // Update with current content - this will trigger a re-render
+    // which will now pick up the cached SVGs from excalidrawRenderer
     await this.updatePresentationWindowWithContent(this.currentPresentationFile, content);
   }
 

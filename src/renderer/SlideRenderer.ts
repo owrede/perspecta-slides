@@ -1470,6 +1470,10 @@ export class SlideRenderer {
     const src = this.escapeHtml(this.resolveImageSrc(element));
     const alt = imageData?.alt ? this.escapeHtml(imageData.alt) : '';
 
+    // Check if this is a loading spinner (excalidraw:// without cached result)
+    const isLoading = src.startsWith('data:image/svg+xml;base64,') && 
+                      this.isLoadingSpinnerSvg(src);
+
     // Build inline styles for positioning
     const styles: string[] = [];
 
@@ -1504,8 +1508,27 @@ export class SlideRenderer {
 
     const styleAttr = styles.length > 0 ? ` style="${styles.join('; ')}"` : '';
 
+    // If loading spinner, wrap in a container with fixed size to prevent stretching
+    if (isLoading) {
+      return `<figure class="image-figure loading-spinner-container"><img src="${src}" alt="${alt}" class="loading-spinner-img" /></figure>`;
+    }
+
     // Wrap in figure for semantic markup
     return `<figure class="image-figure"><img src="${src}" alt="${alt}"${styleAttr} /></figure>`;
+  }
+
+  /**
+   * Check if an SVG data URL is our loading spinner (by checking for the spinner animation marker)
+   */
+  private isLoadingSpinnerSvg(dataUrl: string): boolean {
+    // Our loading spinner contains "spin" keyframe animation
+    try {
+      const base64 = dataUrl.replace(/^data:image\/svg\+xml;base64,/, '');
+      const svg = decodeURIComponent(escape(atob(base64)));
+      return svg.includes('spin') && svg.includes('stroke-dasharray');
+    } catch {
+      return false;
+    }
   }
 
   private renderTable(content: string): string {

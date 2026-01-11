@@ -1625,3 +1625,23 @@
   display: flex;
   gap: 8px;
 }
+
+/* ================================
+   Excalidraw Loading Spinner
+   ================================ */
+
+/* Container for loading spinner - prevents stretching */
+.loading-spinner-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100px;
+}
+
+/* Loading spinner image - fixed size, not stretched */
+.loading-spinner-img {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+  object-position: center;
+}

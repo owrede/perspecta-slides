@@ -45,10 +45,24 @@ export class ExcalidrawRenderer {
         // Try to extract from ```json ... ``` code block
         const jsonMatch = content.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
         if (jsonMatch) {
-          return JSON.parse(jsonMatch[1]);
+          try {
+            return JSON.parse(jsonMatch[1]);
+          } catch {
+            // Not valid JSON in block, continue
+          }
         }
 
-        // Try to extract from frontmatter-like JSON (some Excalidraw MD variants)
+        // Try to extract from ```excalidraw ... ``` code block
+        const excalidrawMatch = content.match(/```excalidraw\s*\n([\s\S]*?)\n```/);
+        if (excalidrawMatch) {
+          try {
+            return JSON.parse(excalidrawMatch[1]);
+          } catch {
+            // Not valid JSON, continue
+          }
+        }
+
+        // Try to extract from frontmatter-like JSON
         const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
         if (frontmatterMatch) {
           try {
@@ -59,12 +73,17 @@ export class ExcalidrawRenderer {
         }
 
         // Last resort: try to parse entire content as JSON
-        // (some .excalidraw.md files are just JSON wrapped in markdown)
         try {
           return JSON.parse(content);
         } catch {
           // Continue to error handling
         }
+
+        // If markdown file but contains no JSON, log and fail gracefully
+        console.warn(
+          `[Perspecta] ${file.path} is a markdown file but contains no extractable Excalidraw JSON. ` +
+          `Ensure it has Excalidraw drawing data in a code block or as raw JSON.`
+        );
       }
 
       throw new Error(`Could not extract JSON from ${file.path}`);

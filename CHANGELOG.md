@@ -2,6 +2,11 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.13] - 2026-01-12
+
+- New: HTML export now supports Excalidraw drawings with embedded SVG
+- Fix: Footnotes now render on individual slides by default (not just collected view)
+
 ## [0.2.12] - 2026-01-12
 
 - New: Soft line breaks in lists - Shift+Return (indented continuation lines) now render as <br /> within list items

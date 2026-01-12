@@ -469,15 +469,16 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Font handling uses the new consolidated debug topic instead of a separate setting
     // this.fontManager.setDebugMode(this.settings.debugFontHandling);
 
-    // Initialize export service
+    // Initialize Excalidraw renderer for native SVG conversion
+    this.excalidrawRenderer = new ExcalidrawRenderer(this.app.vault);
+
+    // Initialize export service with Excalidraw support
     this.exportService = new ExportService(
       this.app,
       this.fontManager,
       this.presentationImagePathResolver
     );
-
-    // Initialize Excalidraw renderer for native SVG conversion
-    this.excalidrawRenderer = new ExcalidrawRenderer(this.app.vault);
+    this.exportService.setExcalidrawRenderer(this.excalidrawRenderer);
 
     // Initialize theme loader with built-in themes first
     this.themeLoader = new ThemeLoader(this.app, this.settings.customThemesFolder);

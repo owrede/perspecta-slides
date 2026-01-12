@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.2.13',
+    date: '2026-01-12',
+    changes: [
+      'New: HTML export now supports Excalidraw drawings with embedded SVG',
+      'Fix: Footnotes now render on individual slides by default (not just collected view)',
+    ],
+  },
+  {
     version: '0.2.12',
     date: '2026-01-12',
     changes: [

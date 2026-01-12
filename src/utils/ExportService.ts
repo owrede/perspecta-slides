@@ -4,6 +4,7 @@ import type { Presentation, Theme } from '../types';
 import type { ImagePathResolver } from '../renderer/SlideRenderer';
 import { SlideRenderer } from '../renderer/SlideRenderer';
 import type { FontManager } from './FontManager';
+import type { ExcalidrawRenderer } from './ExcalidrawRenderer';
 
 /**
  * Confirmation modal for overwriting export folder
@@ -69,11 +70,20 @@ interface ExtractedImage {
 }
 
 export class ExportService {
+  private excalidrawRenderer: ExcalidrawRenderer | null = null;
+
   constructor(
     private app: App,
     private fontManager: FontManager | null,
     private imagePathResolver: ImagePathResolver
   ) {}
+
+  /**
+   * Set the Excalidraw renderer for SVG conversion during export
+   */
+  setExcalidrawRenderer(renderer: ExcalidrawRenderer): void {
+    this.excalidrawRenderer = renderer;
+  }
 
   /**
    * Export presentation to folder with index.html and assets
@@ -89,6 +99,12 @@ export class ExportService {
       renderer.setSystemColorScheme(this.getSystemColorScheme());
       if (customFontCSS) {
         renderer.setCustomFontCSS(customFontCSS);
+      }
+      
+      // Pass Excalidraw SVG cache to renderer for proper export
+      if (this.excalidrawRenderer) {
+        renderer.setExcalidrawSvgCache(this.excalidrawRenderer.getSvgCache());
+        renderer.setFailedDecompressionFiles(this.excalidrawRenderer.getFailedDecompressionFiles());
       }
 
       // Check if export folder already exists

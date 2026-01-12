@@ -1434,6 +1434,14 @@ export class SlideRenderer {
   }
 
   private renderList(content: string): string {
+    // Preserve line breaks within list items
+    // 1. Literal \n typed as two characters (backslash + letter n)
+    // 2. Two trailing spaces + newline (Markdown soft break from Shift+Return)
+    // Use a placeholder that won't be interpreted as markdown formatting
+    const SOFT_BREAK_PLACEHOLDER = '\u0000BREAK\u0000';
+    content = content.replace(/\\n/g, SOFT_BREAK_PLACEHOLDER); // Literal \n (backslash + letter n)
+    content = content.replace(/  +\n/g, SOFT_BREAK_PLACEHOLDER); // Two trailing spaces + newline
+    
     const lines = content.split('\n');
 
     // Parse list structure with indentation levels
@@ -1528,7 +1536,9 @@ export class SlideRenderer {
       return { html, nextIndex: i };
     };
 
-    const { html } = buildListHTML(items, 0, -1);
+    let { html } = buildListHTML(items, 0, -1);
+    // Restore soft breaks as <br /> tags
+    html = html.replace(new RegExp(SOFT_BREAK_PLACEHOLDER, 'g'), '<br />');
     return html;
   }
 
@@ -1680,10 +1690,11 @@ export class SlideRenderer {
       });
     }
 
-    // Convert Markdown soft line breaks to <br />
-    // Shift+Return in Obsidian creates: two trailing spaces + newline, or backslash + newline
+    // Convert line breaks to <br />
+    // 1. Literal \n typed as two characters (backslash + letter n)
+    // 2. Two trailing spaces + newline (Markdown soft break from Shift+Return)
+    html = html.replace(/\\n/g, '<br />'); // Literal \n (backslash + letter n)
     html = html.replace(/  +\n/g, '<br />'); // Two or more trailing spaces before newline
-    html = html.replace(/\\\n/g, '<br />'); // Backslash before newline (CommonMark)
 
     return html;
   }

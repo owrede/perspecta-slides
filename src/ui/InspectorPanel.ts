@@ -1157,7 +1157,103 @@ export class InspectorPanelView extends ItemView {
       }
       dropdown.setValue(fm.theme || '');
       dropdown.onChange(async (value) => {
-        await this.updateFrontmatter({ theme: value || undefined });
+        // When changing themes, clear all styling properties but preserve content and settings
+        // This ensures the new theme's defaults are applied cleanly
+        const stylingPropertiesToClear: Partial<PresentationFrontmatter> = {
+          // Typography - Fonts
+          titleFont: undefined,
+          titleFontWeight: undefined,
+          bodyFont: undefined,
+          bodyFontWeight: undefined,
+          headerFont: undefined,
+          headerFontWeight: undefined,
+          footerFont: undefined,
+          footerFontWeight: undefined,
+          // Typography - Sizes
+          titleFontSize: undefined,
+          bodyFontSize: undefined,
+          headerFontSize: undefined,
+          footerFontSize: undefined,
+          textScale: undefined,
+          fontSizeOffset: undefined,
+          // Typography - Spacing
+          headlineSpacingBefore: undefined,
+          headlineSpacingAfter: undefined,
+          listItemSpacing: undefined,
+          lineHeight: undefined,
+          // Typography - Margins
+          headerTop: undefined,
+          footerBottom: undefined,
+          titleTop: undefined,
+          contentTop: undefined,
+          contentLeft: undefined,
+          contentRight: undefined,
+          contentWidth: undefined,
+          contentTopOffset: undefined,
+          headerToEdge: undefined,
+          footerToEdge: undefined,
+          // Semantic colors - Light
+          lightLinkColor: undefined,
+          lightBulletColor: undefined,
+          lightBlockquoteBorder: undefined,
+          lightTableHeaderBg: undefined,
+          lightCodeBorder: undefined,
+          lightProgressBar: undefined,
+          lightBoldColor: undefined,
+          // Semantic colors - Dark
+          darkLinkColor: undefined,
+          darkBulletColor: undefined,
+          darkBlockquoteBorder: undefined,
+          darkTableHeaderBg: undefined,
+          darkCodeBorder: undefined,
+          darkProgressBar: undefined,
+          darkBoldColor: undefined,
+          // Theme colors - Light
+          lightBackground: undefined,
+          lightTitleText: undefined,
+          lightBodyText: undefined,
+          // Theme colors - Dark
+          darkBackground: undefined,
+          darkTitleText: undefined,
+          darkBodyText: undefined,
+          // Per-heading colors
+          lightH1Color: undefined,
+          lightH2Color: undefined,
+          lightH3Color: undefined,
+          lightH4Color: undefined,
+          darkH1Color: undefined,
+          darkH2Color: undefined,
+          darkH3Color: undefined,
+          darkH4Color: undefined,
+          // Header/Footer text colors
+          lightHeaderText: undefined,
+          lightFooterText: undefined,
+          darkHeaderText: undefined,
+          darkFooterText: undefined,
+          // Layout-specific backgrounds
+          lightBgCover: undefined,
+          lightBgTitle: undefined,
+          lightBgSection: undefined,
+          darkBgCover: undefined,
+          darkBgTitle: undefined,
+          darkBgSection: undefined,
+          // Dynamic background
+          lightDynamicBackground: undefined,
+          darkDynamicBackground: undefined,
+          useDynamicBackground: undefined,
+          dynamicBackgroundRestartAtSection: undefined,
+          // Logo (styling, not content)
+          logoSize: undefined,
+          // Image overlay
+          imageOverlay: undefined,
+          imageOverlayOpacity: undefined,
+          imageOverlays: undefined,
+        };
+        // Apply the new theme and clear styling properties
+        await this.updateFrontmatter({ 
+          theme: value || undefined,
+          ...stylingPropertiesToClear 
+        });
         this.render();
       });
     });

@@ -1028,6 +1028,12 @@ export class SlideParser {
           if (nextLine.match(/^\s*[-*+]\s+/) || nextLine.match(/^\s*\d+\.\s+/)) {
             listItems.push(nextLine);
             nextIndex++;
+          } else if (nextLine.match(/^\s+\S/)) {
+            // Continuation line (indented but not a list marker) - part of previous list item
+            // This handles soft line breaks (Shift+Return) which create indented continuation lines
+            // Append to the last list item with a soft break marker
+            listItems[listItems.length - 1] += '  \n' + nextLine.trim();
+            nextIndex++;
           } else {
             break;
           }

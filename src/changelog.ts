@@ -11,6 +11,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.2.12',
+    date: '2026-01-12',
+    changes: [
+      'New: Soft line breaks in lists - Shift+Return (indented continuation lines) now render as <br /> within list items',
+      'New: Literal \\n support - typing backslash+n in text renders as line break',
+      'Improved: Theme switching now clears all styling properties for clean theme application',
+      'Improved: Theme change preserves only content (title, author, headers/footers) and presentation settings',
+    ],
+  },
+  {
     version: '0.2.11',
     date: '2026-01-11',
     changes: [

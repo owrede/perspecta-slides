@@ -92,23 +92,38 @@ A powerful Obsidian plugin for creating beautiful presentations from Markdown. W
 <img width="600" height="420" alt="Presenter View" src="https://github.com/user-attachments/assets/1c53b40c-1ab5-4d0f-a6c7-9f234480cb4b" />
 
 
-## Know Issues
+## Known Issues
 
-- **UI rendering with new Obsidian 1.11 on Windows** - Issues with UI rendering, font rendering on latest Obsidian 1.11 on Windows/new ELectron
-- **Non-slide MD files** - Currently any markdown file is accepted for preview/slides - regardless of its content - which can lead odd behavior/rendering as slides
-- **Delayed initialization** - Sometimes the slide navigator (left sidebar), the inspector (right sidebar) or the preview window do not show the current file (active window). It helps to click "Open slide presentation" icon in the Obsidian ribbon again.
-- **Themes do not bring over images** - There is an issue with custom themes that have images & fonts via Obsidian sync (Obsidian Sync may not sync all elements of the custom theme between devices, causing a theme to appear incomplete on a second device, e.g. no images and fonts)
-- **Footnotes slide layout does not handle large amount of footnotes** - If the amount of footnotes exceeds the space of the footnotes slide layout, it currently does not handle an overflow to additional slides until all footnotes are listed.
-- **Limited settings per slide layout** - Current plan is to give every slide layout a smart set of presentation-wide overrides that will be saved in the theme and would then remove the need to express these for each slide over and over.
-- **Frontmatter grows with overrides** - Currently the presentation-wide overrides are stored as frontmatter values. These can get numerous if you heavily customize a theme. Custom themes should use the overrides as new defaults (when theme is activated after saving) so that that any override that equals the theme default can be removed from the frontmatter again.
+- **UI rendering with Obsidian 1.11 on Windows**  
+  Issues with UI and font rendering in Obsidian 1.11 on Windows, related to the new Electron version.
+
+- **Non-slide Markdown files**  
+  Currently, any Markdown file can be opened as a preview/slide deck regardless of its content, which can lead to unexpected behavior or rendering issues.
+
+- **Delayed initialization**  
+  In some cases, the slide navigator (left sidebar), the inspector (right sidebar), or the preview window does not reflect the currently active file. Re-clicking the **“Open slide presentation”** icon in the Obsidian ribbon usually resolves this.
+
+- **Themes do not transfer images**  
+  Custom themes that include images or fonts may not fully sync via Obsidian Sync. As a result, a theme can appear incomplete on another device (e.g. missing images or fonts).
+
+- **Footnote slide layout overflow**  
+  The footnotes slide layout does not currently handle large numbers of footnotes. If the content exceeds the available space, it is not automatically split across multiple slides.
+
+- **Limited per-layout settings**  
+  The plan is to provide each slide layout with a set of presentation-wide overrides stored in the theme. This would remove the need to repeat the same settings on individual slides.
+
+- **Growing frontmatter due to overrides**  
+  Presentation-wide overrides are currently stored in frontmatter. Heavy customization can lead to a large number of entries. Custom themes should persist overrides as new defaults so that values matching the theme defaults can be removed from the frontmatter.
 
 ---
 
-## Dislcaimer
+## Disclaimer
 
-- **Intended trade-off** Perspecta Slides is meant to be a RAPID presentation tool once the theme is tweaked to your liking. To reduce the design effort for authors it makes some assumptions about the layout of presentation slides (e.g. what to auto-detect as columns; general placement of text on certrain slide layout presets). 
-- **Not a `design anything` tool** - The intention is to move design decisions into the theme and remove layout instructions from the slides itself as much as possible. There is no "design mode" with freely placable text areas. This plugin is meant for people who find the presets and the customization options good enough. Currently slide layouts, design options & respective overrides are hardcoded. There might be a way to expose these layouts in separate slide-layout files in future.
+- **Intended trade-off**  
+  Perspecta Slides is designed as a *rapid* presentation tool once a theme has been adjusted to your needs. To reduce design effort for authors, it makes assumptions about slide layout (e.g. column detection, text placement in predefined slide layouts).
 
+- **Not a “design anything” tool**  
+  Design decisions are intentionally moved into the theme, minimizing layout instructions within individual slides. There is no design mode with freely placeable text areas. The plugin targets users for whom the provided presets and customization options are sufficient. Currently, slide layouts, design options, and overrides are hardcoded. Exposing layouts as separate slide-layout files may be considered in the future.
 
 ---
 

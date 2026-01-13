@@ -327,12 +327,53 @@
   border: none !important;
   border-top: none !important;
   border-bottom: none !important;
-  padding: 8px 0;
+  padding: 6px 0;
+  margin: 2px 0;
+  background-color: transparent !important;
+  background: transparent !important;
 }
 
 .perspecta-inspector .setting-item::before,
 .perspecta-inspector .setting-item::after {
   display: none !important;
+}
+
+/* Transparent input backgrounds in Inspector */
+.perspecta-inspector input[type='text'],
+.perspecta-inspector input[type='number'],
+.perspecta-inspector input[type='email'],
+.perspecta-inspector input[type='password'],
+.perspecta-inspector input[type='search'],
+.perspecta-inspector input[type='url'],
+.perspecta-inspector textarea,
+.perspecta-inspector select {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Reduce padding on inputs */
+.perspecta-inspector .setting-item-control {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.perspecta-inspector .setting-item-control input[type='text'],
+.perspecta-inspector .setting-item-control input[type='number'],
+.perspecta-inspector .setting-item-control input[type='email'],
+.perspecta-inspector .setting-item-control input[type='password'],
+.perspecta-inspector .setting-item-control input[type='search'],
+.perspecta-inspector .setting-item-control input[type='url'],
+.perspecta-inspector .setting-item-control textarea,
+.perspecta-inspector .setting-item-control select {
+  padding: 4px 8px !important;
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Reduce setting-item-name padding */
+.perspecta-inspector .setting-item-name {
+  padding-top: 2px;
+  padding-bottom: 2px;
 }
 
 .perspecta-inspector .inspector-content .setting-item {
@@ -358,19 +399,55 @@
   margin-top: 0;
 }
 
+/* Collapsible header button */
+.perspecta-inspector .section-header-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 8px 0;
+  margin-bottom: 6px;
+  transition: opacity 0.15s ease;
+  user-select: none;
+}
+
+.perspecta-inspector .section-header-button:hover {
+  opacity: 0.8;
+}
+
+.perspecta-inspector .section-toggle-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.perspecta-inspector .section-header-button.collapsed .section-toggle-icon {
+  transform: rotate(-90deg);
+}
+
+.perspecta-inspector .section-header-button svg {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+}
+
 .perspecta-inspector .inspector-section-header .section-title {
-  display: block;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  margin-bottom: 6px;
 }
 
 .perspecta-inspector .inspector-section-header .section-separator {
   height: 1px;
   background: var(--background-modifier-border);
+  flex: 1;
+  margin-left: 8px;
 }
 
 .perspecta-inspector .help-text {
@@ -1624,6 +1701,36 @@
 .perspecta-theme-actions {
   display: flex;
   gap: 8px;
+}
+
+/* ================================
+   Global Input Styling for all Perspecta Panes
+   ================================ */
+
+.perspecta-presentation-view input[type='text'],
+.perspecta-presentation-view input[type='number'],
+.perspecta-presentation-view input[type='email'],
+.perspecta-presentation-view input[type='password'],
+.perspecta-presentation-view input[type='search'],
+.perspecta-presentation-view input[type='url'],
+.perspecta-presentation-view textarea,
+.perspecta-presentation-view select,
+.perspecta-thumbnail-navigator input[type='text'],
+.perspecta-thumbnail-navigator input[type='number'],
+.perspecta-thumbnail-navigator input[type='email'],
+.perspecta-thumbnail-navigator input[type='password'],
+.perspecta-thumbnail-navigator input[type='search'],
+.perspecta-thumbnail-navigator input[type='url'],
+.perspecta-thumbnail-navigator textarea,
+.perspecta-thumbnail-navigator select {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Remove toggle backgrounds in all Perspecta panes */
+.perspecta-presentation-view .toggle,
+.perspecta-thumbnail-navigator .toggle {
+  background: transparent !important;
 }
 
 

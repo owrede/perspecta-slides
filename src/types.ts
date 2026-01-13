@@ -151,7 +151,7 @@ export interface SlideMetadata {
   backgroundOpacity?: number;
   backgroundFilter?: 'darken' | 'lighten' | 'blur' | 'none';
   mode?: 'light' | 'dark' | 'system';
-  class?: string;
+  hideOverlay?: boolean;
   transition?: string;
   notes?: string;
 }

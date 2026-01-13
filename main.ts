@@ -2308,7 +2308,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
         metadataEndLine = i;
         break;
       }
-      const match = line.match(/^(\w+):\s*(.*)$/i);
+      const match = line.match(/^([\w-]+):\s*(.*)$/i);
       if (match) {
         existingMetadata[match[1].toLowerCase()] = match[2];
         metadataEndLine = i + 1;
@@ -2324,18 +2324,25 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Merge new metadata with existing
     const finalMetadata: Record<string, string> = { ...existingMetadata };
     for (const [key, value] of Object.entries(metadata)) {
+      // Convert camelCase to kebab-case for markdown
+      let writeKey = key;
+      if (key === 'hideOverlay') {
+        writeKey = 'hide-overlay';
+      }
+      
       if (value === undefined || value === null || value === '') {
-        delete finalMetadata[key];
+        delete finalMetadata[writeKey];
+        delete finalMetadata[key]; // Also remove old key variant if it exists
       } else if (typeof value === 'boolean') {
-        finalMetadata[key] = value ? 'true' : 'false';
+        finalMetadata[writeKey] = value ? 'true' : 'false';
       } else if (typeof value === 'number') {
         if (key === 'backgroundOpacity') {
           finalMetadata['opacity'] = `${Math.round(value * 100)}%`;
         } else {
-          finalMetadata[key] = String(value);
+          finalMetadata[writeKey] = String(value);
         }
       } else {
-        finalMetadata[key] = String(value);
+        finalMetadata[writeKey] = String(value);
       }
     }
 

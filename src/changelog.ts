@@ -11,6 +11,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.2.14',
+    date: '2026-01-13',
+    changes: [
+      'New: Explicit column delimiter "--" on its own line for hard column breaks in default layout',
+      'New: Refactored column detection system with 5-priority architecture (explicit, H3, H2, empty lines, single column)',
+      'New: Inspector panel sections now collapsible with persistent state saved in localStorage',
+      'New: "Hide Overlay" per-slide toggle to disable presentation overlays on specific slides',
+      'Improved: Column content matching now handles multi-line content (lists, paragraphs) with word-based matching (60%+ similarity)',
+      'Improved: Fixed CSS input field styling for Obsidian 1.11 Electron update (transparent backgrounds, reduced padding)',
+      'Improved: Metadata key parsing now supports kebab-case keys (e.g., "hide-overlay")',
+      'Removed: "Custom CSS Class" option from slide overrides (no longer supported)',
+      'Technical: New autoDetectColumnsNew() method with cleaner, maintainable column detection logic',
+    ],
+  },
+  {
     version: '0.2.13',
     date: '2026-01-12',
     changes: [

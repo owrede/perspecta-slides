@@ -609,7 +609,7 @@ export class SlideParser {
           columnIndex: e.columnIndex,
         }))
       );
-      elements = this.autoDetectColumns(elements, contentLines);
+      elements = this.autoDetectColumnsNew(elements, contentLines);
       this.debugLog(
         'After auto-detection:',
         elements.map((e) => ({
@@ -690,6 +690,13 @@ export class SlideParser {
         if (line.trim() !== '') {
           speakerNotes.push(line);
         }
+        i++;
+        continue;
+      }
+
+      // Check for column break delimiter -- (on its own line)
+      if (line.trim() === '--') {
+        currentColumnIndex++;
         i++;
         continue;
       }
@@ -1227,9 +1234,9 @@ export class SlideParser {
         continue;
       }
 
-      const classMatch = line.match(/^class:\s*(.+)$/i);
-      if (classMatch) {
-        metadata.class = classMatch[1].trim();
+      const hideOverlayMatch = line.match(/^(hide-overlay|hideOverlay):\s*(true|false)$/i);
+      if (hideOverlayMatch) {
+        metadata.hideOverlay = hideOverlayMatch[2].toLowerCase() === 'true';
         startIndex = i + 1;
         continue;
       }
@@ -1465,6 +1472,37 @@ export class SlideParser {
           line.trim().includes('no-autocolumn') || line.trim().includes('default;no-autocolumn')
       );
       if (hasNoAutocolumn) {
+        return elements;
+      }
+    }
+
+    // Check for explicit column break delimiter -- (highest priority)
+    if (contentLines) {
+      const hasColumnDelimiter = contentLines.some((line) => line.trim() === '--');
+      if (hasColumnDelimiter) {
+        // Assign columnIndex based on position relative to -- delimiters
+        let currentColumn = 0;
+        let elementIndex = 0;
+        for (let i = 0; i < contentLines.length && elementIndex < elements.length; i++) {
+          if (contentLines[i].trim() === '--') {
+            currentColumn++;
+          } else if (contentLines[i].trim() !== '' && !contentLines[i].startsWith('//')) {
+            // Assign current column to matching element
+            if (elementIndex < elements.length) {
+              // Skip over already-processed metadata lines
+              while (
+                elementIndex < elements.length &&
+                contentLines[i].startsWith('\t') !== (elements[elementIndex].raw?.startsWith('\t') || false)
+              ) {
+                elementIndex++;
+              }
+              if (elementIndex < elements.length && elements[elementIndex].raw === contentLines[i]) {
+                elements[elementIndex].columnIndex = currentColumn;
+                elementIndex++;
+              }
+            }
+          }
+        }
         return elements;
       }
     }
@@ -1863,5 +1901,324 @@ export class SlideParser {
     }
 
     return null;
+  }
+
+  // ============================================
+  // NEW COLUMN DETECTION REFACTOR
+  // ============================================
+
+  /**
+   * Extract HEAD section (H1 and any H2s before first empty line)
+   * Returns the body starting index
+   */
+  private extractHeadSection(contentLines: string[]): number {
+    // Find first truly empty line
+    for (let i = 0; i < contentLines.length; i++) {
+      const line = contentLines[i];
+      const isTrulyEmpty = line.trim() === '';
+      if (isTrulyEmpty) {
+        return i + 1; // Body starts after the empty line
+      }
+    }
+    // No empty line found, all content is HEAD
+    return contentLines.length;
+  }
+
+  /**
+   * Detect which column mode applies to the body content
+   */
+  private detectColumnMode(bodyLines: string[]): 'explicit' | 'h3' | 'h2' | 'empty-lines' | 'none' {
+    if (bodyLines.length === 0) {
+      return 'none';
+    }
+
+    // Priority 1: Check for explicit `--` delimiters
+    if (bodyLines.some((line) => line.trim() === '--')) {
+      return 'explicit';
+    }
+
+    // Count H3 and H2 headings in body
+    const h3Count = bodyLines.filter((line) => line.trim().startsWith('### ')).length;
+    const h2Count = bodyLines.filter((line) => line.trim().startsWith('## ')).length;
+
+    // Priority 2: H3 headings (2+)
+    if (h3Count >= 2) {
+      return 'h3';
+    }
+
+    // Priority 3: H2 headings (2+)
+    if (h2Count >= 2) {
+      return 'h2';
+    }
+
+    // Priority 4: Empty line separation
+    if (this.hasMultipleContentBlocks(bodyLines)) {
+      return 'empty-lines';
+    }
+
+    // Priority 5: Single column
+    return 'none';
+  }
+
+  /**
+   * Check if content has multiple blocks separated by empty lines
+   */
+  private hasMultipleContentBlocks(lines: string[]): boolean {
+    let blockCount = 0;
+    let inBlock = false;
+
+    for (const line of lines) {
+      const isEmpty = line.trim() === '';
+
+      if (!isEmpty && !inBlock) {
+        blockCount++;
+        inBlock = true;
+      } else if (isEmpty && inBlock) {
+        inBlock = false;
+      }
+    }
+
+    return blockCount >= 2;
+  }
+
+  /**
+   * Split content by explicit `--` delimiters
+   */
+  private splitByExplicitDelimiter(bodyLines: string[]): string[][] {
+    const columns: string[][] = [];
+    let currentColumn: string[] = [];
+
+    for (const line of bodyLines) {
+      if (line.trim() === '--') {
+        if (currentColumn.length > 0) {
+          columns.push(currentColumn);
+          currentColumn = [];
+        }
+      } else {
+        currentColumn.push(line);
+      }
+    }
+
+    if (currentColumn.length > 0) {
+      columns.push(currentColumn);
+    }
+
+    return columns.filter((col) => col.length > 0); // Remove empty columns
+  }
+
+  /**
+   * Split content by H3 headings
+   * Each H3 starts a new column
+   */
+  private splitByH3Headings(bodyLines: string[]): string[][] {
+    const columns: string[][] = [];
+    let currentColumn: string[] = [];
+
+    for (const line of bodyLines) {
+      if (line.trim().startsWith('### ')) {
+        if (currentColumn.length > 0) {
+          columns.push(currentColumn);
+        }
+        currentColumn = [line];
+      } else {
+        currentColumn.push(line);
+      }
+    }
+
+    if (currentColumn.length > 0) {
+      columns.push(currentColumn);
+    }
+
+    return columns;
+  }
+
+  /**
+   * Split content by H2 headings
+   * Each H2 starts a new column
+   */
+  private splitByH2Headings(bodyLines: string[]): string[][] {
+    const columns: string[][] = [];
+    let currentColumn: string[] = [];
+
+    for (const line of bodyLines) {
+      if (line.trim().startsWith('## ')) {
+        if (currentColumn.length > 0) {
+          columns.push(currentColumn);
+        }
+        currentColumn = [line];
+      } else {
+        currentColumn.push(line);
+      }
+    }
+
+    if (currentColumn.length > 0) {
+      columns.push(currentColumn);
+    }
+
+    return columns;
+  }
+
+  /**
+   * Split content by empty lines
+   * Each content block separated by empty lines becomes a column
+   */
+  private splitByEmptyLines(bodyLines: string[]): string[][] {
+    const columns: string[][] = [];
+    let currentColumn: string[] = [];
+
+    for (const line of bodyLines) {
+      const isEmpty = line.trim() === '';
+
+      if (isEmpty && currentColumn.length > 0) {
+        // Empty line signals column break
+        columns.push(currentColumn);
+        currentColumn = [];
+      } else if (!isEmpty) {
+        currentColumn.push(line);
+      }
+    }
+
+    if (currentColumn.length > 0) {
+      columns.push(currentColumn);
+    }
+
+    return columns;
+  }
+
+  /**
+   * Assign columnIndex to elements based on which column package they belong to
+   * Uses a smarter matching strategy that handles multi-line content (lists, paragraphs)
+   */
+  private assignColumnIndices(elements: SlideElement[], columnPackages: string[][]): SlideElement[] {
+    if (columnPackages.length <= 1) {
+      // No columns, leave as-is
+      return elements;
+    }
+
+    // Create a single string from each package for content matching
+    const packageStrings = columnPackages.map((pkg) => pkg.join('\n').toLowerCase());
+
+    // Assign each element to a column based on which package it best matches
+    const assignedColumns = new Array(elements.length).fill(undefined);
+
+    for (let elIdx = 0; elIdx < elements.length; elIdx++) {
+      const element = elements[elIdx];
+      const rawLower = element.raw.toLowerCase();
+
+      // Skip comments and empty elements
+      if (rawLower.trim() === '' || rawLower.trim().startsWith('//')) {
+        continue;
+      }
+
+      // Try to find which package contains this element's content
+      // Strategy: Find the package with the most overlapping text
+      let bestMatchCol = undefined;
+      let bestMatchScore = 0;
+
+      for (let colIdx = 0; colIdx < packageStrings.length; colIdx++) {
+        const packageStr = packageStrings[colIdx];
+
+        // Check if element content appears in this package
+        if (packageStr.includes(rawLower)) {
+          // Perfect match - element content is in this package
+          bestMatchCol = colIdx;
+          bestMatchScore = 1000; // Highest priority
+          break;
+        }
+
+        // Check for partial matches (useful for multi-line content)
+        // Count how many words from the element appear in the package
+        const words = rawLower.split(/\s+/).filter((w) => w.length > 3);
+        let matchCount = 0;
+        for (const word of words) {
+          if (packageStr.includes(word)) {
+            matchCount++;
+          }
+        }
+
+        // Score based on percentage of words that match
+        const matchScore = words.length > 0 ? (matchCount / words.length) * 100 : 0;
+        if (matchScore > bestMatchScore && matchScore >= 60) {
+          // At least 60% of significant words match
+          bestMatchCol = colIdx;
+          bestMatchScore = matchScore;
+        }
+      }
+
+      // Assign the best match
+      if (bestMatchCol !== undefined && assignedColumns[elIdx] === undefined) {
+        assignedColumns[elIdx] = bestMatchCol;
+      }
+    }
+
+    // Apply assignments to elements
+    return elements.map((el, idx) => {
+      if (assignedColumns[idx] !== undefined) {
+        el.columnIndex = assignedColumns[idx];
+      }
+      return el;
+    });
+  }
+
+  /**
+   * Check if auto-column detection is disabled
+   */
+  private hasNoAutocolumnFlag(contentLines: string[]): boolean {
+    return contentLines.some(
+      (line) =>
+        line.trim().includes('no-autocolumn') || line.trim().includes('default;no-autocolumn')
+    );
+  }
+
+  /**
+   * NEW: Refactored autoDetectColumns using clean priority-based approach
+   * This replaces the old complex logic with a clear decision tree
+   */
+  private autoDetectColumnsNew(elements: SlideElement[], contentLines?: string[]): SlideElement[] {
+    if (elements.length === 0 || !contentLines || contentLines.length === 0) {
+      return elements;
+    }
+
+    // Check if auto-columns is disabled
+    if (this.hasNoAutocolumnFlag(contentLines)) {
+      this.debugLog('auto-columns disabled by no-autocolumn flag');
+      return elements;
+    }
+
+    // Extract HEAD section (everything up to first empty line)
+    const bodyStartIndex = this.extractHeadSection(contentLines);
+    const bodyLines = contentLines.slice(bodyStartIndex);
+
+    this.debugLog('HEAD ends at line:', bodyStartIndex);
+    this.debugLog('Body lines:', bodyLines.length);
+
+    // Detect which column mode applies
+    const mode = this.detectColumnMode(bodyLines);
+    this.debugLog('Detected column mode:', mode);
+
+    if (mode === 'none') {
+      // No columns
+      return elements;
+    }
+
+    // Split body content into column packages based on detected mode
+    let columnPackages: string[][];
+
+    if (mode === 'explicit') {
+      columnPackages = this.splitByExplicitDelimiter(bodyLines);
+    } else if (mode === 'h3') {
+      columnPackages = this.splitByH3Headings(bodyLines);
+    } else if (mode === 'h2') {
+      columnPackages = this.splitByH2Headings(bodyLines);
+    } else if (mode === 'empty-lines') {
+      columnPackages = this.splitByEmptyLines(bodyLines);
+    } else {
+      return elements; // Unreachable, but safe
+    }
+
+    this.debugLog('Column packages:', columnPackages.length, 'columns');
+
+    // Assign columnIndex to elements based on which package they belong to
+    return this.assignColumnIndices(elements, columnPackages);
   }
 }

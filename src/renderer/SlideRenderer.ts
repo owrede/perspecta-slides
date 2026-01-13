@@ -588,7 +588,7 @@ export class SlideRenderer {
     const modeClass = effectiveMode;
     const layout = (slide.metadata.layout || 'default') as SlideLayout;
     const containerClass = this.getContainerClass(layout);
-    const customClass = slide.metadata.class || '';
+    const customClass = '';
     const isActive = index === 0 ? 'active' : '';
 
     // Add data-mode attribute if this slide has an explicit per-slide mode override
@@ -651,8 +651,8 @@ export class SlideRenderer {
       );
     }
 
-    // Generate overlay if configured (presentation-wide)
-    const overlayHtml = this.renderOverlay(frontmatter);
+    // Generate overlay if configured (presentation-wide) and not disabled per-slide
+    const overlayHtml = !slide.metadata.hideOverlay ? this.renderOverlay(frontmatter) : '';
 
     // Layer order: background color/gradient (on section) -> slide background image -> full-image -> overlay -> content
     // Cover layout does not include header/footer slots
@@ -722,7 +722,7 @@ export class SlideRenderer {
 
     const slideInlineStyle = dynamicBgColor ? `background-color: ${dynamicBgColor};` : '';
     const contentPanelStyle = dynamicBgColor ? ` style="background-color: ${dynamicBgColor};"` : '';
-    const overlayHtml = this.renderOverlay(frontmatter);
+    const overlayHtml = !slide.metadata.hideOverlay ? this.renderOverlay(frontmatter) : '';
 
     // Add data-mode attribute if this slide has an explicit per-slide mode override
     const dataModeAttr = explicitMode ? ` data-mode="${explicitMode}"` : '';

@@ -240,10 +240,14 @@ export class InspectorPanelView extends ItemView {
   private themeAppearanceMode: 'light' | 'dark' = 'light';
 
   private parser: SlideParser;
+  
+  // Section collapsed/expanded state (stored in plugin context)
+  private collapsedSections: Set<string> = new Set();
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
     this.parser = new SlideParser();
+    this.loadCollapsedSectionsState();
   }
 
   setFontManager(fontManager: FontManager) {
@@ -395,6 +399,30 @@ export class InspectorPanelView extends ItemView {
         this.renderSlideTab(content);
         break;
     }
+    
+    // Apply collapsed state to sections after rendering
+    this.applyCollapsedState(content);
+  }
+
+  /**
+   * Apply collapsed state to all sections in the content area
+   */
+  private applyCollapsedState(contentEl: HTMLElement) {
+    const headers = contentEl.querySelectorAll('.inspector-section-header');
+    headers.forEach((header: Element) => {
+      const sectionId = (header as HTMLElement).dataset.sectionId;
+      if (!sectionId) return;
+
+      const isCollapsed = this.collapsedSections.has(sectionId);
+      if (!isCollapsed) return; // Only process collapsed sections
+
+      // Hide all following content until next section header
+      let nextEl = header.nextElementSibling;
+      while (nextEl && !nextEl.classList.contains('inspector-section-header')) {
+        (nextEl as HTMLElement).style.display = 'none';
+        nextEl = nextEl.nextElementSibling;
+      }
+    });
   }
 
   private createTab(container: HTMLElement, id: InspectorTab, label: string) {
@@ -1120,12 +1148,88 @@ export class InspectorPanelView extends ItemView {
   }
 
   /**
-   * Create a section header with uppercase title and gray separator line
+   * Load collapsed sections state from plugin data
+   */
+  private loadCollapsedSectionsState() {
+    try {
+      const data = localStorage.getItem('perspecta-collapsed-sections');
+      if (data) {
+        this.collapsedSections = new Set(JSON.parse(data));
+      }
+    } catch (e) {
+      // Silently ignore load errors
+      this.collapsedSections = new Set();
+    }
+  }
+
+  /**
+   * Save collapsed sections state to plugin data
+   */
+  private saveCollapsedSectionsState() {
+    try {
+      localStorage.setItem('perspecta-collapsed-sections', JSON.stringify(Array.from(this.collapsedSections)));
+    } catch (e) {
+      // Silently ignore save errors
+    }
+  }
+
+  /**
+   * Create a collapsible section header with toggle button
    */
   private createSectionHeader(container: HTMLElement, title: string) {
+    const sectionId = title.toLowerCase().replace(/\s+/g, '-');
+    const isCollapsed = this.collapsedSections.has(sectionId);
+    
     const header = container.createDiv({ cls: 'inspector-section-header' });
-    header.createEl('span', { text: title, cls: 'section-title' });
+    header.dataset.sectionId = sectionId;
+    
+    // Create clickable header with toggle icon
+    const headerButton = header.createDiv({ cls: 'section-header-button' });
+    headerButton.classList.toggle('collapsed', isCollapsed);
+    
+    // Toggle icon (chevron)
+    const toggleIcon = headerButton.createDiv({ cls: 'section-toggle-icon' });
+    setIcon(toggleIcon, isCollapsed ? 'chevron-right' : 'chevron-down');
+    
+    // Title
+    headerButton.createEl('span', { text: title, cls: 'section-title' });
+    
+    // Separator line
     header.createEl('div', { cls: 'section-separator' });
+    
+    // Click handler to toggle collapsed state
+    headerButton.addEventListener('click', () => {
+      const isCurrentlyCollapsed = this.collapsedSections.has(sectionId);
+      
+      if (isCurrentlyCollapsed) {
+        this.collapsedSections.delete(sectionId);
+      } else {
+        this.collapsedSections.add(sectionId);
+      }
+      
+      this.saveCollapsedSectionsState();
+      
+      // Update icon
+      const icon = toggleIcon.querySelector('svg');
+      if (icon) {
+        toggleIcon.empty();
+        setIcon(toggleIcon, this.collapsedSections.has(sectionId) ? 'chevron-right' : 'chevron-down');
+      }
+      
+      // Toggle visibility of ALL content that follows until next section header
+      let nextEl = header.nextElementSibling;
+      while (nextEl && !nextEl.classList.contains('inspector-section-header')) {
+        (nextEl as HTMLElement).style.display = this.collapsedSections.has(sectionId) ? 'none' : '';
+        nextEl = nextEl.nextElementSibling;
+      }
+      
+      headerButton.classList.toggle('collapsed', this.collapsedSections.has(sectionId));
+    });
+    
+    // Mark section as collapsed if needed
+    if (isCollapsed) {
+      headerButton.classList.add('collapsed');
+    }
   }
 
   // ============================================
@@ -2204,13 +2308,14 @@ export class InspectorPanelView extends ItemView {
         .onChange((value) => this.updateSlideMetadata({ backgroundOpacity: value / 100 }))
     );
 
-    // Custom class
-    new Setting(overridesSection).setName('Custom CSS Class').addText((text) => {
-      text.setPlaceholder('my-special-slide').setValue(this.currentSlide?.metadata.class || '');
-      text.inputEl.addEventListener('blur', () => {
-        this.updateSlideMetadata({ class: text.getValue() }, true);
+    // Hide overlay
+    new Setting(overridesSection)
+      .setName('Hide Overlay')
+      .setDesc('Disable the presentation-wide overlay for this slide')
+      .addToggle((toggle) => {
+        toggle.setValue(this.currentSlide?.metadata.hideOverlay || false);
+        toggle.onChange((value) => this.updateSlideMetadata({ hideOverlay: value || undefined }, true));
       });
-    });
   }
 
   // ============================================

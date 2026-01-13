@@ -94,7 +94,7 @@ A powerful Obsidian plugin for creating beautiful presentations from Markdown. W
 
 ## Know Issues
 
-- **UI rendering with new Obsidian 1.11 on Windows** - Issues with UI rendering, font rendering on lates Obsidian 1.11 on Windows/new ELectron
+- **UI rendering with new Obsidian 1.11 on Windows** - Issues with UI rendering, font rendering on latest Obsidian 1.11 on Windows/new ELectron
 - **Non-slide MD files** - Currently any markdown file is accepted for preview/slides - regardless of its content - which can lead odd behavior/rendering as slides
 - **Delayed initialization** - Sometimes the slide navigator (left sidebar), the inspector (right sidebar) or the preview window do not show the current file (active window). It helps to click "Open slide presentation" icon in the Obsidian ribbon again.
 - **Themes do not bring over images** - There is an issue with custom themes that have images & fonts via Obsidian sync (Obsidian Sync may not sync all elements of the custom theme between devices, causing a theme to appear incomplete on a second device, e.g. no images and fonts)

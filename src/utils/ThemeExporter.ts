@@ -12,12 +12,14 @@ import type { FontManager } from './FontManager';
 import { getTheme } from '../themes';
 
 /**
- * Represents an image reference found in markdown
+ * Represents an asset reference found in markdown, CSS, or JSON
  */
-interface ImageReference {
+interface AssetReference {
   originalPath: string;
-  isWikiLink: boolean;
-  fullMatch: string;
+  type: 'image' | 'css' | 'json' | 'font'; // type of asset
+  location: 'markdown' | 'css' | 'json'; // where it was found
+  isWikiLink?: boolean; // only for markdown images
+  fullMatch: string; // the full match string (for rewriting)
 }
 
 /**
@@ -215,12 +217,13 @@ export class ThemeExporter {
 
     // Extract and copy images, generate demo file
     const imageRefs = this.extractImageReferences(markdownContent);
+    let imagePathMap = new Map<string, string>();
     if (imageRefs.length > 0) {
-      await this.copyImages(themePath, imageRefs, sourceFile);
+      imagePathMap = await this.copyImages(themePath, imageRefs, sourceFile);
     }
 
     // Create demo markdown file with COMPLETE frontmatter and updated image paths
-    await this.createDemoFile(themePath, themeName, markdownContent, imageRefs, frontmatter);
+    await this.createDemoFile(themePath, themeName, markdownContent, imageRefs, frontmatter, imagePathMap);
 
     new Notice(`Theme "${themeName}" saved to ${themePath}`);
     return themePath;
@@ -609,8 +612,8 @@ export class ThemeExporter {
    * Extract all image references from markdown content
    * Supports both standard markdown ![alt](path) and Obsidian wiki-links ![[path]]
    */
-  private extractImageReferences(content: string): ImageReference[] {
-    const refs: ImageReference[] = [];
+  private extractImageReferences(content: string): AssetReference[] {
+    const refs: AssetReference[] = [];
 
     // Match standard markdown images: ![alt](path)
     const mdImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
@@ -620,6 +623,8 @@ export class ThemeExporter {
       if (path && !path.startsWith('http://') && !path.startsWith('https://')) {
         refs.push({
           originalPath: path,
+          type: 'image',
+          location: 'markdown',
           isWikiLink: false,
           fullMatch: match[0],
         });
@@ -633,6 +638,8 @@ export class ThemeExporter {
       if (path && !path.startsWith('http://') && !path.startsWith('https://')) {
         refs.push({
           originalPath: path,
+          type: 'image',
+          location: 'markdown',
           isWikiLink: true,
           fullMatch: match[0],
         });
@@ -643,18 +650,68 @@ export class ThemeExporter {
   }
 
   /**
-   * Copy images to the theme folder with <themename>- prefix
-   * Returns a map of original paths to new filenames
+   * Check if an extension is a supported image format
+   */
+  private isImageExtension(ext: string): boolean {
+    const imageExts = ['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif', 'avif', 'bmp'];
+    return imageExts.includes(ext.toLowerCase());
+  }
+
+  /**
+   * Get the asset type based on file extension
+   */
+  private getAssetType(
+    path: string,
+    ext: string
+  ): 'image' | 'css' | 'json' | 'font' | null {
+    const lower = ext.toLowerCase();
+    if (this.isImageExtension(lower)) return 'image';
+    if (lower === 'css') return 'css';
+    if (lower === 'json') return 'json';
+    if (['woff2', 'woff', 'ttf', 'otf'].includes(lower)) return 'font';
+    return null;
+  }
+
+  /**
+   * Generate a short deterministic hash from a path string
+   * Used to create unique filenames for assets with the same basename
+   */
+  private generateShortHash(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    // Convert to hex and take first 6 chars
+    return Math.abs(hash).toString(16).slice(0, 6);
+  }
+
+  /**
+   * Copy images to the theme folder's images/ subfolder with deterministic naming
+   * Returns a map of original paths to new filenames (relative paths like "images/...")
    */
   private async copyImages(
     themePath: string,
-    imageRefs: ImageReference[],
+    imageRefs: AssetReference[],
     sourceFile: TFile
   ): Promise<Map<string, string>> {
     const pathMap = new Map<string, string>();
     const folderName = themePath.split('/').pop() || 'theme';
+    const imagesSubfolder = `${themePath}/images`;
+
+    // Ensure images subfolder exists
+    await this.ensureFolder(imagesSubfolder);
+
+    // Track used filenames to avoid collisions
+    const usedFilenames = new Set<string>();
 
     for (const ref of imageRefs) {
+      // Skip non-image assets
+      if (ref.type !== 'image') {
+        continue;
+      }
+
       try {
         // Resolve the image file
         const decodedPath = decodeURIComponent(ref.originalPath);
@@ -667,11 +724,22 @@ export class ThemeExporter {
         }
 
         if (imageFile instanceof TFile) {
-          // Generate new filename with theme prefix
+          // Generate deterministic filename to avoid collisions
+          // Use a short hash of the original path to disambiguate duplicates
           const ext = imageFile.extension;
           const baseName = imageFile.basename;
-          const newFileName = `${folderName}-${baseName}.${ext}`;
-          const destPath = `${themePath}/${newFileName}`;
+          const pathHash = this.generateShortHash(ref.originalPath);
+          let newFileName = `${folderName}-${baseName}-${pathHash}.${ext}`;
+
+          // Handle collision by adding numeric suffix if needed
+          let counter = 1;
+          while (usedFilenames.has(newFileName)) {
+            newFileName = `${folderName}-${baseName}-${pathHash}-${counter}.${ext}`;
+            counter++;
+          }
+
+          usedFilenames.add(newFileName);
+          const destPath = `${imagesSubfolder}/${newFileName}`;
 
           // Check if already copied (same original path)
           if (!pathMap.has(ref.originalPath)) {
@@ -681,7 +749,8 @@ export class ThemeExporter {
               const data = await this.app.vault.readBinary(imageFile);
               await this.app.vault.createBinary(destPath, data);
             }
-            pathMap.set(ref.originalPath, newFileName);
+            // Store relative path for reference rewriting
+            pathMap.set(ref.originalPath, `images/${newFileName}`);
           }
         }
       } catch (e) {
@@ -693,27 +762,22 @@ export class ThemeExporter {
   }
 
   /**
-    * Create a demo markdown file with:
-    * - COMPLETE frontmatter (all design parameters captured)
-    * - Updated image paths pointing to local theme folder images
-    */
+   * Create a demo markdown file with:
+   * - COMPLETE frontmatter (all design parameters captured)
+   * - Updated image paths pointing to local theme folder images
+   */
   private async createDemoFile(
     themePath: string,
     themeName: string,
     markdownContent: string,
-    imageRefs: ImageReference[],
-    fm?: PresentationFrontmatter
+    imageRefs: AssetReference[],
+    fm?: PresentationFrontmatter,
+    imagePathMap?: Map<string, string>
   ): Promise<void> {
     const folderName = themePath.split('/').pop() || 'theme';
 
-    // Build image path map from refs
-    const pathMap = new Map<string, string>();
-    for (const ref of imageRefs) {
-      const baseName = ref.originalPath.split('/').pop()?.split('.')[0] || 'image';
-      const ext = ref.originalPath.split('.').pop() || 'png';
-      const newFileName = `${folderName}-${baseName}.${ext}`;
-      pathMap.set(ref.originalPath, newFileName);
-    }
+    // Use provided map or build a fallback (should use provided map)
+    const pathMap = imagePathMap || new Map<string, string>();
 
     // Create complete frontmatter with all design parameters
     let demoFrontmatter = `---

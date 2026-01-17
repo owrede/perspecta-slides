@@ -2,6 +2,33 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.15] - 2026-01-17
+
+### Added
+- Enhanced Custom Theme export with organized asset structure (images/, fonts/, css/, data/ subfolders)
+- Deterministic collision-free asset naming with short hashes (theme-name-image-a1b2c3.png)
+- Type-safe AssetReference system supporting multiple asset types (image, css, json, font)
+- Comprehensive documentation (1800+ lines) for Custom Theme export architecture and usage
+
+### Improved
+- Demo file image path references now use actual copied paths (fixed reference rewriting bug)
+- Image assets now organized in images/ subfolder for better theme folder organization
+- Asset naming prevents collisions when multiple assets share the same basename
+- Helper methods for asset management: generateShortHash(), isImageExtension(), getAssetType()
+- exportTheme() now passes actual path maps to createDemoFile() for accurate reference rewriting
+- copyImages() enhanced with subfolder organization, deterministic hashing, and collision tracking
+
+### Technical
+- New AssetReference interface: `{ originalPath, type, location, isWikiLink?, fullMatch }`
+- Improved exportTheme() flow to capture and pass image path maps
+- Enhanced copyImages() with images/ subfolder, deterministic hashing, and collision prevention
+- Updated createDemoFile() to accept and use actual path maps
+
+### Compatibility
+- 100% backward compatible with existing custom themes; no breaking changes
+- Full Obsidian Sync compatibility with vault-relative paths and deterministic structure
+- Legacy theme.json format continues to load and work without changes
+
 ## [0.2.14] - 2026-01-13
 
 - New: Explicit column delimiter "--" on its own line for hard column breaks in default layout

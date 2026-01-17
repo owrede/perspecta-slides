@@ -11,6 +11,24 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.2.15',
+    date: '2026-01-17',
+    changes: [
+      'New: Enhanced Custom Theme export with organized asset structure (images/, fonts/, css/, data/ subfolders)',
+      'New: Deterministic collision-free asset naming with short hashes (theme-name-image-a1b2c3.png)',
+      'New: Type-safe AssetReference system supporting multiple asset types (image, css, json, font)',
+      'New: Comprehensive documentation (1800+ lines) for Custom Theme export architecture',
+      'Improved: Demo file image path references now use actual copied paths (fixed reference rewriting bug)',
+      'Improved: Image assets now organized in images/ subfolder for better organization',
+      'Improved: Asset naming prevents collisions when multiple assets share the same basename',
+      'Technical: Added helper methods for asset management (generateShortHash, isImageExtension, getAssetType)',
+      'Technical: Enhanced exportTheme() to pass actual path maps to createDemoFile()',
+      'Technical: Improved copyImages() with subfolder organization, deterministic hashing, and collision tracking',
+      'Backward Compatibility: 100% compatible with existing custom themes; no breaking changes',
+      'Obsidian Sync: Full compatibility with vault-relative paths and deterministic structure',
+    ],
+  },
+  {
     version: '0.2.14',
     date: '2026-01-13',
     changes: [

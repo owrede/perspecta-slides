@@ -1,6 +1,6 @@
 {
   "name": "perspecta-slides",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "description": "An Obsidian plugin for creating beautiful presentations from Markdown",
   "main": "main.js",
   "scripts": {

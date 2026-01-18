@@ -1004,26 +1004,51 @@ export class FontManager {
     }
 
     // Filter files to only include used weights (if specified)
+    // For variable fonts, include ALL weights since one file covers the range
     let filesToInclude = font.files;
     if (usedWeights && usedWeights.length > 0) {
       debug.log(
         'font-handling',
         `Cache has ${font.files.length} files with weights: ${font.files.map((f) => `${f.weight}/${f.style}`).join(', ')}`
       );
-      filesToInclude = font.files.filter((f) => usedWeights.includes(f.weight));
-      debug.log(
-        'font-handling',
-        `Filtering to used weights [${usedWeights.join(', ')}]: ${filesToInclude.length} of ${font.files.length} files`
-      );
       
-      // Fallback: if no files match the requested weights, use all files
-      // This handles cases where cache was created with different weights
-      if (filesToInclude.length === 0) {
-        debug.warn(
+      // Detect if this is a variable font: same file path appears with multiple different weights
+      const filePathWeightMap = new Map<string, Set<number>>();
+      for (const file of font.files) {
+        const key = `${file.localPath}|${file.style}`;
+        if (!filePathWeightMap.has(key)) {
+          filePathWeightMap.set(key, new Set());
+        }
+        filePathWeightMap.get(key)!.add(file.weight);
+      }
+      
+      // A variable font has the same file path with MULTIPLE different weights
+      const isVariableFont = Array.from(filePathWeightMap.values()).some((weights) => weights.size > 1);
+      
+      if (isVariableFont) {
+        // For variable fonts: include ALL weights from cache, not just requested ones
+        // This ensures the @font-face declares the full weight range
+        debug.log(
           'font-handling',
-          `No files match requested weights [${usedWeights.join(', ')}], using all cached files`
+          `Detected variable font. Using all cached weights instead of filtering to [${usedWeights.join(', ')}]`
         );
         filesToInclude = font.files;
+      } else {
+        // For static fonts: filter to only requested weights
+        filesToInclude = font.files.filter((f) => usedWeights.includes(f.weight));
+        debug.log(
+          'font-handling',
+          `Filtering to used weights [${usedWeights.join(', ')}]: ${filesToInclude.length} of ${font.files.length} files`
+        );
+        
+        // Fallback: if no files match the requested weights, use all files
+        if (filesToInclude.length === 0) {
+          debug.warn(
+            'font-handling',
+            `No files match requested weights [${usedWeights.join(', ')}], using all cached files`
+          );
+          filesToInclude = font.files;
+        }
       }
     }
 
@@ -1209,25 +1234,41 @@ export class FontManager {
     const debug = getDebugService();
 
     // Variable fonts: expand cache entries to cover all requested weights
-    // Even though there's only 1 file per style, we create entries for all weights
-    // so that weight filtering works correctly during CSS generation
+    // BUT only for weight/style combinations that actually exist in fontFiles
+    // (e.g., Cardo has 400/italic, 400/normal, 700/normal, but NOT 700/italic)
+    
+    // Build a set of weights that exist for each style
+    const weightsPerStyle = new Map<string, Set<number>>();
+    for (const file of fontFiles) {
+      if (!weightsPerStyle.has(file.style)) {
+        weightsPerStyle.set(file.style, new Set());
+      }
+      weightsPerStyle.get(file.style)!.add(file.weight);
+    }
+
     const expandedFiles: CachedFontFile[] = [];
 
     for (const file of fontFiles) {
-      // For each style in the original files, create entries for ALL requested weights
+      // For each style in the original files, create entries for requested weights
+      // BUT only if that weight actually exists for this style
+      const existingWeights = weightsPerStyle.get(file.style) || new Set();
+      
       for (const weight of requestedWeights) {
-        expandedFiles.push({
-          weight,
-          style: file.style,
-          localPath: file.localPath,
-          format: file.format,
-        });
+        // Only create entry if this weight exists for this style in the downloaded fonts
+        if (existingWeights.has(weight)) {
+          expandedFiles.push({
+            weight,
+            style: file.style,
+            localPath: file.localPath,
+            format: file.format,
+          });
+        }
       }
     }
 
     debug.log(
       'font-handling',
-      `[font-expand] Variable font expanded from ${fontFiles.length} to ${expandedFiles.length} entries (${requestedWeights.length} weights × ${fontFiles.length} styles)`
+      `[font-expand] Variable font expanded from ${fontFiles.length} to ${expandedFiles.length} entries (only valid weight/style combos)`
     );
 
     return expandedFiles;

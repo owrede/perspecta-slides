@@ -2699,9 +2699,13 @@ export default class PerspectaSlidesPlugin extends Plugin {
           }
           if (fontName === frontmatter.bodyFont) {
             // Add body weight (default 400 if not specified)
-            usedWeights.add(frontmatter.bodyFontWeight ?? 400);
+            const bodyWeight = frontmatter.bodyFontWeight ?? 400;
+            usedWeights.add(bodyWeight);
             // IMPORTANT: Always include weight 700 for body font to support <strong> and <b> tags
-            usedWeights.add(700);
+            // (unless body font weight is already 700)
+            if (bodyWeight !== 700) {
+              usedWeights.add(700);
+            }
           }
           if (fontName === frontmatter.headerFont) {
             // Add header weight (default 400 if not specified)

@@ -1,0 +1,17 @@
+MANUAL COPY INSTRUCTIONS
+========================
+
+1. Close Obsidian completely (including the Perspecta-Dev vault)
+
+2. Create folder:
+   C:\Users\owred\Documents\Perspecta-Dev\.obsidian\plugins\perspecta-slides
+
+3. Copy these 4 files from C:\Users\owred\GitHub\perspecta-slides\ to that folder:
+   - main.js
+   - preload.js
+   - manifest.json
+   - styles.css
+
+4. Reopen Obsidian and enable the plugin in settings
+
+Done!

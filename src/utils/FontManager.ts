@@ -58,10 +58,69 @@ export class FontManager {
     fontCacheFolder?: string
   ) {
     this.app = app;
-    this.cache = initialCache || { fonts: {} };
+    this.cache = this.normalizeCacheLoadedFromStorage(initialCache || { fonts: {} });
     this.saveCallback = saveCallback;
     // Remove trailing slash to avoid double slashes when concatenating paths
     this.fontCacheFolder = (fontCacheFolder || DEFAULT_FONT_CACHE_FOLDER).replace(/\/$/, '');
+  }
+
+  /**
+   * Normalize cache paths when loaded from storage
+   * Handles Windows path issues where paths may have been corrupted
+   */
+  private normalizeCacheLoadedFromStorage(cache: FontCache): FontCache {
+    for (const font of Object.values(cache.fonts)) {
+      // Normalize all cached file paths
+      font.files = font.files.map((file) => ({
+        ...file,
+        localPath: this.fixCorruptedPath(file.localPath),
+      }));
+    }
+    return cache;
+  }
+
+  /**
+   * Fix corrupted paths on Windows where folder paths may have been concatenated incorrectly
+   * Example: "SRC/perspecta/fontsSRC/perspecta/fonts/Saira/..." -> "SRC/perspecta/fonts/Saira/..."
+   */
+  private fixCorruptedPath(path: string): string {
+    // Convert backslashes to forward slashes
+    let fixed = path.replace(/\\/g, '/');
+
+    // Look for patterns where a path segment ends with the start of the next segment
+    // E.g., "perspecta/fontsSRC" where "fonts" + "SRC" = "fontsSRC"
+    // We want to find and remove the first occurrence of overlapping segments
+
+    // Common pattern: fontsCacheFolderName followed by itself
+    // E.g., "perspecta-fontsSRC/perspecta/fonts" -> "SRC/perspecta/fonts"
+    // Try to detect and fix by looking for repeated path components
+
+    const parts = fixed.split('/');
+    const cleaned: string[] = [];
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+
+      // Check if this part is a concatenation of the previous part + something else
+      if (
+        cleaned.length > 0 &&
+        part.startsWith(cleaned[cleaned.length - 1]) &&
+        cleaned[cleaned.length - 1].length > 0
+      ) {
+        // This part starts with the previous part
+        // Extract the suffix and continue with that
+        const suffix = part.substring(cleaned[cleaned.length - 1].length);
+        if (suffix.length > 0) {
+          parts[i] = suffix;
+          i--; // Re-process with the extracted suffix
+          continue;
+        }
+      }
+
+      cleaned.push(part);
+    }
+
+    return cleaned.join('/');
   }
 
   /**
@@ -351,7 +410,7 @@ export class FontManager {
       await this.ensureCacheFolder();
 
       // Clean up existing font folder if it exists (to avoid conflicts with partial downloads)
-      const fontFolderPath = `${this.fontCacheFolder}/${fontName.replace(/\s+/g, '-')}`;
+      const fontFolderPath = `${this.fontCacheFolder}/${fontName.replace(/\s+/g, '-')}`.replace(/\\/g, '/');
       const existingFolder = this.app.vault.getAbstractFileByPath(fontFolderPath);
       if (existingFolder instanceof TFolder) {
         debug.log(
@@ -594,7 +653,7 @@ export class FontManager {
 
       // Ensure cache folder exists and create font-specific subfolder
       await this.ensureCacheFolder();
-      const fontFolderPath = `${this.fontCacheFolder}/${fontName.replace(/\s+/g, '-')}`;
+      const fontFolderPath = `${this.fontCacheFolder}/${fontName.replace(/\s+/g, '-')}`.replace(/\\/g, '/');
       await this.ensureFontFolder(fontFolderPath);
 
       for (const file of fontFilesInFolder) {
@@ -725,10 +784,11 @@ export class FontManager {
     const allStyles: string[] = [];
 
     // Create font-specific subfolder
-    const fontFolderPath = `${this.fontCacheFolder}/${fontName.replace(/\s+/g, '-')}`;
+    const fontFolderPath = `${this.fontCacheFolder}/${fontName.replace(/\s+/g, '-')}`.replace(/\\/g, '/');
     await this.ensureFontFolder(fontFolderPath);
 
     debug.log('font-handling', `[font-parsing] Parsing CSS for ${fontName}...`);
+    debug.log('font-handling', `[font-parsing] CSS length: ${css.length} chars, first 200: ${css.substring(0, 200)}`);
 
     // Match @font-face blocks (use [\s\S] to match across newlines)
     const fontFaceRegex = /@font-face\s*\{([\s\S]*?)\}/g;
@@ -742,6 +802,10 @@ export class FontManager {
       // Extract font-weight
       const weightMatch = block.match(/font-weight:\s*(\d+)/);
       const weight = weightMatch ? parseInt(weightMatch[1]) : 400;
+      debug.log(
+        'font-handling',
+        `[font-parsing] Block ${fontFaceCount}: raw weight match = ${weightMatch ? weightMatch[0] : 'null'}, parsed weight = ${weight}`
+      );
       allWeights.push(weight);
 
       // Extract font-style
@@ -792,7 +856,8 @@ export class FontManager {
       // For font file naming, don't include weight since variable fonts support all weights
       // Static fonts will have a single weight entry anyway
       const fileName = `${fontName.replace(/\s+/g, '-')}-${style}.${format}`;
-      const localPath = `${fontFolderPath}/${fileName}`;
+      // Normalize path separators: always use forward slashes for vault paths (cross-platform)
+      const localPath = `${fontFolderPath}/${fileName}`.replace(/\\/g, '/');
       downloadedUrls.set(fontUrl, localPath);
       fileMap.set(fontUrl, { localPath, format });
 
@@ -926,11 +991,25 @@ export class FontManager {
     // Filter files to only include used weights (if specified)
     let filesToInclude = font.files;
     if (usedWeights && usedWeights.length > 0) {
+      debug.log(
+        'font-handling',
+        `Cache has ${font.files.length} files with weights: ${font.files.map((f) => `${f.weight}/${f.style}`).join(', ')}`
+      );
       filesToInclude = font.files.filter((f) => usedWeights.includes(f.weight));
       debug.log(
         'font-handling',
         `Filtering to used weights [${usedWeights.join(', ')}]: ${filesToInclude.length} of ${font.files.length} files`
       );
+      
+      // Fallback: if no files match the requested weights, use all files
+      // This handles cases where cache was created with different weights
+      if (filesToInclude.length === 0) {
+        debug.warn(
+          'font-handling',
+          `No files match requested weights [${usedWeights.join(', ')}], using all cached files`
+        );
+        filesToInclude = font.files;
+      }
     }
 
     debug.log(
@@ -949,14 +1028,31 @@ export class FontManager {
     const rules: string[] = [];
     const fileDataCache: Map<string, ArrayBuffer> = new Map(); // Cache file data to avoid re-reading
 
+    // Filter out files that don't exist in vault (handles corrupted cache paths)
+    const validFiles: typeof filesToInclude = [];
+    for (const file of filesToInclude) {
+      const normalizedPath = file.localPath.replace(/\/+/g, '/');
+      const fontFile = this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (fontFile instanceof TFile) {
+        validFiles.push(file);
+      } else {
+        debug.warn('font-handling', `Removing non-existent cached file from consideration: ${normalizedPath}`);
+      }
+    }
+
+    if (validFiles.length === 0) {
+      debug.warn('font-handling', `No valid cached files found for font "${fontName}"`);
+      return '';
+    }
+
     // Group files by (style, localPath)
     // For variable fonts, all weights use the same file, so we use the font's weights array for the range
     const fileGroups = new Map<
       string,
-      { files: typeof filesToInclude; minWeight: number; maxWeight: number }
+      { files: typeof validFiles; minWeight: number; maxWeight: number }
     >();
 
-    for (const file of filesToInclude) {
+    for (const file of validFiles) {
       const key = `${file.style}|${file.localPath}`;
       if (!fileGroups.has(key)) {
         fileGroups.set(key, { files: [], minWeight: Infinity, maxWeight: -Infinity });
@@ -1097,15 +1193,29 @@ export class FontManager {
   ): CachedFontFile[] {
     const debug = getDebugService();
 
-    // Variable fonts should NOT be expanded.
-    // They have 1 file per style (e.g., one normal, one italic) that covers all weights.
-    // Return files as-is and let @font-face generation handle the weight ranges.
+    // Variable fonts: expand cache entries to cover all requested weights
+    // Even though there's only 1 file per style, we create entries for all weights
+    // so that weight filtering works correctly during CSS generation
+    const expandedFiles: CachedFontFile[] = [];
+
+    for (const file of fontFiles) {
+      // For each style in the original files, create entries for ALL requested weights
+      for (const weight of requestedWeights) {
+        expandedFiles.push({
+          weight,
+          style: file.style,
+          localPath: file.localPath,
+          format: file.format,
+        });
+      }
+    }
+
     debug.log(
       'font-handling',
-      `[font-expand] Variable font with ${fontFiles.length} file(s) - keeping as-is (one per style)`
+      `[font-expand] Variable font expanded from ${fontFiles.length} to ${expandedFiles.length} entries (${requestedWeights.length} weights × ${fontFiles.length} styles)`
     );
 
-    return fontFiles;
+    return expandedFiles;
   }
 
   /**

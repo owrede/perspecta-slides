@@ -11,6 +11,25 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.2.16',
+    date: '2026-01-18',
+    changes: [
+      'Fix: Font loading on Windows - path normalization for cached font files (forward slashes)',
+      'Fix: Corrupted cache paths on Windows - deduplication of malformed path segments',
+      'Fix: Variable font weight support - cache now stores all requested weights for proper weight filtering',
+      'Fix: Font CSS generation fallback - uses all cached files if no exact weight matches (handles variable fonts)',
+      'Fix: Settings input focus - removed interfering event handlers that caused focus loss',
+      'Fix: Valid file detection - skips non-existent cached files to prevent generation errors',
+      'Improved: Variable fonts now properly support all weight ranges (100-900) in presentations',
+      'Improved: Font weight changes in inspector now apply correctly across all contexts',
+      'Improved: Better error handling for corrupted cache entries on Windows and cross-platform',
+      'Technical: Enhanced path normalization in FontManager with Windows backslash-to-forward-slash conversion',
+      'Technical: Improved variable font expansion - creates cache entries for all requested weights while maintaining single file per style',
+      'Technical: Added validity checks before processing cached font files in CSS generation',
+      'Compatibility: All fixes are cross-platform safe (Windows, Mac, Linux)',
+    ],
+  },
+  {
     version: '0.2.15',
     date: '2026-01-17',
     changes: [

@@ -2,6 +2,30 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.16] - 2026-01-18
+
+### Fixed
+- Fixed font loading on Windows: Path normalization for cached font files (forward slashes)
+- Fixed corrupted cache paths on Windows: Deduplication of malformed path segments
+- Fixed variable font weight support: Cache now stores all requested weights for proper weight filtering
+- Fixed font CSS generation fallback: Uses all cached files if no exact weight matches (handles variable fonts)
+- Fixed settings input focus: Removed interfering event handlers that caused focus loss
+- Fixed valid file detection: Skips non-existent cached files to prevent generation errors
+
+### Improved
+- Variable fonts now properly support all weight ranges (100-900) in presentations
+- Font weight changes in inspector now apply correctly across all contexts
+- Better error handling for corrupted cache entries on Windows and cross-platform
+
+### Technical
+- Enhanced path normalization in FontManager with Windows backslash-to-forward-slash conversion
+- Improved variable font expansion: Creates cache entries for all requested weights while maintaining single file per style
+- Added validity checks before processing cached font files in CSS generation
+
+### Compatibility
+- All fixes are cross-platform safe (Windows, Mac, Linux)
+- No breaking changes; fully backward compatible
+
 ## [0.2.15] - 2026-01-17
 
 ### Added

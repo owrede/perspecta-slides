@@ -2,11 +2,38 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.19] - TBD
+
+### Added
+
+### Fixed
+
+### Improved
+
+### Technical
+
 ## [0.2.18] - 2026-01-18
 
 ### Fixed
-- Fixed font cache deduplication: Removed duplicate (weight, style, path) entries that prevented weight changes from working (e.g., Cardo 700 not rendering)
-- Cache now deduplicates on each download to prevent re-downloads from creating duplicate entries
+- Fixed font weight changes not applying correctly: Corrected body font weight logic to not force weight 700 when 700 is already selected
+- Fixed variable font weight range declaration: @font-face now declares full weight range (e.g., `font-weight: 400 700`) for variable fonts
+- Fixed font cache filtering for variable fonts: Now includes all cached weights to properly detect variable fonts instead of filtering to requested weights only
+- Fixed expandVariableFontFiles() to validate weight/style combinations: Only creates cache entries for weights that actually exist for each style (e.g., Cardo doesn't have Bold Italic)
+- Fixed font cache deduplication: Removed duplicate (weight, style, path) entries that prevented weight changes from working
+
+### Improved
+- Font weight switching now works correctly for all fonts including variable fonts
+- Better handling of fonts with incomplete weight/style combinations (e.g., Cardo Regular/Bold/Italic without Bold Italic)
+- Variable fonts now properly declare their full weight range in @font-face CSS
+
+### Technical
+- Added variable font detection in generateFontFaceCSSForExport() by checking if same file path has multiple weights
+- Improved expandVariableFontFiles() to validate weight/style combinations against actual downloaded files
+- Enhanced weight filtering logic to distinguish between variable and static fonts
+
+### Notes
+- Google Fonts may not provide all weights for download (e.g., Cardo Bold). Use "Add Local Font" feature with TTF files if needed
+- All font weight fixes are cross-platform safe (Windows, Mac, Linux)
 
 ## [0.2.17] - 2026-01-18
 

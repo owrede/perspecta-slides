@@ -11,15 +11,47 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.2.19',
+    date: 'TBD',
+    changes: [
+      // New features and fixes will be added here
+    ],
+  },
+  {
+    version: '0.2.18',
+    date: '2026-01-18',
+    changes: [
+      'Fix: Font weight changes not applying - corrected body font weight logic to not force weight 700 when 700 already selected',
+      'Fix: Variable font weight range declaration - @font-face now declares full weight range (e.g., font-weight: 400 700)',
+      'Fix: Font cache filtering for variable fonts - now includes all cached weights to properly detect variable fonts',
+      'Fix: expandVariableFontFiles() validates weight/style combinations - only creates entries for weights that exist for each style',
+      'Fix: Font cache deduplication - removed duplicate (weight, style, path) entries preventing weight changes',
+      'Improved: Font weight switching now works correctly for all fonts including variable fonts',
+      'Improved: Better handling of fonts with incomplete weight/style combinations (e.g., Cardo Regular/Bold/Italic without Bold Italic)',
+      'Improved: Variable fonts now properly declare full weight range in @font-face CSS',
+      'Technical: Added variable font detection in generateFontFaceCSSForExport() by checking if same file path has multiple weights',
+      'Technical: Improved expandVariableFontFiles() to validate weight/style combinations against actual downloaded files',
+      'Technical: Enhanced weight filtering logic to distinguish between variable and static fonts',
+      'Notes: Google Fonts may not provide all weights for download (e.g., Cardo Bold) - use "Add Local Font" with TTF files if needed',
+      'Compatibility: All font weight fixes are cross-platform safe (Windows, Mac, Linux)',
+    ],
+  },
+  {
+    version: '0.2.17',
+    date: '2026-01-18',
+    changes: [
+      'Fix: Critical Windows font path corruption - improved fixCorruptedPath() to detect and repair doubled path segments',
+      'Fix: Font loading on Windows - path normalization for cached font files (forward slashes)',
+      'Fix: Variable font weight support - cache now stores all requested weights for proper weight filtering',
+      'Fix: Font CSS generation fallback - uses all cached files if no exact weight matches',
+      'Fix: Settings input focus - removed interfering event handlers that caused focus loss',
+      'Fix: Valid file detection - skips non-existent cached files to prevent generation errors',
+    ],
+  },
+  {
     version: '0.2.16',
     date: '2026-01-18',
     changes: [
-      'Fix: Font loading on Windows - path normalization for cached font files (forward slashes)',
-      'Fix: Corrupted cache paths on Windows - deduplication of malformed path segments',
-      'Fix: Variable font weight support - cache now stores all requested weights for proper weight filtering',
-      'Fix: Font CSS generation fallback - uses all cached files if no exact weight matches (handles variable fonts)',
-      'Fix: Settings input focus - removed interfering event handlers that caused focus loss',
-      'Fix: Valid file detection - skips non-existent cached files to prevent generation errors',
       'Improved: Variable fonts now properly support all weight ranges (100-900) in presentations',
       'Improved: Font weight changes in inspector now apply correctly across all contexts',
       'Improved: Better error handling for corrupted cache entries on Windows and cross-platform',

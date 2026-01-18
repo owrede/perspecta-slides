@@ -87,37 +87,43 @@ export class FontManager {
     // Convert backslashes to forward slashes
     let fixed = path.replace(/\\/g, '/');
 
-    // Look for patterns where a path segment ends with the start of the next segment
-    // E.g., "perspecta/fontsSRC" where "fonts" + "SRC" = "fontsSRC"
-    // We want to find and remove the first occurrence of overlapping segments
-
-    // Common pattern: fontsCacheFolderName followed by itself
-    // E.g., "perspecta-fontsSRC/perspecta/fonts" -> "SRC/perspecta/fonts"
-    // Try to detect and fix by looking for repeated path components
-
+    // Windows concatenation bug: path gets doubled in the middle
+    // Pattern: "...fonts<UPPERCASE><REST>/perspecta/fonts/..."
+    // The font cache folder path got inserted into a filename
+    // Example: "SRC/perspecta/fonts" + "SRC/perspecta/fonts/Jost/-normal.woff2"
+    // Results in: "SRC/perspecta/fontsSRC/perspecta/fonts/Jost/-normal.woff2"
+    
+    // Strategy: detect the pattern "fonts<UPPERCASE>" and look ahead to see if the
+    // rest of the path matches the start of the cache folder name, then remove the duplication
+    
+    // Pattern 1: Simple case - "fontsSRC/perspecta/fonts" should become just "fonts/..."
+    // Look for: (fonts)([A-Z]\w*)(/perspecta/fonts/)
+    // Replace with: fonts/
+    fixed = fixed.replace(/fonts([A-Z][a-zA-Z0-9]*)(\/[a-z][a-z\-]*\/fonts)/gi, 'fonts');
+    
+    // Pattern 2: Handle case where just the first segment got corrupted
+    // "fontsSRC" with following path starting with the actual path components
+    // Match: any segment that's "fonts" + uppercase + rest where rest is a path segment
     const parts = fixed.split('/');
     const cleaned: string[] = [];
-
+    
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
-
-      // Check if this part is a concatenation of the previous part + something else
-      if (
-        cleaned.length > 0 &&
-        part.startsWith(cleaned[cleaned.length - 1]) &&
-        cleaned[cleaned.length - 1].length > 0
-      ) {
-        // This part starts with the previous part
-        // Extract the suffix and continue with that
-        const suffix = part.substring(cleaned[cleaned.length - 1].length);
-        if (suffix.length > 0) {
-          parts[i] = suffix;
-          i--; // Re-process with the extracted suffix
-          continue;
+      
+      // Check if this part looks like "fontsSRC" pattern
+      // Where it's "fonts" + something that shouldn't be there
+      if (part.match(/^fonts[A-Z]/)) {
+        // Extract just the "fonts" part, and push the remainder as next part
+        const match = part.match(/^(fonts)([A-Z].*)/);
+        if (match) {
+          cleaned.push(match[1]); // Push "fonts"
+          // The remainder will be processed in next iteration when we continue the loop
+          // by adjusting the array
+          parts.splice(i + 1, 0, match[2]);
         }
+      } else {
+        cleaned.push(part);
       }
-
-      cleaned.push(part);
     }
 
     return cleaned.join('/');

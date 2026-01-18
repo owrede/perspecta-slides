@@ -520,10 +520,19 @@ export class FontManager {
         fileMap
       );
 
+      // Deduplicate: remove duplicate (weight, style, localPath) entries
+      // This prevents duplicates from re-downloads or cache merges
+      const uniqueFilesMap = new Map<string, CachedFontFile>();
+      for (const file of finalFontFiles) {
+        const key = `${file.weight}|${file.style}|${file.localPath}`;
+        uniqueFilesMap.set(key, file);
+      }
+      const deduplicatedFiles = Array.from(uniqueFilesMap.values());
+
       // Use requested weights (variable fonts support all requested weights)
       // Use styles that were actually downloaded
       const downloadedWeights = weightsToDownload.sort((a, b) => a - b);
-      const downloadedStyles = [...new Set(finalFontFiles.map((f) => f.style))].sort();
+      const downloadedStyles = [...new Set(deduplicatedFiles.map((f) => f.style))].sort();
 
       debug.log(
         'font-handling',
@@ -537,7 +546,7 @@ export class FontManager {
         sourceUrl: url,
         weights: downloadedWeights,
         styles: downloadedStyles,
-        files: finalFontFiles,
+        files: deduplicatedFiles,
         cachedAt: Date.now(),
       };
 

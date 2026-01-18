@@ -2,6 +2,12 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.18] - 2026-01-18
+
+### Fixed
+- Fixed font cache deduplication: Removed duplicate (weight, style, path) entries that prevented weight changes from working (e.g., Cardo 700 not rendering)
+- Cache now deduplicates on each download to prevent re-downloads from creating duplicate entries
+
 ## [0.2.17] - 2026-01-18
 
 ### Fixed

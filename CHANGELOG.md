@@ -2,15 +2,26 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
-## [0.2.19] - TBD
-
-### Added
+## [0.2.19] - 2026-01-19
 
 ### Fixed
+- Fixed multi-column slide layout: H1/H2 titles now correctly stay in header section instead of being assigned to columns
+- Fixed explicit column delimiter handling: "--" lines no longer appear as content in slides
+- Fixed explicit column delimiter support for 3+ columns: Now dynamically determines maxColumnIndex instead of hardcoding limit of 2
+- Fixed H3 heading treatment in explicit column layouts: H3 headings no longer treated as column separators when explicit "--" delimiters are present
+- Fixed missing columnIndex assignment: Images, code blocks, tables, and math blocks now correctly assigned in parseSlideAdvancedMode with explicit column layouts
+- Fixed image path resolution in Presentation and Presenter windows: Now uses correct source file context instead of active file context, fixing WebP and other image failures in subdirectories
 
 ### Improved
+- Column break delimiter logic now consistently skips "--" delimiters across all parsing modes
+- Presentation windows now maintain proper file context for accurate resource resolution
+- Explicit column delimiters now take priority over automatic pattern detection
 
 ### Technical
+- Added createPresentationImageResolver(sourcePath) method for context-aware image resolution
+- Enhanced assignColumnIndices to properly handle H1/H2/H3 headings in explicit column layouts
+- Improved parseSlideAdvancedMode with columnDelimiterCount tracking for dynamic column detection
+- Added sourceFilePath storage in PresentationWindow and PresenterWindow for proper resource context
 
 ## [0.2.18] - 2026-01-18
 

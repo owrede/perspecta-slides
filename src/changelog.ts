@@ -12,9 +12,21 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '0.2.19',
-    date: 'TBD',
+    date: '2026-01-19',
     changes: [
-      // New features and fixes will be added here
+      'Fix: Multi-column slide layout - H1/H2 titles now correctly stay in header section instead of being assigned to columns',
+      'Fix: Explicit column delimiter handling - "--" lines no longer appear as content in slides',
+      'Fix: Explicit column delimiter support for 3+ columns - now dynamically determines maxColumnIndex instead of hardcoding limit of 2',
+      'Fix: H3 heading treatment in explicit column layouts - H3 headings no longer treated as column separators when explicit "--" delimiters are present',
+      'Fix: Missing columnIndex assignment - images, code blocks, tables, and math blocks now correctly assigned in parseSlideAdvancedMode',
+      'Fix: Image path resolution in Presentation and Presenter windows - now uses correct source file context instead of active file, fixing WebP failures in subdirectories',
+      'Improved: Column break delimiter logic now consistently skips "--" delimiters across all parsing modes',
+      'Improved: Presentation windows now maintain proper file context for accurate resource resolution',
+      'Improved: Explicit column delimiters now take priority over automatic pattern detection',
+      'Technical: Added createPresentationImageResolver(sourcePath) for context-aware image resolution',
+      'Technical: Enhanced assignColumnIndices to properly handle H1/H2/H3 headings in explicit column layouts',
+      'Technical: Improved parseSlideAdvancedMode with columnDelimiterCount tracking for dynamic column detection',
+      'Technical: Added sourceFilePath storage in PresentationWindow and PresenterWindow for proper resource context',
     ],
   },
   {

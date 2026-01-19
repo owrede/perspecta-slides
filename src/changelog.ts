@@ -11,6 +11,30 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.2.20',
+    date: '2026-01-19',
+    changes: [
+      'Fix: Image loading in preview window - PresentationView now uses context-aware Obsidian resource paths with proper directory context',
+      'Fix: Image loading in external windows - PresentationWindow and PresenterWindow now use context-aware file:// URLs with proper source file context',
+      'Fix: Wiki-link resolution context - images now resolve relative to presentation file directory, not active file',
+      'Fix: Multi-column slide layout - H1/H2 titles now correctly stay in header section instead of being assigned to columns',
+      'Fix: Explicit column delimiter handling - "--" lines no longer appear as content in slides',
+      'Fix: Explicit column delimiter support for 3+ columns - now dynamically determines maxColumnIndex instead of hardcoding limit of 2',
+      'Fix: H3 heading treatment in explicit column layouts - H3 headings no longer treated as column separators when explicit "--" delimiters are present',
+      'Fix: Missing columnIndex assignment - images, code blocks, tables, and math blocks now correctly assigned in parseSlideAdvancedMode',
+      'Improved: Column break delimiter logic now consistently skips "--" delimiters across all parsing modes',
+      'Improved: All image views (thumbnail navigator, preview, presentation window, presenter window) now show images correctly',
+      'Improved: Resolver factory pattern enables context-aware resolution for each view type',
+      'Improved: Column delimiters now take priority over automatic pattern detection',
+      'Technical: Added context-aware resolver wrapping for PresentationView with presentation file directory context',
+      'Technical: Enhanced createPresentationImageResolver(sourcePath) for external window image resolution',
+      'Technical: Resolver factory pattern allows different URL schemes for internal views (app://) vs external windows (file://)',
+      'Technical: Improved wiki-link resolution using presentation file path context via Obsidian metadata cache',
+      'Compatibility: Cross-platform compatible (Windows, Mac, Linux)',
+      'Compatibility: All image resolution uses standard Obsidian APIs for maximum compatibility',
+    ],
+  },
+  {
     version: '0.2.19',
     date: '2026-01-19',
     changes: [

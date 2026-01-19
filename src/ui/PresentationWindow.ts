@@ -32,6 +32,7 @@ export class PresentationWindow {
   private currentTheme: Theme | null = null;
   private imagePathResolver: ImagePathResolver | null = null;
   private presentation: Presentation | null = null;
+  private sourceFilePath: string = ''; // Path context for image resolution
   private customFontCSS: string = '';
   private fontWeightsCache: Map<string, number[]> = new Map();
   private excalidrawSvgCache: Map<string, ExcalidrawCacheEntry> | null = null;
@@ -89,6 +90,10 @@ export class PresentationWindow {
     return renderer;
   }
 
+  getSourceFilePath(): string {
+    return this.sourceFilePath;
+  }
+
   setFailedDecompressionFiles(files: Set<string>): void {
     this.failedDecompressionFiles = files;
   }
@@ -107,6 +112,7 @@ export class PresentationWindow {
     startSlide: number = 0
   ): Promise<void> {
     this.presentation = presentation;
+    this.sourceFilePath = sourceFile?.path || ''; // Store source file path for image resolution context
     this.currentSlideIndex = startSlide;
     this.currentTheme = theme;
     this.presentationCache = buildPresentationCache(presentation);

@@ -32,6 +32,7 @@ export class PresenterWindow {
   private currentTheme: Theme | null = null;
   private imagePathResolver: ImagePathResolver | null = null;
   private presentation: Presentation | null = null;
+  private sourceFilePath: string = ''; // Path context for image resolution
   private customFontCSS: string = '';
   private fontWeightsCache: Map<string, number[]> = new Map();
   private onSlideChanged: ((index: number) => void) | null = null;
@@ -74,6 +75,10 @@ export class PresenterWindow {
 
   setOnOpenPresentationWindow(callback: () => void): void {
     this.onOpenPresentationWindow = callback;
+  }
+
+  getSourceFilePath(): string {
+    return this.sourceFilePath;
   }
 
   notifySlideChange(slideIndex: number): void {
@@ -290,6 +295,7 @@ export class PresenterWindow {
     debug.log('presentation-window', '[PresenterWindow.open] CALLED - START OF METHOD');
 
     this.presentation = presentation;
+    this.sourceFilePath = sourceFile?.path || ''; // Store source file path for image resolution context
     this.currentTheme = theme;
     this.presentationCache = buildPresentationCache(presentation);
 

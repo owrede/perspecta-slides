@@ -601,23 +601,31 @@ export class SlideParser {
       metadata.layout === '2-columns-2+1';
 
     if (isColumnLayout && !isNoAutocolumn) {
-      this.debugLog(
-        'Before auto-detection:',
-        elements.map((e) => ({
-          type: e.type,
-          content: e.content.substring(0, 30),
-          columnIndex: e.columnIndex,
-        }))
-      );
-      elements = this.autoDetectColumnsNew(elements, contentLines);
-      this.debugLog(
-        'After auto-detection:',
-        elements.map((e) => ({
-          type: e.type,
-          content: e.content.substring(0, 30),
-          columnIndex: e.columnIndex,
-        }))
-      );
+      // Check if elements already have explicit columnIndex assignments (from parseSlideAdvancedMode with -- delimiters)
+      const hasExplicitColumnIndices = elements.some((e) => e.columnIndex !== undefined);
+      
+      // Only run auto-detection if columns weren't already assigned explicitly
+      if (!hasExplicitColumnIndices) {
+        this.debugLog(
+          'Before auto-detection:',
+          elements.map((e) => ({
+            type: e.type,
+            content: e.content.substring(0, 30),
+            columnIndex: e.columnIndex,
+          }))
+        );
+        elements = this.autoDetectColumnsNew(elements, contentLines);
+        this.debugLog(
+          'After auto-detection:',
+          elements.map((e) => ({
+            type: e.type,
+            content: e.content.substring(0, 30),
+            columnIndex: e.columnIndex,
+          }))
+        );
+      } else {
+        this.debugLog('Skipping auto-detection: explicit column indices already assigned');
+      }
     }
 
     // If no-autocolumn was specified, ensure layout is just 'default'
@@ -667,6 +675,10 @@ export class SlideParser {
     const hasColumns = hasTabColumns || hasImageColumns;
 
     this.debugLog('Column detection:', { hasTabColumns, hasImageColumns, imageColumnCount });
+
+    // Count explicit column delimiters to determine max column index
+    const columnDelimiterCount = contentLines.filter((line) => line.trim() === '--').length;
+    const maxColumnIndex = Math.min(columnDelimiterCount, 2); // Max 3 columns (0, 1, 2)
 
     let i = 0;
     let currentColumnIndex = 0;
@@ -779,7 +791,7 @@ export class SlideParser {
 
         // If this heading precedes column content, assign it to that column
         if (hasColumns && nextIsColumnContent) {
-          headingElement.columnIndex = Math.min(currentColumnIndex, 2);
+          headingElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
         }
 
         elements.push(headingElement);
@@ -794,7 +806,7 @@ export class SlideParser {
         const element = this.parseElement(unindentedLine, contentLines, i, true);
 
         if (hasColumns) {
-          element.element.columnIndex = Math.min(currentColumnIndex, 2);
+          element.element.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
         }
 
         elements.push(element.element);
@@ -816,11 +828,11 @@ export class SlideParser {
         // Assign columnIndex based on context
         if (hasTabColumns && isTabIndented) {
           // Tab-indented images use tab column index
-          imageResult.element.columnIndex = Math.min(currentColumnIndex, 2);
+          imageResult.element.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
           lastWasColumnContent = true;
         } else if (hasImageColumns && !isTabIndented) {
           // Non-indented images get sequential column indices (0, 1, 2, ...)
-          imageResult.element.columnIndex = Math.min(imageIndexCounter, 2);
+          imageResult.element.columnIndex = Math.min(imageIndexCounter, maxColumnIndex);
           imageIndexCounter++;
           this.debugLog('Assigned image column:', {
             imageIndexCounter: imageIndexCounter - 1,
@@ -898,6 +910,10 @@ export class SlideParser {
     let i = 0;
     let currentColumnIndex = 0;
 
+    // Count explicit column delimiters to determine max column index
+    const columnDelimiterCount = contentLines.filter((line) => line.trim() === '--').length;
+    const maxColumnIndex = Math.min(columnDelimiterCount, 2); // Max 3 columns (0, 1, 2)
+
     while (i < contentLines.length) {
       const line = contentLines[i];
 
@@ -919,6 +935,13 @@ export class SlideParser {
 
       // Skip empty lines
       if (line.trim() === '') {
+        i++;
+        continue;
+      }
+
+      // Column break delimiter -- (skip it, handled during auto-column detection)
+      if (line.trim() === '--') {
+        currentColumnIndex++;
         i++;
         continue;
       }
@@ -953,13 +976,23 @@ export class SlideParser {
           raw: line,
         };
 
-        // For explicit column layouts, treat H3 headings as column separators
-        if (hasExplicitColumnLayout && headingMatch[1].length === 3) {
-          // Increment column index for new column headings (except the first one)
-          if (currentColumnIndex > 0 || elements.some((e) => e.columnIndex !== undefined)) {
-            currentColumnIndex++;
+        // H1 and H2 are slide titles - never assign to columns
+        // H3+ can be column content when using explicit column layouts
+        const headingLevel = headingMatch[1].length;
+        
+        if (headingLevel >= 3) {
+          // For explicit column layouts, treat H3 headings as column separators
+          // BUT: only if there are NO explicit -- delimiters (those take precedence)
+          if (hasExplicitColumnLayout && headingLevel === 3 && columnDelimiterCount === 0) {
+            // Increment column index for new column headings (except the first one)
+            if (currentColumnIndex > 0 || elements.some((e) => e.columnIndex !== undefined)) {
+              currentColumnIndex++;
+            }
+            headingElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
+          } else if (hasExplicitColumnLayout && columnDelimiterCount > 0) {
+            // Assign to current column (don't increment for H3 if we have -- delimiters)
+            headingElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
           }
-          headingElement.columnIndex = currentColumnIndex;
         }
 
         elements.push(headingElement);
@@ -970,6 +1003,11 @@ export class SlideParser {
       // Images (both standard markdown and Obsidian wiki-link syntax)
       const imageResult = this.parseImageWithMetadata(line, contentLines, i);
       if (imageResult) {
+        // Assign to column if using explicit column layout
+        if (hasExplicitColumnLayout) {
+          imageResult.element.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
+        }
+
         elements.push(imageResult.element);
         i = imageResult.nextIndex;
         continue;
@@ -978,12 +1016,19 @@ export class SlideParser {
       // Code blocks
       if (line.startsWith('```')) {
         const codeBlock = this.parseCodeBlock(contentLines, i);
-        elements.push({
+        const codeElement: SlideElement = {
           type: 'code',
           content: codeBlock.content,
           visible: true,
           raw: codeBlock.raw,
-        });
+        };
+
+        // Assign to column if using explicit column layout
+        if (hasExplicitColumnLayout) {
+          codeElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
+        }
+
+        elements.push(codeElement);
         i = codeBlock.nextIndex;
         continue;
       }
@@ -991,12 +1036,19 @@ export class SlideParser {
       // Tables
       if (line.includes('|') && line.trim().startsWith('|')) {
         const table = this.parseTable(contentLines, i);
-        elements.push({
+        const tableElement: SlideElement = {
           type: 'table',
           content: table.content,
           visible: true,
           raw: table.raw,
-        });
+        };
+
+        // Assign to column if using explicit column layout
+        if (hasExplicitColumnLayout) {
+          tableElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
+        }
+
+        elements.push(tableElement);
         i = table.nextIndex;
         continue;
       }
@@ -1004,12 +1056,19 @@ export class SlideParser {
       // Math blocks
       if (line.startsWith('$$')) {
         const mathBlock = this.parseMathBlock(contentLines, i);
-        elements.push({
+        const mathElement: SlideElement = {
           type: 'math',
           content: mathBlock.content,
           visible: true,
           raw: mathBlock.raw,
-        });
+        };
+
+        // Assign to column if using explicit column layout
+        if (hasExplicitColumnLayout) {
+          mathElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
+        }
+
+        elements.push(mathElement);
         i = mathBlock.nextIndex;
         continue;
       }
@@ -1057,7 +1116,7 @@ export class SlideParser {
 
         // Assign to column if using explicit column layout
         if (hasExplicitColumnLayout) {
-          listElement.columnIndex = Math.min(currentColumnIndex, 2);
+          listElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
         }
 
         elements.push(listElement);
@@ -1076,7 +1135,7 @@ export class SlideParser {
 
         // Assign to column if using explicit column layout
         if (hasExplicitColumnLayout) {
-          blockquoteElement.columnIndex = Math.min(currentColumnIndex, 2);
+          blockquoteElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
         }
 
         elements.push(blockquoteElement);
@@ -1094,7 +1153,7 @@ export class SlideParser {
 
       // Assign to column if using explicit column layout
       if (hasExplicitColumnLayout) {
-        paragraphElement.columnIndex = Math.min(currentColumnIndex, 2);
+        paragraphElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
       }
 
       elements.push(paragraphElement);
@@ -2101,6 +2160,15 @@ export class SlideParser {
     // Assign each element to a column based on which package it best matches
     const assignedColumns = new Array(elements.length).fill(undefined);
 
+    // Find the first heading to skip it from column assignment (it's the slide title)
+    let firstHeadingIndex = -1;
+    for (let i = 0; i < elements.length; i++) {
+      if (elements[i].type === 'heading' && (elements[i].level === 1 || elements[i].level === 2)) {
+        firstHeadingIndex = i;
+        break;
+      }
+    }
+
     for (let elIdx = 0; elIdx < elements.length; elIdx++) {
       const element = elements[elIdx];
       const rawLower = element.raw.toLowerCase();
@@ -2108,6 +2176,12 @@ export class SlideParser {
       // Skip comments and empty elements
       if (rawLower.trim() === '' || rawLower.trim().startsWith('//')) {
         continue;
+      }
+
+      // IMPORTANT: Skip the FIRST H1/H2 heading only - it's the slide title
+      // Other H2/H3 headings after it can be column headers
+      if (elIdx === firstHeadingIndex) {
+        continue; // Don't assign the slide title to columns
       }
 
       // Try to find which package contains this element's content

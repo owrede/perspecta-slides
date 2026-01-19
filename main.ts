@@ -449,6 +449,202 @@ export default class PerspectaSlidesPlugin extends Plugin {
     return path;
   };
 
+  /**
+   * Create a context-aware image path resolver for presentations
+   * Uses the provided source file path for resolving wiki-links to images
+   */
+  private createPresentationImageResolver(sourcePath: string): ImagePathResolver {
+    return (path: string, isWikiLink: boolean): string => {
+      // Handle URLs - pass through as-is
+      if (path.startsWith('http://') || path.startsWith('https://')) {
+        return path;
+      }
+
+      // Handle absolute paths - pass through as-is
+      if (path.startsWith('file://') || path.startsWith('/')) {
+        return path;
+      }
+
+      // For wiki-links and plain filenames, resolve to file:// URL using the source file context
+      try {
+        // Extract Excalidraw reference if present (group=, area=, frame=, clippedframe=)
+        const { filePath: pathWithoutRef, refType, refId } = this.extractExcalidrawReference(path);
+        
+        // Strip other block references from path (e.g., "path#^blockid" -> "path")
+        const pathWithoutBlock = pathWithoutRef.split('#')[0];
+        
+        // Decode any URL-encoded characters in the path (e.g., %20 for space)
+        const decodedPath = decodeURIComponent(pathWithoutBlock);
+
+        // Resolve the link to a file using the SOURCE FILE as context, not the active file
+        // This is the key fix: use sourcePath instead of activeFile.path
+        let linkedFile = this.app.metadataCache.getFirstLinkpathDest(decodedPath, sourcePath);
+        if (!linkedFile) {
+          linkedFile = this.app.metadataCache.getFirstLinkpathDest(pathWithoutBlock, sourcePath);
+        }
+
+        if (linkedFile) {
+          // Check if this is an Excalidraw file (either .excalidraw or .md in Excalidraw folder)
+          const isExcalidrawFile = 
+            linkedFile.extension === 'excalidraw' || 
+            (linkedFile.extension === 'md' && 
+              (linkedFile.path.includes('Excalidraw/') || linkedFile.name.includes('.excalidraw')));
+
+          if (isExcalidrawFile) {
+            // Build cache key including reference type and ID if present
+            const cacheKey = refType && refId 
+              ? `${linkedFile.path}#^${refType}=${refId}` 
+              : linkedFile.path;
+
+            // For any reference type, skip PNG/SVG export lookup and use native rendering
+            if (refType && refId) {
+              this.logExcalidraw(`${refType} reference detected, using native rendering: ${cacheKey}`);
+              
+              // Check if SVG is already cached or conversion is in progress
+              const fileMtime = linkedFile.stat.mtime;
+              const isCached = this.excalidrawRenderer?.hasCachedSvg(cacheKey, fileMtime);
+              const isConverting = this.excalidrawConversionsInProgress.has(cacheKey);
+
+              if (!isCached && !isConverting && this.excalidrawRenderer) {
+                this.logExcalidraw(`Starting async conversion for: ${cacheKey}`);
+                this.excalidrawConversionsInProgress.add(cacheKey);
+
+                // Start async conversion immediately (non-blocking)
+                void (async () => {
+                  try {
+                    await this.excalidrawRenderer!.toSvgDataUrl(
+                      linkedFile, 
+                      refType ?? undefined, 
+                      refId ?? undefined
+                    );
+                    this.logExcalidraw(`✅ Converted to SVG: ${cacheKey}`);
+                    // Trigger re-render to display the now-cached SVG
+                    void this.rerenderPresentationWindow();
+                  } catch (e) {
+                    this.errorExcalidraw(`Failed to convert Excalidraw to SVG: ${cacheKey}`, e);
+                  } finally {
+                    // Remove from in-progress set
+                    this.excalidrawConversionsInProgress.delete(cacheKey);
+                  }
+                })();
+              } else if (isCached) {
+                this.logExcalidraw(`SVG already cached for: ${cacheKey}`);
+              } else if (isConverting) {
+                this.logExcalidraw(`Conversion already in progress for: ${cacheKey}`);
+              }
+
+              // Return placeholder URL
+              return `excalidraw://${cacheKey}`;
+            } else {
+              // No reference - check for PNG/SVG export
+              let exportFile: TFile | null = null;
+              const basePath = linkedFile.path.replace(/\.excalidraw$/, '');
+              
+              // Try .png
+              let pngPath = basePath + '.png';
+              let file = this.app.vault.getAbstractFileByPath(pngPath);
+              if (file instanceof TFile) {
+                exportFile = file;
+              }
+
+              // Try .svg
+              if (!exportFile) {
+                const svgPath = basePath + '.svg';
+                file = this.app.vault.getAbstractFileByPath(svgPath);
+                if (file instanceof TFile) {
+                  exportFile = file;
+                }
+              }
+
+              // For .excalidraw files, also try with suffix
+              if (!exportFile && linkedFile.extension === 'excalidraw') {
+                pngPath = linkedFile.path + '.png';
+                file = this.app.vault.getAbstractFileByPath(pngPath);
+                if (file instanceof TFile) {
+                  exportFile = file;
+                }
+
+                if (!exportFile) {
+                  const svgPath = linkedFile.path + '.svg';
+                  file = this.app.vault.getAbstractFileByPath(svgPath);
+                  if (file instanceof TFile) {
+                    exportFile = file;
+                  }
+                }
+              }
+
+              // If export found, use it
+              if (exportFile) {
+                const adapter = this.app.vault.adapter;
+                if (adapter instanceof FileSystemAdapter) {
+                  const basePath = adapter.getBasePath();
+                  const fullPath = `${basePath}/${exportFile.path}`;
+                  return `file://${encodeURI(fullPath).replace(/#/g, '%23')}`;
+                }
+              }
+
+              // No export found - use native Excalidraw rendering via async conversion
+              this.logExcalidraw(
+                `ℹ️ No Excalidraw export found for: ${linkedFile.path}\n` +
+                `Returning placeholder for async conversion.`
+              );
+
+              // Check if SVG is already cached or conversion is in progress
+              const fileMtime = linkedFile.stat.mtime;
+              const isCached = this.excalidrawRenderer?.hasCachedSvg(cacheKey, fileMtime);
+              const isConverting = this.excalidrawConversionsInProgress.has(cacheKey);
+
+              if (!isCached && !isConverting && this.excalidrawRenderer) {
+                this.logExcalidraw(`Starting async conversion for: ${cacheKey}`);
+                this.excalidrawConversionsInProgress.add(cacheKey);
+
+                // Start async conversion immediately (non-blocking)
+                void (async () => {
+                  try {
+                    await this.excalidrawRenderer!.toSvgDataUrl(
+                      linkedFile, 
+                      refType ?? undefined, 
+                      refId ?? undefined
+                    );
+                    this.logExcalidraw(`✅ Converted to SVG: ${cacheKey}`);
+                    // Trigger re-render to display the now-cached SVG
+                    void this.rerenderPresentationWindow();
+                  } catch (e) {
+                    this.errorExcalidraw(`Failed to convert Excalidraw to SVG: ${cacheKey}`, e);
+                  } finally {
+                    // Remove from in-progress set
+                    this.excalidrawConversionsInProgress.delete(cacheKey);
+                  }
+                })();
+              } else if (isCached) {
+                this.logExcalidraw(`SVG already cached for: ${cacheKey}`);
+              } else if (isConverting) {
+                this.logExcalidraw(`Conversion already in progress for: ${cacheKey}`);
+              }
+
+              // Return placeholder URL
+              return `excalidraw://${cacheKey}`;
+            }
+          } else {
+            // For non-Excalidraw files
+            const adapter = this.app.vault.adapter;
+            if (adapter instanceof FileSystemAdapter) {
+              const basePath = adapter.getBasePath();
+              const fullPath = `${basePath}/${linkedFile.path}`;
+              // Return as file:// URL with proper encoding
+              return `file://${encodeURI(fullPath).replace(/#/g, '%23')}`;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[Perspecta] Failed to resolve image path for presentation:', path, e);
+      }
+
+      // Fallback - return original path
+      return path;
+    };
+  };
+
   async onload() {
     await this.loadSettings();
 
@@ -944,7 +1140,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       }
 
       this.presenterWindow = new PresenterWindow();
-      this.presenterWindow.setImagePathResolver(this.presentationImagePathResolver);
+      // Create a context-aware resolver that uses the source file path
+      const contextAwareResolverForPresenter = this.createPresentationImageResolver(file.path);
+      this.presenterWindow.setImagePathResolver(contextAwareResolverForPresenter);
 
       const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
       const fontWeightsCache = this.buildFontWeightsCache();
@@ -1004,7 +1202,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       }
 
       this.presentationWindow = new PresentationWindow();
-      this.presentationWindow.setImagePathResolver(this.presentationImagePathResolver);
+      // Create a context-aware resolver that uses the source file path
+      const contextAwareResolver = this.createPresentationImageResolver(file.path);
+      this.presentationWindow.setImagePathResolver(contextAwareResolver);
 
       const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
       const fontWeightsCache = this.buildFontWeightsCache();
@@ -1386,8 +1586,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       if (!(view instanceof PresentationView)) {
         continue;
       }
+      // Set both fallback and factory: factory uses sourceFile context when available, fallback for other cases
       view.setImagePathResolver(this.imagePathResolver);
-      view.setPresentationImagePathResolver(this.presentationImagePathResolver);
+      view.setResolverFactory((sourcePath) => this.createPresentationImageResolver(sourcePath));
       // Update all modified slides in the view's internal state
       for (let i = 0; i < diff.modifiedIndices.length; i++) {
         const idx = diff.modifiedIndices[i];
@@ -1609,8 +1810,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       if (!(view instanceof PresentationView)) {
         continue;
       }
+      // Set both fallback and factory: factory uses sourceFile context when available, fallback for other cases
       view.setImagePathResolver(this.imagePathResolver);
-      view.setPresentationImagePathResolver(this.presentationImagePathResolver);
+      view.setResolverFactory((sourcePath) => this.createPresentationImageResolver(sourcePath));
       view.setCustomFontCSS(customFontCSS);
       view.setFontWeightsCache(fontWeightsCache);
       // Pass Excalidraw SVG cache and failed decompression files for native rendering

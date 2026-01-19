@@ -21,6 +21,8 @@ export class PresentationView extends ItemView {
   private theme: Theme | null = null;
   private imagePathResolver: ImagePathResolver | null = null;
   private presentationImagePathResolver: ImagePathResolver | null = null;
+  private resolverFactory: ((sourcePath: string) => ImagePathResolver) | null = null;
+  private sourceFilePathForResolver: string | null = null;
   private customFontCSS: string = '';
   private themeLoader: ThemeLoader | null = null;
 
@@ -64,6 +66,14 @@ export class PresentationView extends ItemView {
    */
   setPresentationImagePathResolver(resolver: ImagePathResolver): void {
     this.presentationImagePathResolver = resolver;
+  }
+
+  /**
+   * Set a resolver factory that creates context-aware resolvers from a source file path
+   * This allows PresentationView to create resolvers using its own sourceFile
+   */
+  setResolverFactory(factory: (sourcePath: string) => ImagePathResolver): void {
+    this.resolverFactory = factory;
   }
 
   /**
@@ -118,10 +128,43 @@ export class PresentationView extends ItemView {
    * Create a SlideRenderer with the image path resolver
    */
   private createRenderer(theme?: Theme): SlideRenderer {
+    // For PresentationView (Obsidian internal), we need Obsidian resource paths (app://)
+    // Not file:// URLs which are blocked in about:srcdoc
+    let resolver = this.imagePathResolver || undefined;
+    
+    // If we have sourceFilePathForResolver, create a context-aware resolver for wiki-link resolution
+    if (this.sourceFilePathForResolver && this.imagePathResolver) {
+      const sourcePath = this.sourceFilePathForResolver;
+      const originalResolver = this.imagePathResolver;
+      const app = this.app;
+      
+      // Create a context-aware wrapper that uses the sourceFile path for wiki-link resolution
+      resolver = (path: string, isWikiLink: boolean): string => {
+        if (!isWikiLink) {
+          return originalResolver(path, false);
+        }
+        
+        // For wiki-links, resolve using the presentation file's directory context
+        try {
+          const decodedPath = decodeURIComponent(path);
+          const linkedFile = app.metadataCache.getFirstLinkpathDest(decodedPath, sourcePath);
+          
+          if (linkedFile) {
+            return app.vault.getResourcePath(linkedFile);
+          }
+        } catch (e) {
+          console.warn('[Perspecta] Failed to resolve wiki-link with context:', path, e);
+        }
+        
+        // Fallback to original resolver
+        return originalResolver(path, true);
+      };
+    }
+    
     const renderer = new SlideRenderer(
       this.presentation!,
       theme || this.theme || undefined,
-      this.imagePathResolver || undefined
+      resolver
     );
     if (this.customFontCSS) {
       renderer.setCustomFontCSS(this.customFontCSS);
@@ -212,6 +255,7 @@ export class PresentationView extends ItemView {
     // Set the file reference if provided
     if (sourceFile) {
       this.file = sourceFile;
+      this.sourceFilePathForResolver = sourceFile.path;
       this.setupLiveUpdates(sourceFile);
     }
 

@@ -1,11 +1,12 @@
-import type { WorkspaceLeaf, TFile, App } from 'obsidian';
-import { ItemView, Setting, setIcon, Modal } from 'obsidian';
+import type { WorkspaceLeaf, App } from 'obsidian';
+import { ItemView, Setting, setIcon, Modal, Notice, TFolder, TFile } from 'obsidian';
 import type {
   Presentation,
   Slide,
   SlideLayout,
   SlideMetadata,
   PresentationFrontmatter,
+  Theme,
 } from '../types';
 import { getThemeNames, getTheme } from '../themes';
 import type { ThemeLoader } from '../themes/ThemeLoader';
@@ -1186,6 +1187,117 @@ export class InspectorPanelView extends ItemView {
   }
 
   /**
+   * Check if theme has fonts that need to be installed, and prompt user if needed
+   */
+  private async ensureThemeFontsInstalled(themeName: string, theme: Theme): Promise<void> {
+    if (!this.fontManager) {
+      return;
+    }
+
+    // Check if theme has a fonts subfolder
+    const themeFontsPath = `${theme.basePath}/fonts`;
+    const themeFontsFolder = this.app.vault.getAbstractFileByPath(themeFontsPath);
+    
+    if (!themeFontsFolder || !(themeFontsFolder instanceof TFolder)) {
+      return; // No fonts folder in theme
+    }
+
+    // Find all font files in the theme's fonts folder
+    const fontExtensions = ['otf', 'ttf', 'woff', 'woff2'];
+    const fontFilesInTheme = themeFontsFolder.children.filter(
+      (f) => f instanceof TFile && fontExtensions.includes(f.extension.toLowerCase())
+    ) as TFile[];
+
+    if (fontFilesInTheme.length === 0) {
+      return; // No font files in theme
+    }
+
+    // Extract unique font names from theme font files
+    // Map files to font names (e.g., "Barlow-Regular.woff2" -> "Barlow")
+    const themeFontNames = new Set<string>();
+    for (const file of fontFilesInTheme) {
+      // Extract font name from filename (e.g., "Barlow-Regular.woff2" -> "Barlow")
+      const match = file.basename.match(/^([^-\.]+)/);
+      if (match) {
+        themeFontNames.add(match[1]);
+      }
+    }
+
+    // Check which fonts are NOT already cached
+    const uncachedFonts: string[] = [];
+    for (const fontName of themeFontNames) {
+      if (!this.fontManager.isCached(fontName)) {
+        uncachedFonts.push(fontName);
+      }
+    }
+
+    // If all fonts are cached, no action needed
+    if (uncachedFonts.length === 0) {
+      return;
+    }
+
+    // Ask user if they want to install the theme fonts
+    const fontList = uncachedFonts.join(', ');
+    const shouldInstall = await new Promise<boolean>((resolve) => {
+      const modal = new Modal(this.app);
+      modal.contentEl.createEl('h2', { text: 'Install Theme Fonts?' });
+      modal.contentEl.createEl('p', {
+        text: `The theme "${themeName}" includes ${uncachedFonts.length} font(s) that are not installed: ${fontList}`,
+      });
+      modal.contentEl.createEl('p', {
+        text: 'These fonts should be installed to the Perspecta Slides font cache for the theme to render correctly.',
+        cls: 'modal-description',
+      });
+
+      const footer = modal.contentEl.createDiv({ cls: 'modal-button-container' });
+      
+      const cancelBtn = footer.createEl('button', { text: 'Skip' });
+      cancelBtn.addEventListener('click', () => {
+        resolve(false);
+        modal.close();
+      });
+
+      const installBtn = footer.createEl('button', { text: 'Install Fonts', cls: 'mod-cta' });
+      installBtn.addEventListener('click', () => {
+        resolve(true);
+        modal.close();
+      });
+
+      modal.open();
+    });
+
+    if (!shouldInstall) {
+      return;
+    }
+
+    // Install each uncached font
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const fontName of uncachedFonts) {
+      try {
+        const result = await this.fontManager.cacheLocalFont(themeFontsPath, fontName);
+        if (result) {
+          successCount++;
+        } else {
+          failureCount++;
+        }
+      } catch (e) {
+        console.error(`Failed to install font ${fontName}:`, e);
+        failureCount++;
+      }
+    }
+
+    // Show result notification
+    if (successCount > 0) {
+      new Notice(`✓ Installed ${successCount} font(s) from theme`);
+    }
+    if (failureCount > 0) {
+      new Notice(`✗ Failed to install ${failureCount} font(s)`, 5000);
+    }
+  }
+
+  /**
    * Extract theme defaults (fonts and colors) and apply them to frontmatter
    */
   private getThemeDefaults(themeName: string): Partial<PresentationFrontmatter> {
@@ -1343,6 +1455,14 @@ export class InspectorPanelView extends ItemView {
       }
       dropdown.setValue(fm.theme || '');
       dropdown.onChange(async (value) => {
+        // Check if theme has fonts that need to be installed
+        if (value && this.fontManager && this.themeLoader) {
+          const theme = this.themeLoader.getTheme(value);
+          if (theme) {
+            await this.ensureThemeFontsInstalled(value, theme);
+          }
+        }
+
         // When changing themes, apply the new theme's defaults for typography and colors
         // Clear per-slide overrides but apply theme-defined defaults
         const clearProperties: Partial<PresentationFrontmatter> = {

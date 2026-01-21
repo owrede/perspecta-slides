@@ -1174,6 +1174,18 @@ export class InspectorPanelView extends ItemView {
   }
 
   /**
+   * Toggle a section's collapsed state
+   */
+  private toggleSection(sectionId: string) {
+    if (this.collapsedSections.has(sectionId)) {
+      this.collapsedSections.delete(sectionId);
+    } else {
+      this.collapsedSections.add(sectionId);
+    }
+    this.saveCollapsedSectionsState();
+  }
+
+  /**
    * Create a collapsible section header with toggle button
    */
   private createSectionHeader(container: HTMLElement, title: string) {
@@ -2151,172 +2163,142 @@ export class InspectorPanelView extends ItemView {
       slideInfo.createEl('span', { cls: 'slide-title-preview', text: title });
     }
 
-    // STANDARD SLIDES
-    const standardSection = container.createDiv({ cls: 'inspector-section' });
-    standardSection.createEl('h5', { text: 'Standard Slides' });
-
-    const standardGrid = standardSection.createDiv({ cls: 'layout-picker' });
-
-    const standardLayouts: { id: SlideLayout; label: string; icon: string }[] = [
+    // All layouts combined
+    const allLayouts: { id: SlideLayout; label: string; icon: string }[] = [
+      // Standard
       { id: 'default', label: 'Default', icon: 'square' },
       { id: 'cover', label: 'Cover', icon: 'presentation' },
       { id: 'title', label: 'Title', icon: 'heading-1' },
       { id: 'section', label: 'Section', icon: 'heading-2' },
-    ];
-
-    standardLayouts.forEach((layout) => {
-      const isActive = (this.currentSlide?.metadata.layout || 'default') === layout.id;
-      const btn = standardGrid.createDiv({
-        cls: `layout-option ${isActive ? 'active' : ''}`,
-      });
-      const iconEl = btn.createDiv({ cls: 'layout-icon' });
-      setIcon(iconEl, layout.icon);
-      btn.createDiv({ cls: 'layout-label', text: layout.label });
-
-      btn.addEventListener('click', () => {
-        this.updateSlideMetadata({ layout: layout.id });
-      });
-    });
-
-    // TEXT SLIDES (Column Layouts)
-    const columnSection = container.createDiv({ cls: 'inspector-section' });
-    columnSection.createEl('h5', { text: 'Text Slides' });
-
-    const columnGrid = columnSection.createDiv({ cls: 'layout-picker' });
-
-    const columnLayouts: { id: SlideLayout; label: string; icon: string }[] = [
+      // Text (Column)
       { id: '1-column', label: '1 Col', icon: 'square' },
       { id: '2-columns', label: '2 Col', icon: 'columns-2' },
       { id: '3-columns', label: '3 Col', icon: 'columns-3' },
       { id: '2-columns-1+2', label: '1+2', icon: 'panel-left' },
       { id: '2-columns-2+1', label: '2+1', icon: 'panel-right' },
-    ];
-
-    columnLayouts.forEach((layout) => {
-      const isActive = this.currentSlide?.metadata.layout === layout.id;
-      const btn = columnGrid.createDiv({
-        cls: `layout-option ${isActive ? 'active' : ''}`,
-      });
-      const iconEl = btn.createDiv({ cls: 'layout-icon' });
-      setIcon(iconEl, layout.icon);
-      btn.createDiv({ cls: 'layout-label', text: layout.label });
-
-      btn.addEventListener('click', () => {
-        this.updateSlideMetadata({ layout: layout.id });
-      });
-    });
-
-    // IMAGE SLIDES
-    const imageSection = container.createDiv({ cls: 'inspector-section' });
-    imageSection.createEl('h5', { text: 'Image Slides' });
-
-    const imageGrid = imageSection.createDiv({ cls: 'layout-picker' });
-
-    const imageLayouts: { id: SlideLayout; label: string; icon: string }[] = [
+      // Image
       { id: 'full-image', label: 'Full', icon: 'image' },
       { id: 'full-image-contained', label: 'Full (fit)', icon: 'square' },
       { id: 'caption', label: 'Caption', icon: 'image' },
       { id: 'caption-contained', label: 'Caption (fit)', icon: 'square' },
       { id: 'half-image', label: 'Half', icon: 'panel-left-close' },
       { id: 'half-image-horizontal', label: 'Half horiz.', icon: 'panel-top-close' },
-    ];
-
-    imageLayouts.forEach((layout) => {
-      const isActive = this.currentSlide?.metadata.layout === layout.id;
-      const btn = imageGrid.createDiv({
-        cls: `layout-option ${isActive ? 'active' : ''}`,
-      });
-      const iconEl = btn.createDiv({ cls: 'layout-icon' });
-      setIcon(iconEl, layout.icon);
-      btn.createDiv({ cls: 'layout-label', text: layout.label });
-
-      btn.addEventListener('click', () => {
-        this.updateSlideMetadata({ layout: layout.id });
-      });
-    });
-
-    // SPECIAL SLIDES
-    const specialSection = container.createDiv({ cls: 'inspector-section' });
-    specialSection.createEl('h5', { text: 'Special Slides' });
-
-    const specialGrid = specialSection.createDiv({ cls: 'layout-picker' });
-
-    const specialLayouts: { id: SlideLayout; label: string; icon: string }[] = [
+      // Special
       { id: 'footnotes', label: 'Footnotes', icon: 'list-ordered' },
     ];
 
-    specialLayouts.forEach((layout) => {
-      const isActive = this.currentSlide?.metadata.layout === layout.id;
-      const btn = specialGrid.createDiv({
-        cls: `layout-option ${isActive ? 'active' : ''}`,
-      });
-      const iconEl = btn.createDiv({ cls: 'layout-icon' });
-      setIcon(iconEl, layout.icon);
-      btn.createDiv({ cls: 'layout-label', text: layout.label });
+    // SLIDE LAYOUTS section (collapsible)
+    const layoutsSection = container.createDiv({ cls: 'inspector-section' });
+    const isLayoutsCollapsed = this.collapsedSections.has('slide-layouts');
 
-      btn.addEventListener('click', () => {
-        this.updateSlideMetadata({ layout: layout.id });
-      });
+    const layoutsHeader = layoutsSection.createDiv({ cls: 'section-header-button', attr: { 'data-section': 'slide-layouts' } });
+    if (isLayoutsCollapsed) {
+      layoutsHeader.addClass('collapsed');
+    }
+
+    const layoutsToggle = layoutsHeader.createDiv({ cls: 'section-toggle-icon' });
+    setIcon(layoutsToggle, 'chevron-down');
+
+    layoutsHeader.createSpan({ cls: 'section-title', text: 'SLIDE LAYOUTS' });
+
+    layoutsHeader.addEventListener('click', () => {
+      this.toggleSection('slide-layouts');
+      this.render();
     });
 
-    // OVERRIDES section (renamed from Appearance)
+    if (!isLayoutsCollapsed) {
+      const layoutGrid = layoutsSection.createDiv({ cls: 'layout-picker-2col' });
+
+      allLayouts.forEach((layout) => {
+        const isActive = (this.currentSlide?.metadata.layout || 'default') === layout.id;
+        const btn = layoutGrid.createDiv({
+          cls: `layout-option-horizontal ${isActive ? 'active' : ''}`,
+        });
+        const iconEl = btn.createDiv({ cls: 'layout-icon' });
+        setIcon(iconEl, layout.icon);
+        btn.createDiv({ cls: 'layout-label', text: layout.label });
+
+        btn.addEventListener('click', () => {
+          this.updateSlideMetadata({ layout: layout.id });
+        });
+      });
+    }
+
+    // OVERRIDES section (collapsible)
     const overridesSection = container.createDiv({ cls: 'inspector-section' });
-    overridesSection.createEl('h5', { text: 'Overrides' });
+    const isOverridesCollapsed = this.collapsedSections.has('overrides');
 
-    // Mode toggle with reset
-    const modeRow = overridesSection.createDiv({ cls: 'mode-row' });
-    modeRow.createEl('span', { text: 'Mode', cls: 'setting-label' });
+    const overridesHeader = overridesSection.createDiv({ cls: 'section-header-button', attr: { 'data-section': 'overrides' } });
+    if (isOverridesCollapsed) {
+      overridesHeader.addClass('collapsed');
+    }
 
-    const modeToggle = modeRow.createDiv({ cls: 'mode-toggle' });
+    const overridesToggle = overridesHeader.createDiv({ cls: 'section-toggle-icon' });
+    setIcon(overridesToggle, 'chevron-down');
 
-    const hasExplicitMode = this.currentSlide?.metadata.mode !== undefined;
+    overridesHeader.createSpan({ cls: 'section-title', text: 'OVERRIDES' });
 
-    const lightBtn = modeToggle.createDiv({
-      cls: `mode-option ${hasExplicitMode && this.currentSlide?.metadata.mode === 'light' ? 'active' : ''}`,
-    });
-    lightBtn.createSpan({ text: '☀️ Light' });
-    lightBtn.addEventListener('click', () => this.updateSlideMetadata({ mode: 'light' }));
-
-    const darkBtn = modeToggle.createDiv({
-      cls: `mode-option ${hasExplicitMode && this.currentSlide?.metadata.mode === 'dark' ? 'active' : ''}`,
-    });
-    darkBtn.createSpan({ text: '🌙 Dark' });
-    darkBtn.addEventListener('click', () => this.updateSlideMetadata({ mode: 'dark' }));
-
-    const resetModeBtn = modeRow.createEl('button', {
-      cls: 'mode-reset-btn clickable-icon',
-      attr: { 'aria-label': 'Reset to presentation default' },
-    });
-    setIcon(resetModeBtn, 'rotate-ccw');
-    resetModeBtn.addEventListener('click', () => {
-      this.updateSlideMetadata({ mode: undefined });
+    overridesHeader.addEventListener('click', () => {
+      this.toggleSection('overrides');
+      this.render();
     });
 
-    // Slide Background (moved from Images tab)
-    new Setting(overridesSection).setName('Background Image').addText((text) => {
-      text.setPlaceholder('background.jpg').setValue(this.currentSlide?.metadata.background || '');
-      text.inputEl.addEventListener('blur', () => {
-        this.updateSlideMetadata({ background: text.getValue() }, true);
+    if (!isOverridesCollapsed) {
+      // Mode toggle with reset
+      const modeRow = overridesSection.createDiv({ cls: 'mode-row' });
+      modeRow.createEl('span', { text: 'Mode', cls: 'setting-label' });
+
+      const modeToggle = modeRow.createDiv({ cls: 'mode-toggle' });
+
+      const hasExplicitMode = this.currentSlide?.metadata.mode !== undefined;
+
+      const lightBtn = modeToggle.createDiv({
+        cls: `mode-option ${hasExplicitMode && this.currentSlide?.metadata.mode === 'light' ? 'active' : ''}`,
       });
-    });
+      lightBtn.createSpan({ text: '☀️ Light' });
+      lightBtn.addEventListener('click', () => this.updateSlideMetadata({ mode: 'light' }));
 
-    new Setting(overridesSection).setName('Background Opacity').addSlider((slider) =>
-      slider
-        .setLimits(0, 100, 5)
-        .setValue((this.currentSlide?.metadata.backgroundOpacity ?? 1) * 100)
-        .setDynamicTooltip()
-        .onChange((value) => this.updateSlideMetadata({ backgroundOpacity: value / 100 }))
-    );
-
-    // Hide overlay
-    new Setting(overridesSection)
-      .setName('Hide Overlay')
-      .setDesc('Disable the presentation-wide overlay for this slide')
-      .addToggle((toggle) => {
-        toggle.setValue(this.currentSlide?.metadata.hideOverlay || false);
-        toggle.onChange((value) => this.updateSlideMetadata({ hideOverlay: value || undefined }, true));
+      const darkBtn = modeToggle.createDiv({
+        cls: `mode-option ${hasExplicitMode && this.currentSlide?.metadata.mode === 'dark' ? 'active' : ''}`,
       });
-  }
+      darkBtn.createSpan({ text: '🌙 Dark' });
+      darkBtn.addEventListener('click', () => this.updateSlideMetadata({ mode: 'dark' }));
+
+      const resetModeBtn = modeRow.createEl('button', {
+        cls: 'mode-reset-btn clickable-icon',
+        attr: { 'aria-label': 'Reset to presentation default' },
+      });
+      setIcon(resetModeBtn, 'rotate-ccw');
+      resetModeBtn.addEventListener('click', () => {
+        this.updateSlideMetadata({ mode: undefined });
+      });
+
+      // Slide Background (moved from Images tab)
+      new Setting(overridesSection).setName('Background Image').addText((text) => {
+        text.setPlaceholder('background.jpg').setValue(this.currentSlide?.metadata.background || '');
+        text.inputEl.addEventListener('blur', () => {
+          this.updateSlideMetadata({ background: text.getValue() }, true);
+        });
+      });
+
+      new Setting(overridesSection).setName('Background Opacity').addSlider((slider) =>
+        slider
+          .setLimits(0, 100, 5)
+          .setValue((this.currentSlide?.metadata.backgroundOpacity ?? 1) * 100)
+          .setDynamicTooltip()
+          .onChange((value) => this.updateSlideMetadata({ backgroundOpacity: value / 100 }))
+      );
+
+      // Hide overlay
+      new Setting(overridesSection)
+        .setName('Hide Overlay')
+        .setDesc('Disable the presentation-wide overlay for this slide')
+        .addToggle((toggle) => {
+          toggle.setValue(this.currentSlide?.metadata.hideOverlay || false);
+          toggle.onChange((value) => this.updateSlideMetadata({ hideOverlay: value || undefined }, true));
+        });
+    }
+    }
 
   // ============================================
   // Helper methods

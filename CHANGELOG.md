@@ -2,6 +2,19 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.21] - 2026-01-21
+
+### Improved
+- Inspector panel "Slide" tab now has collapsible layout sections for better space utilization
+- Consolidated 4 separate layout sections (Standard, Text, Image, Special) into single collapsible "Slide Layouts" section
+- Layout buttons now display horizontally (icon left, label right) instead of vertically stacked
+- Layout grid now uses 2-column layout instead of stretching full width - more efficient space usage
+- "Overrides" section in Slide tab is now collapsible, matching "Slide Layouts" section behavior
+- Collapsed section states are persisted across sessions in localStorage
+
+### UI
+- Reduced vertical space usage in Inspector panel by eliminating redundant section headers
+
 ## [0.2.20] - 2026-01-19
 
 ### Fixed

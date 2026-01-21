@@ -11,6 +11,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.2.21',
+    date: '2026-01-21',
+    changes: [
+      'Improved: Inspector panel "Slide" tab now has collapsible layout sections for better space utilization',
+      'Improved: Consolidated 4 separate layout sections (Standard, Text, Image, Special) into single collapsible "Slide Layouts" section',
+      'Improved: Layout buttons now display horizontally (icon left, label right) instead of vertically stacked',
+      'Improved: Layout grid now uses 2-column layout instead of stretching full width - more efficient space usage',
+      'Improved: "Overrides" section in Slide tab is now collapsible, matching "Slide Layouts" section behavior',
+      'Improved: Collapsed section states are persisted across sessions in localStorage',
+      'UI: Reduced vertical space usage in Inspector panel by eliminating redundant section headers',
+    ],
+  },
+  {
     version: '0.2.20',
     date: '2026-01-19',
     changes: [

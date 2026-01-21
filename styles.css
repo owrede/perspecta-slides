@@ -524,7 +524,7 @@
   white-space: nowrap;
 }
 
-/* Layout picker grid */
+/* Layout picker grid - old vertical style (kept for compatibility) */
 .perspecta-inspector .layout-picker {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -554,11 +554,47 @@
   color: var(--text-on-accent);
 }
 
+/* Layout picker 2-column - new horizontal button style */
+.perspecta-inspector .layout-picker-2col {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.perspecta-inspector .layout-option-horizontal {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.perspecta-inspector .layout-option-horizontal:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--interactive-accent-hover);
+}
+
+.perspecta-inspector .layout-option-horizontal.active {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
 .perspecta-inspector .layout-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 4px;
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+.perspecta-inspector .layout-option-horizontal .layout-icon {
+  margin-bottom: 0;
 }
 
 .perspecta-inspector .layout-icon svg {
@@ -567,8 +603,9 @@
 }
 
 .perspecta-inspector .layout-label {
-  font-size: 10px;
-  text-align: center;
+  font-size: 11px;
+  text-align: left;
+  flex: 1;
 }
 
 /* Mode toggle */

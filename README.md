@@ -103,8 +103,8 @@ A powerful Obsidian plugin for creating beautiful presentations from Markdown. W
 - **Delayed initialization**  
   In some cases, the slide navigator (left sidebar), the inspector (right sidebar), or the preview window does not reflect the currently active file. Re-clicking the **“Open slide presentation”** icon in the Obsidian ribbon usually resolves this.
 
-- **Themes do not transfer images**  
-  Custom themes that include images or fonts may not fully sync via Obsidian Sync. As a result, a theme can appear incomplete on another device (e.g. missing images or fonts).
+- **Themes and Obsidian Sync**  
+   Custom themes that include images or fonts may not fully sync via Obsidian Sync due to binary file sync limitations. See [THEME_SYNC_GUIDE.md](THEME_SYNC_GUIDE.md) for comprehensive troubleshooting and best practices to ensure complete theme synchronization across devices.
 
 - **Footnote slide layout overflow**  
   The footnotes slide layout does not currently handle large numbers of footnotes. If the content exceeds the available space, it is not automatically split across multiple slides.
@@ -303,6 +303,16 @@ theme: default
 3. Enter a name for your theme
 
 Custom themes include fonts, colors, typography, and margin settings. They appear in dropdowns with a ★ marker.
+
+#### Syncing Themes Across Devices
+
+Custom themes are stored in the vault (`perspecta-themes/` folder) and can be synced via Obsidian Sync. However, binary files (fonts and images) may have sync issues on some devices.
+
+**For reliable multi-device syncing:**
+- See [THEME_SYNC_GUIDE.md](THEME_SYNC_GUIDE.md) for detailed setup instructions
+- Text files (theme.json, theme.css) always sync reliably
+- Fonts and images may need manual setup on secondary devices
+- Prefer system fonts and minimize image sizes for better compatibility
 
 ---
 

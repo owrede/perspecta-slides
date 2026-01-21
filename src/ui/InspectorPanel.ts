@@ -1186,6 +1186,76 @@ export class InspectorPanelView extends ItemView {
   }
 
   /**
+   * Extract theme defaults (fonts and colors) and apply them to frontmatter
+   */
+  private getThemeDefaults(themeName: string): Partial<PresentationFrontmatter> {
+    if (!themeName || !this.themeLoader) {
+      return {};
+    }
+
+    const theme = this.themeLoader.getTheme(themeName);
+    if (!theme) {
+      return {};
+    }
+
+    const update: Partial<PresentationFrontmatter> = {};
+    const presets = theme.presets;
+
+    if (presets && presets.length > 0) {
+      // Use first preset as the source of truth
+      const preset = presets[0];
+
+      // Apply fonts from theme preset
+      if (preset.TitleFont) {
+        update.titleFont = preset.TitleFont;
+      }
+      if (preset.BodyFont) {
+        update.bodyFont = preset.BodyFont;
+      }
+
+      // Apply colors from theme preset
+      update.lightTitleText = preset.LightTitleTextColor;
+      update.lightBodyText = preset.LightBodyTextColor;
+      update.lightBackground = preset.LightBackgroundColor;
+
+      update.darkTitleText = preset.DarkTitleTextColor;
+      update.darkBodyText = preset.DarkBodyTextColor;
+      update.darkBackground = preset.DarkBackgroundColor;
+
+      // Semantic colors - Light
+      update.lightLinkColor = preset.LightLinkColor;
+      update.lightBulletColor = preset.LightBulletColor;
+      update.lightBlockquoteBorder = preset.LightBlockquoteBorder;
+      update.lightTableHeaderBg = preset.LightTableHeaderBg;
+      update.lightCodeBorder = preset.LightCodeBorder;
+      update.lightProgressBar = preset.LightProgressBar;
+
+      // Semantic colors - Dark
+      update.darkLinkColor = preset.DarkLinkColor;
+      update.darkBulletColor = preset.DarkBulletColor;
+      update.darkBlockquoteBorder = preset.DarkBlockquoteBorder;
+      update.darkTableHeaderBg = preset.DarkTableHeaderBg;
+      update.darkCodeBorder = preset.DarkCodeBorder;
+      update.darkProgressBar = preset.DarkProgressBar;
+
+      // Apply gradient backgrounds if available from theme.json data
+      if (theme.themeJsonData?.presets) {
+        const lightPreset = theme.themeJsonData.presets.light;
+        const darkPreset = theme.themeJsonData.presets.dark;
+
+        if (lightPreset?.backgrounds?.general?.colors) {
+          update.lightDynamicBackground = lightPreset.backgrounds.general.colors;
+        }
+        if (darkPreset?.backgrounds?.general?.colors) {
+          update.darkDynamicBackground = darkPreset.backgrounds.general.colors;
+        }
+      }
+    }
+
+    return update;
+  }
+
+  /**
    * Create a collapsible section header with toggle button
    */
   private createSectionHeader(container: HTMLElement, title: string) {
@@ -1273,10 +1343,10 @@ export class InspectorPanelView extends ItemView {
       }
       dropdown.setValue(fm.theme || '');
       dropdown.onChange(async (value) => {
-        // When changing themes, clear all styling properties but preserve content and settings
-        // This ensures the new theme's defaults are applied cleanly
-        const stylingPropertiesToClear: Partial<PresentationFrontmatter> = {
-          // Typography - Fonts
+        // When changing themes, apply the new theme's defaults for typography and colors
+        // Clear per-slide overrides but apply theme-defined defaults
+        const clearProperties: Partial<PresentationFrontmatter> = {
+          // Clear per-slide overrides for fonts (will use theme defaults)
           titleFont: undefined,
           titleFontWeight: undefined,
           bodyFont: undefined,
@@ -1285,19 +1355,19 @@ export class InspectorPanelView extends ItemView {
           headerFontWeight: undefined,
           footerFont: undefined,
           footerFontWeight: undefined,
-          // Typography - Sizes
+          // Clear per-slide overrides for sizes
           titleFontSize: undefined,
           bodyFontSize: undefined,
           headerFontSize: undefined,
           footerFontSize: undefined,
           textScale: undefined,
           fontSizeOffset: undefined,
-          // Typography - Spacing
+          // Clear per-slide overrides for spacing
           headlineSpacingBefore: undefined,
           headlineSpacingAfter: undefined,
           listItemSpacing: undefined,
           lineHeight: undefined,
-          // Typography - Margins
+          // Clear per-slide overrides for margins
           headerTop: undefined,
           footerBottom: undefined,
           titleTop: undefined,
@@ -1308,31 +1378,10 @@ export class InspectorPanelView extends ItemView {
           contentTopOffset: undefined,
           headerToEdge: undefined,
           footerToEdge: undefined,
-          // Semantic colors - Light
-          lightLinkColor: undefined,
-          lightBulletColor: undefined,
-          lightBlockquoteBorder: undefined,
-          lightTableHeaderBg: undefined,
-          lightCodeBorder: undefined,
-          lightProgressBar: undefined,
+          // Clear per-slide color overrides for semantic colors (will use theme defaults)
           lightBoldColor: undefined,
-          // Semantic colors - Dark
-          darkLinkColor: undefined,
-          darkBulletColor: undefined,
-          darkBlockquoteBorder: undefined,
-          darkTableHeaderBg: undefined,
-          darkCodeBorder: undefined,
-          darkProgressBar: undefined,
           darkBoldColor: undefined,
-          // Theme colors - Light
-          lightBackground: undefined,
-          lightTitleText: undefined,
-          lightBodyText: undefined,
-          // Theme colors - Dark
-          darkBackground: undefined,
-          darkTitleText: undefined,
-          darkBodyText: undefined,
-          // Per-heading colors
+          // Clear per-slide color overrides for heading colors
           lightH1Color: undefined,
           lightH2Color: undefined,
           lightH3Color: undefined,
@@ -1341,34 +1390,37 @@ export class InspectorPanelView extends ItemView {
           darkH2Color: undefined,
           darkH3Color: undefined,
           darkH4Color: undefined,
-          // Header/Footer text colors
+          // Clear per-slide color overrides for header/footer
           lightHeaderText: undefined,
           lightFooterText: undefined,
           darkHeaderText: undefined,
           darkFooterText: undefined,
-          // Layout-specific backgrounds
+          // Clear per-slide color overrides for layout backgrounds
           lightBgCover: undefined,
           lightBgTitle: undefined,
           lightBgSection: undefined,
           darkBgCover: undefined,
           darkBgTitle: undefined,
           darkBgSection: undefined,
-          // Dynamic background
-          lightDynamicBackground: undefined,
-          darkDynamicBackground: undefined,
+          // Clear dynamic background settings
           useDynamicBackground: undefined,
           dynamicBackgroundRestartAtSection: undefined,
-          // Logo (styling, not content)
+          // Clear logo styling
           logoSize: undefined,
-          // Image overlay
+          // Clear image overlay
           imageOverlay: undefined,
           imageOverlayOpacity: undefined,
           imageOverlays: undefined,
         };
-        // Apply the new theme and clear styling properties
+
+        // Get theme defaults (fonts and colors)
+        const themeDefaults = this.getThemeDefaults(value);
+
+        // Apply the new theme and apply theme defaults
         await this.updateFrontmatter({ 
           theme: value || undefined,
-          ...stylingPropertiesToClear 
+          ...clearProperties,
+          ...themeDefaults,
         });
         this.render();
       });

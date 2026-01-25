@@ -604,7 +604,9 @@ export class SlideParser {
       // Check if elements already have explicit columnIndex assignments (from parseSlideAdvancedMode with -- delimiters)
       const hasExplicitColumnIndices = elements.some((e) => e.columnIndex !== undefined);
       
-      // Only run auto-detection if columns weren't already assigned explicitly
+      // Only run auto-detection if columns weren't already assigned explicitly (via -- delimiters)
+      // Auto-detection works for both 'default' layout and explicit layouts like '2-columns', '3-columns'
+      // because it figures out which content goes where based on H3 headings and content blocks
       if (!hasExplicitColumnIndices) {
         this.debugLog(
           'Before auto-detection:',
@@ -624,7 +626,7 @@ export class SlideParser {
           }))
         );
       } else {
-        this.debugLog('Skipping auto-detection: explicit column indices already assigned');
+        this.debugLog('Skipping auto-detection: explicit column indices already assigned from -- delimiters');
       }
     }
 
@@ -977,22 +979,14 @@ export class SlideParser {
         };
 
         // H1 and H2 are slide titles - never assign to columns
-        // H3+ can be column content when using explicit column layouts
+        // H3+ column assignment is handled by autoDetectColumnsNew
         const headingLevel = headingMatch[1].length;
         
-        if (headingLevel >= 3) {
-          // For explicit column layouts, treat H3 headings as column separators
-          // BUT: only if there are NO explicit -- delimiters (those take precedence)
-          if (hasExplicitColumnLayout && headingLevel === 3 && columnDelimiterCount === 0) {
-            // Increment column index for new column headings (except the first one)
-            if (currentColumnIndex > 0 || elements.some((e) => e.columnIndex !== undefined)) {
-              currentColumnIndex++;
-            }
-            headingElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
-          } else if (hasExplicitColumnLayout && columnDelimiterCount > 0) {
-            // Assign to current column (don't increment for H3 if we have -- delimiters)
-            headingElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
-          }
+        // Only assign columns for H3+ if there are explicit -- delimiters
+        // (autoDetectColumnsNew will handle H3 column assignment for heading-based layouts)
+        if (headingLevel >= 3 && columnDelimiterCount > 0 && hasExplicitColumnLayout) {
+          // Assign to current column based on -- delimiters
+          headingElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
         }
 
         elements.push(headingElement);
@@ -1003,11 +997,7 @@ export class SlideParser {
       // Images (both standard markdown and Obsidian wiki-link syntax)
       const imageResult = this.parseImageWithMetadata(line, contentLines, i);
       if (imageResult) {
-        // Assign to column if using explicit column layout
-        if (hasExplicitColumnLayout) {
-          imageResult.element.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
-        }
-
+        // Note: Column assignment happens in autoDetectColumnsNew, not here
         elements.push(imageResult.element);
         i = imageResult.nextIndex;
         continue;
@@ -1023,11 +1013,7 @@ export class SlideParser {
           raw: codeBlock.raw,
         };
 
-        // Assign to column if using explicit column layout
-        if (hasExplicitColumnLayout) {
-          codeElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
-        }
-
+        // Note: Column assignment happens in autoDetectColumnsNew, not here
         elements.push(codeElement);
         i = codeBlock.nextIndex;
         continue;
@@ -1043,11 +1029,7 @@ export class SlideParser {
           raw: table.raw,
         };
 
-        // Assign to column if using explicit column layout
-        if (hasExplicitColumnLayout) {
-          tableElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
-        }
-
+        // Note: Column assignment happens in autoDetectColumnsNew, not here
         elements.push(tableElement);
         i = table.nextIndex;
         continue;
@@ -1063,11 +1045,7 @@ export class SlideParser {
           raw: mathBlock.raw,
         };
 
-        // Assign to column if using explicit column layout
-        if (hasExplicitColumnLayout) {
-          mathElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
-        }
-
+        // Note: Column assignment happens in autoDetectColumnsNew, not here
         elements.push(mathElement);
         i = mathBlock.nextIndex;
         continue;
@@ -1114,11 +1092,7 @@ export class SlideParser {
           raw: listItems.join('\n'),
         };
 
-        // Assign to column if using explicit column layout
-        if (hasExplicitColumnLayout) {
-          listElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
-        }
-
+        // Note: Column assignment happens in autoDetectColumnsNew, not here
         elements.push(listElement);
         i = nextIndex;
         continue;
@@ -1133,11 +1107,7 @@ export class SlideParser {
           raw: line,
         };
 
-        // Assign to column if using explicit column layout
-        if (hasExplicitColumnLayout) {
-          blockquoteElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
-        }
-
+        // Note: Column assignment happens in autoDetectColumnsNew, not here
         elements.push(blockquoteElement);
         i++;
         continue;
@@ -1971,15 +1941,33 @@ export class SlideParser {
    * Returns the body starting index
    */
   private extractHeadSection(contentLines: string[]): number {
-    // Find first truly empty line
+    // Extract "head" section: content before the first empty line AFTER a heading
+    // This typically includes the slide title and maybe a subtitle, before the main content blocks
+    let foundHeading = false;
+    
     for (let i = 0; i < contentLines.length; i++) {
       const line = contentLines[i];
       const isTrulyEmpty = line.trim() === '';
-      if (isTrulyEmpty) {
+      const isHeading = /^#+\s+/.test(line.trim());
+      
+      // Track if we've seen a heading
+      if (isHeading) {
+        foundHeading = true;
+      }
+      
+      // If we found a heading and then an empty line, that's the boundary
+      if (foundHeading && isTrulyEmpty) {
         return i + 1; // Body starts after the empty line
       }
     }
-    // No empty line found, all content is HEAD
+    
+    // No heading+empty line found, check if entire content is just a heading
+    // If so, the "head" is just the first line (the heading), rest is body
+    if (contentLines.length > 0 && /^#+\s+/.test(contentLines[0].trim())) {
+      return 1; // Body starts after first heading
+    }
+    
+    // No content sections found, all is HEAD
     return contentLines.length;
   }
 
@@ -2000,22 +1988,28 @@ export class SlideParser {
     const h3Count = bodyLines.filter((line) => line.trim().startsWith('### ')).length;
     const h2Count = bodyLines.filter((line) => line.trim().startsWith('## ')).length;
 
+    this.debugLog('detectColumnMode: h3Count=', h3Count, 'h2Count=', h2Count);
+
     // Priority 2: H3 headings (2+)
     if (h3Count >= 2) {
+      this.debugLog('detectColumnMode: selecting h3 mode (h3Count >= 2)');
       return 'h3';
     }
 
     // Priority 3: H2 headings (2+)
     if (h2Count >= 2) {
+      this.debugLog('detectColumnMode: selecting h2 mode (h2Count >= 2)');
       return 'h2';
     }
 
     // Priority 4: Empty line separation
     if (this.hasMultipleContentBlocks(bodyLines)) {
+      this.debugLog('detectColumnMode: selecting empty-lines mode');
       return 'empty-lines';
     }
 
     // Priority 5: Single column
+    this.debugLog('detectColumnMode: no columns detected');
     return 'none';
   }
 
@@ -2169,6 +2163,9 @@ export class SlideParser {
       }
     }
 
+    // Track the current column context based on H2/H3 headings
+    let currentColumnContext = 0;
+
     for (let elIdx = 0; elIdx < elements.length; elIdx++) {
       const element = elements[elIdx];
       const rawLower = element.raw.toLowerCase();
@@ -2184,10 +2181,60 @@ export class SlideParser {
         continue; // Don't assign the slide title to columns
       }
 
+      // If this is an H3 heading, it marks a new column context
+      if (element.type === 'heading' && element.level === 3) {
+        // Find which package this H3 belongs to
+        let matchingCol = 0;
+        let bestScore = 0;
+        for (let colIdx = 0; colIdx < packageStrings.length; colIdx++) {
+          if (packageStrings[colIdx].includes(rawLower)) {
+            matchingCol = colIdx;
+            bestScore = 1000;
+            break;
+          }
+        }
+        currentColumnContext = matchingCol;
+        assignedColumns[elIdx] = currentColumnContext;
+        continue;
+      }
+
+      // If this is an H2 heading, it marks a new column context
+      if (element.type === 'heading' && element.level === 2 && elIdx !== firstHeadingIndex) {
+        let matchingCol = 0;
+        // Try to find which package this H2 belongs to
+        for (let colIdx = 0; colIdx < packageStrings.length; colIdx++) {
+          if (packageStrings[colIdx].includes(rawLower)) {
+            matchingCol = colIdx;
+            break;
+          }
+        }
+        // If no exact match found, assign to next sequential column
+        // This handles H2 headings that are column separators
+        if (!elements.slice(0, elIdx).some((e) => e.columnIndex === undefined) ||
+            !assignedColumns.slice(0, elIdx).some((col) => col !== undefined)) {
+          // If this is the first H2 with column assignment, use column 0
+          matchingCol = 0;
+        } else if (elements.slice(0, elIdx).some((e) => e.columnIndex !== undefined)) {
+          // Otherwise assign to next column in sequence
+          const maxAssignedCol = Math.max(
+            ...elements.slice(0, elIdx)
+              .filter((e) => e.columnIndex !== undefined)
+              .map((e) => e.columnIndex ?? 0)
+          );
+          matchingCol = Math.min(maxAssignedCol + 1, packageStrings.length - 1);
+        }
+        currentColumnContext = matchingCol;
+        assignedColumns[elIdx] = currentColumnContext;
+        continue;
+      }
+
       // Try to find which package contains this element's content
       // Strategy: Find the package with the most overlapping text
       let bestMatchCol = undefined;
       let bestMatchScore = 0;
+      let matchCount = 0; // Count how many packages contain this content
+
+      const words = rawLower.split(/\s+/).filter((w) => w.length > 3);
 
       for (let colIdx = 0; colIdx < packageStrings.length; colIdx++) {
         const packageStr = packageStrings[colIdx];
@@ -2197,31 +2244,36 @@ export class SlideParser {
           // Perfect match - element content is in this package
           bestMatchCol = colIdx;
           bestMatchScore = 1000; // Highest priority
-          break;
-        }
+          matchCount++;
+        } else {
+          // Check for partial matches (useful for multi-line content)
+          // Count how many words from the element appear in the package
+          let wordMatchCount = 0;
+          for (const word of words) {
+            if (packageStr.includes(word)) {
+              wordMatchCount++;
+            }
+          }
 
-        // Check for partial matches (useful for multi-line content)
-        // Count how many words from the element appear in the package
-        const words = rawLower.split(/\s+/).filter((w) => w.length > 3);
-        let matchCount = 0;
-        for (const word of words) {
-          if (packageStr.includes(word)) {
+          // Score based on percentage of words that match
+          const matchScore = words.length > 0 ? (wordMatchCount / words.length) * 100 : 0;
+          if (matchScore > bestMatchScore && matchScore >= 60) {
+            // At least 60% of significant words match
+            bestMatchCol = colIdx;
+            bestMatchScore = matchScore;
             matchCount++;
           }
         }
-
-        // Score based on percentage of words that match
-        const matchScore = words.length > 0 ? (matchCount / words.length) * 100 : 0;
-        if (matchScore > bestMatchScore && matchScore >= 60) {
-          // At least 60% of significant words match
-          bestMatchCol = colIdx;
-          bestMatchScore = matchScore;
-        }
       }
 
-      // Assign the best match
-      if (bestMatchCol !== undefined && assignedColumns[elIdx] === undefined) {
+      // If content appears in multiple packages (repeated), use current column context
+      if (matchCount > 1 && bestMatchCol !== undefined) {
+        // Content is repeated - assign to the current column context
+        assignedColumns[elIdx] = currentColumnContext;
+      } else if (bestMatchCol !== undefined && assignedColumns[elIdx] === undefined) {
+        // Unique content - assign to best match and update context
         assignedColumns[elIdx] = bestMatchCol;
+        currentColumnContext = bestMatchCol;
       }
     }
 

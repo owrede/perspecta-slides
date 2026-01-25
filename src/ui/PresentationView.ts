@@ -887,12 +887,16 @@ More content here...`,
     const maxDataColumn = columnElements.reduce((max, e) => Math.max(max, e.columnIndex ?? 0), -1);
     const dataColumnCount = maxDataColumn + 1;
 
+    // Use actual data column count, up to the specified layout's max
+    // This prevents empty columns when content has fewer columns than the layout specifies
+    const actualColumnCount = dataColumnCount > 0 ? Math.min(columnCount, dataColumnCount) : columnCount;
+
     // Render header slot
     const headerSlot = container.createDiv({ cls: 'slot-header' });
     nonColumnElements.forEach((el) => this.renderElement(headerSlot, el));
 
     // Group elements into visual columns, merging overflow into last column
-    const columns: SlideElement[][] = Array.from({ length: columnCount }, () => []);
+    const columns: SlideElement[][] = Array.from({ length: actualColumnCount }, () => []);
 
     if (columnElements.length === 0) {
       // No column elements - put body elements in first column
@@ -912,7 +916,7 @@ More content here...`,
 
     // Render columns slot
     const columnsSlot = container.createDiv({
-      cls: `slot-columns columns-${columnCount} ratio-${ratio}`,
+      cls: `slot-columns columns-${actualColumnCount} ratio-${ratio}`,
     });
     columns.forEach((col, i) => {
       const colDiv = columnsSlot.createDiv({ cls: 'column' });

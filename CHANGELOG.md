@@ -2,6 +2,18 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.22] - 2026-01-25
+
+### Fixed
+- Fixed image loading on Windows in Presenter Window: File:// URLs now properly handle Windows path separators and drive letters (C:/)
+- Fixed net::ERR_FAILED errors for image resources on Windows by normalizing paths and using platform-aware file:// URL construction
+- Images now load correctly in external windows on both Windows and Mac
+
+### Technical
+- Added `convertToFileUrl()` helper method for cross-platform file:// URL generation
+- Replaced string path concatenation with `require('path').join()` for platform-aware path handling
+- All image resolvers now use consistent path normalization
+
 ## [0.2.21] - 2026-01-21
 
 ### Improved

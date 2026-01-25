@@ -106,6 +106,23 @@ export default class PerspectaSlidesPlugin extends Plugin {
   }
 
   /**
+  * Convert absolute file path to file:// URL
+  * Handles platform differences (Windows vs Unix)
+  */
+  private convertToFileUrl(filePath: string): string {
+   // Normalize path separators to forward slashes
+   const normalized = filePath.replace(/\\/g, '/');
+   
+   // On Windows, add leading slash for drive letter (C: -> /C:)
+   const urlPath = process.platform === 'win32' && normalized[1] === ':' 
+     ? `/${normalized}` 
+     : normalized;
+   
+   // Encode URI and handle hash characters
+   return `file://${encodeURI(urlPath).replace(/#/g, '%23')}`;
+  }
+
+  /**
    * Image path resolver for Obsidian wiki-links
    * Resolves ![[image.png]] paths to actual resource URLs
    */
@@ -381,13 +398,15 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
           // If export found, use it
            if (exportFile) {
-             const adapter = this.app.vault.adapter;
-             if (adapter instanceof FileSystemAdapter) {
-               const basePath = adapter.getBasePath();
-               const fullPath = `${basePath}/${exportFile.path}`;
-               return `file://${encodeURI(fullPath).replace(/#/g, '%23')}`;
-             }
-           }
+              const adapter = this.app.vault.adapter;
+              if (adapter instanceof FileSystemAdapter) {
+                const basePath = adapter.getBasePath();
+                const fullPath = require('path').join(basePath, exportFile.path);
+                // Convert to file:// URL with platform-specific handling
+                const fileUrl = this.convertToFileUrl(fullPath);
+                return fileUrl;
+              }
+            }
 
            // No export found - use native Excalidraw rendering via async conversion
            this.logExcalidraw(
@@ -435,9 +454,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
           const adapter = this.app.vault.adapter;
           if (adapter instanceof FileSystemAdapter) {
             const basePath = adapter.getBasePath();
-            const fullPath = `${basePath}/${linkedFile.path}`;
-            // Return as file:// URL with proper encoding
-            return `file://${encodeURI(fullPath).replace(/#/g, '%23')}`;
+            const fullPath = require('path').join(basePath, linkedFile.path);
+            // Convert to file:// URL with platform-specific handling
+            const fileUrl = this.convertToFileUrl(fullPath);
+            return fileUrl;
           }
         }
       }
@@ -578,8 +598,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
                 const adapter = this.app.vault.adapter;
                 if (adapter instanceof FileSystemAdapter) {
                   const basePath = adapter.getBasePath();
-                  const fullPath = `${basePath}/${exportFile.path}`;
-                  return `file://${encodeURI(fullPath).replace(/#/g, '%23')}`;
+                  const fullPath = require('path').join(basePath, exportFile.path);
+                  // Convert to file:// URL with platform-specific handling
+                  const fileUrl = this.convertToFileUrl(fullPath);
+                  return fileUrl;
                 }
               }
 
@@ -630,9 +652,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
             const adapter = this.app.vault.adapter;
             if (adapter instanceof FileSystemAdapter) {
               const basePath = adapter.getBasePath();
-              const fullPath = `${basePath}/${linkedFile.path}`;
-              // Return as file:// URL with proper encoding
-              return `file://${encodeURI(fullPath).replace(/#/g, '%23')}`;
+              const fullPath = require('path').join(basePath, linkedFile.path);
+              // Convert to file:// URL with platform-specific handling
+              const fileUrl = this.convertToFileUrl(fullPath);
+              return fileUrl;
             }
           }
         }

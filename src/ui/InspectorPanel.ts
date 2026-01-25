@@ -280,6 +280,27 @@ export class InspectorPanelView extends ItemView {
     return getTheme(name);
   }
 
+  /**
+   * Calculate visible slide number (excluding hidden slides) for display
+   * Returns the slide number as shown in the thumbnail navigator
+   */
+  private getVisibleSlideNumber(): string {
+    if (!this.presentation || !this.currentSlide) {
+      return '-';
+    }
+
+    // If the slide is hidden, return '-'
+    if (this.currentSlide.hidden) {
+      return '-';
+    }
+
+    // Count only non-hidden slides up to and including this one
+    const visibleCount = this.presentation.slides
+      .slice(0, this.currentSlideIndex + 1)
+      .filter((s) => !s.hidden).length;
+    return String(visibleCount);
+  }
+
   getViewType(): string {
     return INSPECTOR_VIEW_TYPE;
   }
@@ -2325,9 +2346,10 @@ export class InspectorPanelView extends ItemView {
 
     // Current slide indicator
     const slideInfo = container.createDiv({ cls: 'current-slide-info' });
+    const badgeText = this.currentSlide.hidden ? 'Hidden' : `Slide ${this.getVisibleSlideNumber()}`;
     slideInfo.createEl('span', {
       cls: 'slide-badge',
-      text: `Slide ${this.currentSlideIndex + 1}`,
+      text: badgeText,
     });
 
     const title = this.getSlideTitle();

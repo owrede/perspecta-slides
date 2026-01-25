@@ -857,14 +857,20 @@ export class FontManager {
 
       // Check if we already downloaded this URL (variable fonts use same file for all weights)
       if (downloadedUrls.has(fontUrl)) {
-        // Already downloaded - reuse existing file but track this weight/style combo
+        // Already downloaded - reuse existing file but STILL track this weight/style combo
         const existingPath = downloadedUrls.get(fontUrl)!;
         debug.log(
           'font-handling',
-          `[font-parsing] URL already downloaded (variable font), reusing: ${existingPath}`
+          `[font-parsing] URL already downloaded (variable font), tracking additional weight: ${weight}, style: ${style}`
         );
-        // Don't add another entry - variable fonts are already tracked with their weight range
-        // The first weight/style combo will be used to generate the @font-face rule
+        // For variable fonts: the same file covers multiple weights/styles
+        // We need to track each weight/style combo so UI can show all available options
+        fontFiles.push({
+          weight,
+          style,
+          localPath: existingPath,
+          format: fileMap.get(fontUrl)?.format || 'woff2',
+        });
         continue;
       }
 

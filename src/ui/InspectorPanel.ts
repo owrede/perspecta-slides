@@ -1927,12 +1927,6 @@ export class InspectorPanelView extends ItemView {
 
     headingsContainer = container.createDiv({ cls: 'heading-colors-container' });
     this.renderHeadingColors(headingsContainer, this.themeAppearanceMode);
-
-    // Section: LAYOUT BACKGROUNDS
-    this.createSectionHeader(container, 'LAYOUT BACKGROUNDS');
-
-    layoutBgContainer = container.createDiv({ cls: 'layout-bg-container' });
-    this.renderLayoutBackgrounds(layoutBgContainer, this.themeAppearanceMode);
   }
 
   private renderHeadingColors(container: HTMLElement, mode: 'light' | 'dark') {
@@ -2418,6 +2412,29 @@ export class InspectorPanelView extends ItemView {
       });
     }
 
+    // LAYOUT BACKGROUNDS section (collapsible)
+    const layoutBgSection = container.createDiv({ cls: 'inspector-section' });
+    const isLayoutBgCollapsed = this.collapsedSections.has('layout-backgrounds');
+
+    const layoutBgHeader = layoutBgSection.createDiv({ cls: 'section-header-button', attr: { 'data-section': 'layout-backgrounds' } });
+    if (isLayoutBgCollapsed) {
+      layoutBgHeader.addClass('collapsed');
+    }
+
+    const layoutBgToggle = layoutBgHeader.createDiv({ cls: 'section-toggle-icon' });
+    setIcon(layoutBgToggle, 'chevron-down');
+
+    layoutBgHeader.createSpan({ cls: 'section-title', text: 'LAYOUT SETTINGS' });
+
+    layoutBgHeader.addEventListener('click', () => {
+      this.toggleSection('layout-backgrounds');
+      this.render();
+    });
+
+    if (!isLayoutBgCollapsed) {
+      this.renderSlidePaneLayoutBackgrounds(layoutBgSection, this.currentSlide?.metadata.layout || 'default');
+    }
+
     // OVERRIDES section (collapsible)
     const overridesSection = container.createDiv({ cls: 'inspector-section' });
     const isOverridesCollapsed = this.collapsedSections.has('overrides');
@@ -2493,6 +2510,150 @@ export class InspectorPanelView extends ItemView {
         });
     }
     }
+
+  /**
+   * Render layout background for the current slide's layout (presentation-wide setting)
+   */
+  private renderSlidePaneLayoutBackgrounds(container: HTMLElement, currentLayout: SlideLayout) {
+    const fm = this.presentation?.frontmatter;
+    if (!fm) {
+      return;
+    }
+
+    // Clear the container to prevent duplication
+    container.empty();
+
+    const theme = this.getThemeByName(fm.theme || '');
+    const themePreset = theme?.presets[0];
+
+    // Map layout to its label
+    const layoutLabels: Record<SlideLayout, string> = {
+      cover: 'Cover',
+      title: 'Title',
+      section: 'Section',
+      default: 'Default',
+      '1-column': '1-Column',
+      '2-columns': '2-Columns',
+      '3-columns': '3-Columns',
+      '2-columns-1+2': '2-Col (1+2)',
+      '2-columns-2+1': '2-Col (2+1)',
+      'full-image': 'Full Image',
+      'full-image-contained': 'Full Image Contained',
+      'half-image': 'Half Image',
+      'half-image-horizontal': 'Half Image Horizontal',
+      caption: 'Caption',
+      'caption-contained': 'Caption Contained',
+      grid: 'Grid',
+      footnotes: 'Footnotes',
+    };
+
+    // Map layout to frontmatter keys
+    const layoutKeyMap: Record<SlideLayout, { light: keyof PresentationFrontmatter; dark: keyof PresentationFrontmatter }> = {
+      cover: { light: 'lightBgCover', dark: 'darkBgCover' },
+      title: { light: 'lightBgTitle', dark: 'darkBgTitle' },
+      section: { light: 'lightBgSection', dark: 'darkBgSection' },
+      default: { light: 'lightBgDefault', dark: 'darkBgDefault' },
+      '1-column': { light: 'lightBg1Column', dark: 'darkBg1Column' },
+      '2-columns': { light: 'lightBg2Columns', dark: 'darkBg2Columns' },
+      '3-columns': { light: 'lightBg3Columns', dark: 'darkBg3Columns' },
+      '2-columns-1+2': { light: 'lightBg2Columns1Plus2', dark: 'darkBg2Columns1Plus2' },
+      '2-columns-2+1': { light: 'lightBg2Columns2Plus1', dark: 'darkBg2Columns2Plus1' },
+      'full-image': { light: 'lightBgFullImage', dark: 'darkBgFullImage' },
+      'full-image-contained': { light: 'lightBgFullImageContained', dark: 'darkBgFullImageContained' },
+      'half-image': { light: 'lightBgHalfImage', dark: 'darkBgHalfImage' },
+      'half-image-horizontal': { light: 'lightBgHalfImageHorizontal', dark: 'darkBgHalfImageHorizontal' },
+      caption: { light: 'lightBgCaption', dark: 'darkBgCaption' },
+      'caption-contained': { light: 'lightBgCaptionContained', dark: 'darkBgCaptionContained' },
+      grid: { light: 'lightBgGrid', dark: 'darkBgGrid' },
+      footnotes: { light: 'lightBgFootnotes', dark: 'darkBgFootnotes' },
+    };
+
+    const mode = this.themeAppearanceMode;
+    const keyMap = layoutKeyMap[currentLayout];
+    if (!keyMap) {
+      return;
+    }
+
+    const globalBg = mode === 'light' 
+      ? fm.lightBackground || themePreset?.LightBackgroundColor || '#ffffff'
+      : fm.darkBackground || themePreset?.DarkBackgroundColor || '#1a1a1a';
+
+    const currentKey = (mode === 'light' ? keyMap.light : keyMap.dark) as keyof PresentationFrontmatter;
+    const hasOverride = Boolean((fm[currentKey] as string));
+    const overrideValue = (fm[currentKey] as string) || '';
+
+    // Determine label with "(using global)" suffix if no override
+    const label = hasOverride ? layoutLabels[currentLayout] : `${layoutLabels[currentLayout]} (using global)`;
+
+    const setting = new Setting(container)
+      .setName(label);
+    
+    // Always add color picker for functionality
+    let colorPickerControl: HTMLElement | null = null;
+    setting.addColorPicker((picker) => {
+      // When no override, show empty; when override, show the color
+      picker.setValue(hasOverride ? overrideValue : '');
+      colorPickerControl = (picker as any).containerEl as HTMLElement;
+      
+      picker.onChange((newValue) => {
+        if (newValue) {
+          // User picked a color - save as override
+          const update: Partial<PresentationFrontmatter> = {};
+          (update as any)[currentKey] = newValue;
+          this.updateFrontmatter(update, true);
+        }
+      });
+    });
+    
+    // If no override, replace the color picker's visual with empty circle graphic
+    if (!hasOverride && colorPickerControl) {
+      const colorInput = (colorPickerControl as HTMLElement).querySelector('input[type="color"]') as HTMLInputElement;
+      if (colorInput) {
+        // Hide the actual color input
+        colorInput.style.display = 'none';
+        
+        // Create empty circle with diagonal line graphic
+        const colorDisplay = (colorPickerControl as HTMLElement).createDiv({ cls: 'color-sample-empty' });
+        colorDisplay.style.width = '24px';
+        colorDisplay.style.height = '24px';
+        colorDisplay.style.borderRadius = '50%';
+        colorDisplay.style.border = '2px solid var(--text-secondary)';
+        colorDisplay.style.position = 'relative';
+        colorDisplay.style.cursor = 'pointer';
+        colorDisplay.style.flexShrink = '0';
+        
+        // Add diagonal line using SVG
+        const svg = colorDisplay.createSvg('svg', { attr: { viewBox: '0 0 24 24', width: '24', height: '24' } });
+        svg.style.position = 'absolute';
+        svg.style.top = '0';
+        svg.style.left = '0';
+        svg.style.pointerEvents = 'none';
+        
+        svg.createSvg('circle', { attr: { cx: '12', cy: '12', r: '11', fill: 'none', stroke: 'var(--text-secondary)', 'stroke-width': '2' } });
+        svg.createSvg('line', { attr: { x1: '5', y1: '5', x2: '19', y2: '19', stroke: 'var(--text-secondary)', 'stroke-width': '2' } });
+        
+        // Make the graphic clickable to trigger the hidden color input
+        colorDisplay.addEventListener('click', () => {
+          colorInput.click();
+        });
+      }
+    }
+
+    // Reset button - always visible
+    setting.addExtraButton((btn) =>
+      btn
+        .setIcon('rotate-ccw')
+        .setTooltip('Clear override (use global background)')
+        .setDisabled(!hasOverride)
+        .onClick(() => {
+          if (hasOverride) {
+            const update: Partial<PresentationFrontmatter> = {};
+            (update as any)[currentKey] = undefined;
+            this.updateFrontmatter(update, true);
+          }
+        })
+    );
+  }
 
   // ============================================
   // Helper methods

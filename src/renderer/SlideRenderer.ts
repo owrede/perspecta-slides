@@ -422,36 +422,51 @@ export class SlideRenderer {
    * by the CSS generation (falling back to general background when not set in frontmatter).
    * This ensures dynamic backgrounds work for all layouts unless explicitly overridden.
    */
+  private getLayoutBackgroundKey(
+    layout: SlideLayout,
+    mode: 'light' | 'dark'
+  ): keyof PresentationFrontmatter | null {
+    const keyMap: Record<SlideLayout, { light: keyof PresentationFrontmatter; dark: keyof PresentationFrontmatter }> = {
+      // Standard layouts
+      cover: { light: 'lightBgCover', dark: 'darkBgCover' },
+      title: { light: 'lightBgTitle', dark: 'darkBgTitle' },
+      section: { light: 'lightBgSection', dark: 'darkBgSection' },
+      default: { light: 'lightBgDefault', dark: 'darkBgDefault' },
+      
+      // Column layouts
+      '1-column': { light: 'lightBg1Column', dark: 'darkBg1Column' },
+      '2-columns': { light: 'lightBg2Columns', dark: 'darkBg2Columns' },
+      '3-columns': { light: 'lightBg3Columns', dark: 'darkBg3Columns' },
+      '2-columns-1+2': { light: 'lightBg2Columns1Plus2', dark: 'darkBg2Columns1Plus2' },
+      '2-columns-2+1': { light: 'lightBg2Columns2Plus1', dark: 'darkBg2Columns2Plus1' },
+      
+      // Image layouts
+      'full-image': { light: 'lightBgFullImage', dark: 'darkBgFullImage' },
+      'full-image-contained': { light: 'lightBgFullImageContained', dark: 'darkBgFullImageContained' },
+      'half-image': { light: 'lightBgHalfImage', dark: 'darkBgHalfImage' },
+      'half-image-horizontal': { light: 'lightBgHalfImageHorizontal', dark: 'darkBgHalfImageHorizontal' },
+      caption: { light: 'lightBgCaption', dark: 'darkBgCaption' },
+      'caption-contained': { light: 'lightBgCaptionContained', dark: 'darkBgCaptionContained' },
+      
+      // Grid and special layouts
+      grid: { light: 'lightBgGrid', dark: 'darkBgGrid' },
+      footnotes: { light: 'lightBgFootnotes', dark: 'darkBgFootnotes' },
+    };
+
+    const keys = keyMap[layout];
+    if (!keys) return null;
+    
+    return mode === 'light' ? keys.light : keys.dark;
+  }
+
   private hasLayoutBackground(
     layout: SlideLayout,
     mode: 'light' | 'dark',
     frontmatter: PresentationFrontmatter
   ): boolean {
     // Only check frontmatter - theme layout backgrounds are handled in CSS
-    if (layout === 'cover') {
-      if (mode === 'light' && frontmatter.lightBgCover) {
-        return true;
-      }
-      if (mode === 'dark' && frontmatter.darkBgCover) {
-        return true;
-      }
-    } else if (layout === 'title') {
-      if (mode === 'light' && frontmatter.lightBgTitle) {
-        return true;
-      }
-      if (mode === 'dark' && frontmatter.darkBgTitle) {
-        return true;
-      }
-    } else if (layout === 'section') {
-      if (mode === 'light' && frontmatter.lightBgSection) {
-        return true;
-      }
-      if (mode === 'dark' && frontmatter.darkBgSection) {
-        return true;
-      }
-    }
-
-    return false;
+    const key = this.getLayoutBackgroundKey(layout, mode);
+    return key ? Boolean((frontmatter as any)[key]) : false;
   }
 
   /**

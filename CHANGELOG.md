@@ -2,6 +2,20 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.2.23] - 2026-02-02
+
+### Improved
+- Layout-specific background support now extends to ALL layouts (not just cover/title/section)
+- Column layouts can now have dedicated backgrounds (1-column, 2-columns, 3-columns, ratio layouts)
+- Image layouts can now have dedicated backgrounds (full-image, half-image, caption layouts)
+- Grid and footnotes layouts now support dedicated backgrounds
+- Refactored background key mapping for cleaner, maintainable code
+
+### Technical
+- Added `getLayoutBackgroundKey()` method in SlideRenderer for centralized layout-to-key mapping
+- Extended PresentationFrontmatter interface with all layout-specific background properties
+- Unified background handling across all 13+ layout types
+
 ## [0.2.22] - 2026-01-25
 
 ### Fixed

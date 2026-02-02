@@ -97,13 +97,48 @@ export interface PresentationFrontmatter {
   darkHeaderText?: string;
   darkFooterText?: string;
 
-  // Layout-specific backgrounds
+  // Layout-specific backgrounds (all layouts supported)
+  // Standard layouts
   lightBgCover?: string;
   lightBgTitle?: string;
   lightBgSection?: string;
+  lightBgDefault?: string;
   darkBgCover?: string;
   darkBgTitle?: string;
   darkBgSection?: string;
+  darkBgDefault?: string;
+  
+  // Column layouts
+  lightBg1Column?: string;
+  lightBg2Columns?: string;
+  lightBg3Columns?: string;
+  lightBg2Columns1Plus2?: string;
+  lightBg2Columns2Plus1?: string;
+  darkBg1Column?: string;
+  darkBg2Columns?: string;
+  darkBg3Columns?: string;
+  darkBg2Columns1Plus2?: string;
+  darkBg2Columns2Plus1?: string;
+  
+  // Image layouts
+  lightBgFullImage?: string;
+  lightBgFullImageContained?: string;
+  lightBgHalfImage?: string;
+  lightBgHalfImageHorizontal?: string;
+  lightBgCaption?: string;
+  lightBgCaptionContained?: string;
+  darkBgFullImage?: string;
+  darkBgFullImageContained?: string;
+  darkBgHalfImage?: string;
+  darkBgHalfImageHorizontal?: string;
+  darkBgCaption?: string;
+  darkBgCaptionContained?: string;
+  
+  // Grid and special layouts
+  lightBgGrid?: string;
+  lightBgFootnotes?: string;
+  darkBgGrid?: string;
+  darkBgFootnotes?: string;
 
   // Dynamic background gradient (color stops for gradient across slides)
   lightDynamicBackground?: string[]; // Array of color stops e.g., ['#ffffff', '#f0f0f0', '#e0e0e0']

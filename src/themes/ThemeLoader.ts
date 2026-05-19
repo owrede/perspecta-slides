@@ -200,6 +200,7 @@ export class ThemeLoader {
       // Store the parsed theme.json data for advanced features (per-heading colors, etc.)
       themeJsonData: {
         presets: themeJson.presets,
+        bundledFonts: themeJson.bundledFonts,
       },
     };
   }
@@ -384,48 +385,90 @@ export class ThemeLoader {
     }
 
     const rules: string[] = [];
+
+    // Preferred path: explicit bundled font manifest from theme.json
+    const bundledFonts = theme.themeJsonData?.bundledFonts || [];
+    if (bundledFonts.length > 0) {
+      for (const bundled of bundledFonts) {
+        for (const fileRef of bundled.files) {
+          const absolutePath = `${theme.basePath}/${fileRef.path}`.replace(/\/+/g, '/');
+          const file = this.app.vault.getAbstractFileByPath(absolutePath);
+          if (!(file instanceof TFile)) {
+            continue;
+          }
+
+          try {
+            const data = await this.app.vault.readBinary(file);
+            const base64 = this.arrayBufferToBase64(data);
+            const format = fileRef.format.toLowerCase();
+            const mimeType =
+              format === 'woff2'
+                ? 'font/woff2'
+                : format === 'woff'
+                  ? 'font/woff'
+                  : format === 'ttf'
+                    ? 'font/ttf'
+                    : format === 'otf'
+                      ? 'font/otf'
+                      : 'font/woff2';
+            const cssFormat =
+              format === 'ttf' ? 'truetype' : format === 'otf' ? 'opentype' : format;
+
+            rules.push(`
+@font-face {
+  font-family: '${bundled.family}';
+  font-style: ${fileRef.style || 'normal'};
+  font-weight: ${fileRef.weight || 400};
+  font-display: swap;
+  src: url('data:${mimeType};base64,${base64}') format('${cssFormat}');
+}`);
+          } catch (e) {
+            console.warn(`Failed to read font file: ${absolutePath}`, e);
+          }
+        }
+      }
+      return rules.join('\n');
+    }
+
+    // Backward compatibility for old theme packages without bundledFonts manifest
     const processedFonts = new Set<string>();
-
     for (const file of fontsFolder.children) {
-      if (!(file instanceof TFile)) {
-        continue;
-      }
-
-      // Only process woff2/woff files
+      if (!(file instanceof TFile)) continue;
       const ext = file.extension.toLowerCase();
-      if (ext !== 'woff2' && ext !== 'woff') {
-        continue;
-      }
+      if (!['woff2', 'woff', 'ttf', 'otf'].includes(ext)) continue;
 
-      // Parse font name from filename (e.g., "Barlow-normal.woff2" -> "Barlow")
-      const match = file.name.match(/^(.+?)(?:-(normal|italic))?\.woff2?$/i);
-      if (!match) {
-        continue;
-      }
+      // Legacy filenames may include family-weight-style
+      const match = file.name.match(/^(.+?)-(\d+)-(normal|italic)\.(woff2|woff|ttf|otf)$/i);
+      if (!match) continue;
 
       const fontName = match[1].replace(/-/g, ' ');
-      const style = match[2] || 'normal';
-      const format = ext;
-
-      // Skip if we've already processed this font (for variable fonts)
-      const key = `${fontName}-${style}`;
-      if (processedFonts.has(key)) {
-        continue;
-      }
+      const weight = parseInt(match[2], 10);
+      const style = match[3] || 'normal';
+      const format = match[4].toLowerCase();
+      const key = `${fontName}-${weight}-${style}-${file.path}`;
+      if (processedFonts.has(key)) continue;
       processedFonts.add(key);
 
       try {
         const data = await this.app.vault.readBinary(file);
         const base64 = this.arrayBufferToBase64(data);
-        const mimeType = format === 'woff2' ? 'font/woff2' : 'font/woff';
+        const mimeType =
+          format === 'woff2'
+            ? 'font/woff2'
+            : format === 'woff'
+              ? 'font/woff'
+              : format === 'ttf'
+                ? 'font/ttf'
+                : 'font/otf';
+        const cssFormat = format === 'ttf' ? 'truetype' : format === 'otf' ? 'opentype' : format;
 
         rules.push(`
 @font-face {
   font-family: '${fontName}';
   font-style: ${style};
-  font-weight: 100 900;
+  font-weight: ${weight};
   font-display: swap;
-  src: url('data:${mimeType};base64,${base64}') format('${format}');
+  src: url('data:${mimeType};base64,${base64}') format('${cssFormat}');
 }`);
       } catch (e) {
         console.warn(`Failed to read font file: ${file.path}`, e);

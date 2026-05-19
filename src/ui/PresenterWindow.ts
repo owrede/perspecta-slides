@@ -6,6 +6,7 @@ import { PresentationFrontmatter } from '../types';
 import type { ImagePathResolver } from '../renderer/SlideRenderer';
 import { SlideRenderer } from '../renderer/SlideRenderer';
 import type { PresentationCache } from '../utils/SlideHasher';
+import { getObsidianColorScheme } from '../utils/ColorScheme';
 import {
   buildPresentationCache,
   diffPresentations,
@@ -273,15 +274,8 @@ export class PresenterWindow {
     if (this.fontWeightsCache.size > 0) {
       renderer.setFontWeightsCache(this.fontWeightsCache);
     }
-    renderer.setSystemColorScheme(this.getSystemColorScheme());
+    renderer.setSystemColorScheme(getObsidianColorScheme());
     return renderer;
-  }
-
-  private getSystemColorScheme(): 'light' | 'dark' {
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-    return 'light';
   }
 
   async open(

@@ -1,5 +1,5 @@
 import type { App } from 'obsidian';
-import { TFile, TFolder, Modal, Setting, Notice, FileSystemAdapter } from 'obsidian';
+import { TFile, TFolder, Modal, Setting, Notice } from 'obsidian';
 import type { PresentationFrontmatter, Theme } from '../types';
 import { ThemePreset, DEFAULT_SEMANTIC_COLORS } from '../types';
 import type { ThemeJsonFile, ThemeModePreset, ThemeBackground } from '../themes/ThemeSchema';
@@ -7,6 +7,7 @@ import {
   ThemeSemanticColors,
   DEFAULT_SEMANTIC_COLORS_LIGHT,
   DEFAULT_SEMANTIC_COLORS_DARK,
+  ThemeBundledFont,
 } from '../themes/ThemeSchema';
 import type { FontManager } from './FontManager';
 import { getTheme } from '../themes';
@@ -201,19 +202,22 @@ export class ThemeExporter {
 
     await this.ensureFolder(themePath);
 
+    // Resolve effective settings first (frontmatter + base theme defaults)
+    const resolvedFm = this.buildResolvedFrontmatter(frontmatter, baseTheme);
+
+    // Copy fonts and build bundled font manifest
+    const bundledFonts = await this.copyFonts(themePath, resolvedFm);
+
     // Generate theme.json
-    const themeJson = this.generateThemeJson(themeName, frontmatter, baseTheme);
+    const themeJson = this.generateThemeJson(themeName, resolvedFm, baseTheme, bundledFonts);
     const themeJsonPath = `${themePath}/theme.json`;
     const themeJsonContent = JSON.stringify(themeJson, null, 2);
     await this.createOrModifyFile(themeJsonPath, themeJsonContent);
 
     // Generate theme.css with typography/margin defaults
-    const themeCss = this.generateThemeCss(frontmatter, baseTheme);
+    const themeCss = this.generateThemeCss(resolvedFm, baseTheme);
     const themeCssPath = `${themePath}/theme.css`;
     await this.createOrModifyFile(themeCssPath, themeCss);
-
-    // Copy fonts if using cached Google Fonts
-    await this.copyFonts(themePath, frontmatter);
 
     // Extract and copy images, generate demo file
     const imageRefs = this.extractImageReferences(markdownContent);
@@ -222,11 +226,48 @@ export class ThemeExporter {
       imagePathMap = await this.copyImages(themePath, imageRefs, sourceFile);
     }
 
+    // Copy frontmatter-linked assets (logo/overlays) and rewrite paths
+    const frontmatterAssetMap = await this.copyFrontmatterAssets(themePath, resolvedFm, sourceFile);
+    this.rewriteFrontmatterAssetPaths(resolvedFm, frontmatterAssetMap);
+
     // Create demo markdown file with COMPLETE frontmatter and updated image paths
-    await this.createDemoFile(themePath, themeName, markdownContent, imageRefs, frontmatter, imagePathMap);
+    await this.createDemoFile(
+      themePath,
+      themeName,
+      markdownContent,
+      imageRefs,
+      resolvedFm,
+      imagePathMap
+    );
 
     new Notice(`Theme "${themeName}" saved to ${themePath}`);
     return themePath;
+  }
+
+  /**
+   * Merge explicit frontmatter with base theme defaults so exported themes are fully portable
+   */
+  private buildResolvedFrontmatter(
+    fm: PresentationFrontmatter,
+    baseTheme: Theme | undefined
+  ): PresentationFrontmatter {
+    const basePreset = baseTheme?.presets?.[0];
+    const resolved: PresentationFrontmatter = { ...fm };
+
+    resolved.titleFont = fm.titleFont || baseTheme?.template.TitleFont || 'Helvetica';
+    resolved.bodyFont = fm.bodyFont || baseTheme?.template.BodyFont || 'Helvetica';
+    resolved.headerFont = fm.headerFont || resolved.bodyFont;
+    resolved.footerFont = fm.footerFont || resolved.bodyFont;
+
+    resolved.lightTitleText = fm.lightTitleText || basePreset?.LightTitleTextColor || '#000000';
+    resolved.lightBodyText = fm.lightBodyText || basePreset?.LightBodyTextColor || '#333333';
+    resolved.lightBackground = fm.lightBackground || basePreset?.LightBackgroundColor || '#ffffff';
+
+    resolved.darkTitleText = fm.darkTitleText || basePreset?.DarkTitleTextColor || '#ffffff';
+    resolved.darkBodyText = fm.darkBodyText || basePreset?.DarkBodyTextColor || '#e0e0e0';
+    resolved.darkBackground = fm.darkBackground || basePreset?.DarkBackgroundColor || '#1a1a1a';
+
+    return resolved;
   }
 
   /**
@@ -272,7 +313,8 @@ export class ThemeExporter {
   private generateThemeJson(
     themeName: string,
     fm: PresentationFrontmatter,
-    baseTheme: Theme | undefined
+    baseTheme: Theme | undefined,
+    bundledFonts: ThemeBundledFont[] = []
   ): ThemeJsonFile {
     const basePreset = baseTheme?.presets[0];
 
@@ -414,6 +456,7 @@ export class ThemeExporter {
         },
       },
       cssClasses: baseTheme?.template.CssClasses,
+      bundledFonts: bundledFonts.length > 0 ? bundledFonts : undefined,
       presets: {
         light: lightPreset,
         dark: darkPreset,
@@ -496,27 +539,33 @@ export class ThemeExporter {
   /**
    * Copy cached fonts to the theme folder
    */
-  private async copyFonts(themePath: string, fm: PresentationFrontmatter): Promise<void> {
+  private async copyFonts(
+    themePath: string,
+    fm: PresentationFrontmatter
+  ): Promise<ThemeBundledFont[]> {
     if (!this.fontManager) {
-      return;
+      return [];
     }
 
     const fontsFolder = `${themePath}/fonts`;
-    const fontsToCopy = [fm.titleFont, fm.bodyFont, fm.headerFont, fm.footerFont].filter(
-      (f): f is string => !!f && this.fontManager!.isCached(f)
-    );
+    const fontsToCopy = Array.from(
+      new Set([fm.titleFont, fm.bodyFont, fm.headerFont, fm.footerFont].filter(Boolean) as string[])
+    ).filter((f) => this.fontManager!.isCached(f));
 
     if (fontsToCopy.length === 0) {
-      return;
+      return [];
     }
 
     await this.ensureFolder(fontsFolder);
+    const bundledFonts: ThemeBundledFont[] = [];
 
     for (const fontName of fontsToCopy) {
       const cachedFont = this.fontManager.getCachedFont(fontName);
       if (!cachedFont) {
         continue;
       }
+
+      const files: ThemeBundledFont['files'] = [];
 
       for (const file of cachedFont.files) {
         const sourceFile = this.app.vault.getAbstractFileByPath(file.localPath);
@@ -530,8 +579,89 @@ export class ThemeExporter {
             const data = await this.app.vault.readBinary(sourceFile);
             await this.app.vault.createBinary(destPath, data);
           }
+
+          files.push({
+            path: `fonts/${fileName}`,
+            weight: file.weight,
+            style: file.style,
+            format: file.format,
+          });
         }
       }
+
+      if (files.length > 0) {
+        bundledFonts.push({
+          family: fontName,
+          files,
+        });
+      }
+    }
+
+    return bundledFonts;
+  }
+
+  /**
+   * Copy frontmatter-linked assets to the theme folder's images subfolder
+   */
+  private async copyFrontmatterAssets(
+    themePath: string,
+    fm: PresentationFrontmatter,
+    sourceFile: TFile
+  ): Promise<Map<string, string>> {
+    const refs: AssetReference[] = [];
+    const pushRef = (value?: string) => {
+      if (!value) {
+        return;
+      }
+      const path = value.split(/[#?]/)[0].trim();
+      if (!path || /^https?:\/\//i.test(path)) {
+        return;
+      }
+      refs.push({
+        originalPath: path,
+        type: 'image',
+        location: 'json',
+        fullMatch: value,
+      });
+    };
+
+    pushRef(fm.logo);
+    pushRef(fm.imageOverlay);
+    if (fm.imageOverlays && fm.imageOverlays.length > 0) {
+      for (const overlay of fm.imageOverlays) {
+        pushRef(overlay.path);
+      }
+    }
+
+    if (refs.length === 0) {
+      return new Map();
+    }
+
+    return this.copyImages(themePath, refs, sourceFile);
+  }
+
+  /**
+   * Rewrite copied frontmatter asset paths to be theme-local
+   */
+  private rewriteFrontmatterAssetPaths(
+    fm: PresentationFrontmatter,
+    pathMap: Map<string, string>
+  ): void {
+    const rewrite = (value?: string): string | undefined => {
+      if (!value) {
+        return value;
+      }
+      const key = value.split(/[#?]/)[0].trim();
+      return pathMap.get(key) || value;
+    };
+
+    fm.logo = rewrite(fm.logo);
+    fm.imageOverlay = rewrite(fm.imageOverlay);
+    if (fm.imageOverlays && fm.imageOverlays.length > 0) {
+      fm.imageOverlays = fm.imageOverlays.map((overlay) => ({
+        ...overlay,
+        path: rewrite(overlay.path) || overlay.path,
+      }));
     }
   }
 

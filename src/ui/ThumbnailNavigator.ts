@@ -4,6 +4,7 @@ import type { Presentation, Slide, Theme } from '../types';
 import type { ImagePathResolver } from '../renderer/SlideRenderer';
 import { SlideRenderer } from '../renderer/SlideRenderer';
 import type { ExcalidrawCacheEntry } from '../utils/ExcalidrawRenderer';
+import { getObsidianColorScheme } from '../utils/ColorScheme';
 
 export const THUMBNAIL_VIEW_TYPE = 'perspecta-thumbnail-navigator';
 
@@ -88,18 +89,8 @@ export class ThumbnailNavigatorView extends ItemView {
       renderer.setFailedDecompressionFiles(this.failedDecompressionFiles);
     }
     // Set system color scheme so 'system' mode resolves correctly
-    renderer.setSystemColorScheme(this.getSystemColorScheme());
+    renderer.setSystemColorScheme(getObsidianColorScheme());
     return renderer;
-  }
-
-  /**
-   * Detect the system color scheme (light or dark)
-   */
-  private getSystemColorScheme(): 'light' | 'dark' {
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-    return 'light';
   }
 
   getViewType(): string {
@@ -126,7 +117,12 @@ export class ThumbnailNavigatorView extends ItemView {
     // Cleanup
   }
 
-  setPresentation(presentation: Presentation, file?: TFile, theme?: Theme) {
+  /**
+   * Convention across all views: setPresentation(presentation, theme?, file?).
+   * Reordered from the previous (presentation, file?, theme?) to match
+   * PresentationView and reduce call-site mistakes.
+   */
+  setPresentation(presentation: Presentation, theme?: Theme, file?: TFile) {
     this.presentation = presentation;
     if (file) {
       this.currentFile = file;
@@ -142,10 +138,10 @@ export class ThumbnailNavigatorView extends ItemView {
   }
 
   /**
-   * Update the presentation reference without triggering a full re-render
-   * Used for incremental updates where we manually add/remove slides
+   * Update the presentation reference without triggering a full re-render.
+   * Same argument order as setPresentation for consistency.
    */
-  updatePresentationRef(presentation: Presentation, file?: TFile, theme?: Theme) {
+  updatePresentationRef(presentation: Presentation, theme?: Theme, file?: TFile) {
     this.presentation = presentation;
     if (file) {
       this.currentFile = file;

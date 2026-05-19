@@ -1,387 +1,279 @@
 # Perspecta Slides
 
-A powerful Obsidian plugin for creating beautiful presentations from Markdown. Write your slides in plain text, style them with themes, and present directly from Obsidian.
+Write Markdown. Get presentations. **Without ever touching a layout tool.**
 
 <img width="1728" height="1084" alt="Perspecta Slides UI" src="https://github.com/user-attachments/assets/7ba62593-ba0b-4efd-acdf-6b24dc58b4f0" />
 
-## Features
+---
 
-### Presentation Design
+## What Perspecta is — and what it isn't
 
-- **Built-in theme** - Default theme with dynamic gradient backgrounds and light/dark mode support
-- **Custom themes** - Save your design settings as reusable themes with bundled fonts
-- **Google Fonts** - Download and cache fonts locally for offline presentations
-- **Typography control** - Font selection, size scaling, weight, spacing, and line height
-- **Semantic colors** - Customizable colors for links, bullets, blockquotes, tables, and code
-- **Per-heading colors** - Different colors for H1, H2, H3, H4 headings
-- **Gradient backgrounds** - Dynamic slide-position-based gradient backgrounds
-- **Global text scale** - Scale all typography 0.5x to 2.0x without changing theme defaults
+Perspecta is **not** PowerPoint. It is not Keynote. There are no text boxes to drag, no alignment guides, no `Send to back`. The slide you see is not something you composed pixel by pixel — it is the result of your **Markdown content** being placed into a **predefined template** by the renderer.
 
-### Slide Layouts
+This is a deliberate choice. Here is why.
 
-- **Auto-detection** - Default layout intelligently detects columns from content structure
-- **Column layouts** - 1, 2, or 3 columns with equal or weighted ratios (1+2, 2+1)
-- **Image layouts** - Full-bleed, half-image (vertical/horizontal split), caption, and grid
-- **Special layouts** - Cover, title, and section divider slides
-- **Content margins** - Customizable header, footer, title, and content positioning
-- **Layout backgrounds** - Per-layout background colors or gradients
+### The problem with traditional slide tools
 
-### Images & Media
+In PowerPoint or Keynote, every slide is its own little design project. You decide where the title goes, how big the body text should be, where the bullet list aligns, what color the background fades into. Multiply by 30 slides and you have spent half a day arranging boxes instead of writing the talk. Worse, no two slides look quite the same — alignment drifts, font sizes diverge, your deck visibly degrades as your fatigue grows.
 
-- **Obsidian integration** - Use `![[image.png]]` wiki-links or standard Markdown `![](image.jpg)`
-- **Full-bleed images** - Edge-to-edge images with `object-fit: cover` for cinematic layouts
-- **Image positioning** - Control focal point with `x` and `y` parameters
-- **Background images** - Per-slide backgrounds with opacity control
-- **Multiple images** - Grid and split layouts for photo-heavy slides
-- **Image filters** - Darken, lighten, blur, grayscale, and sepia effects
+The slide became the artifact you laboured over. The talk became an afterthought.
 
-### Excalidraw Integration
+### Perspecta's bargain
 
-- **Native rendering** - Embed Excalidraw drawings directly with automatic SVG conversion
-- **Frame references** - `![[drawing#^frame=FrameName]]` shows frame contents in full (elements not clipped)
-- **Clipped frames** - `![[drawing#^clippedframe=FrameName]]` clips elements at frame boundary like a window
-- **Group references** - `![[drawing#^group=elementID]]` shows grouped elements
-- **Area references** - `![[drawing#^area=elementID]]` shows cropped view around element
-- **Smart caching** - Automatic cache invalidation when Excalidraw files are modified
+Perspecta offers you a different trade. You give up the freedom to place individual elements. In exchange, you get:
 
-### Content Features
+- **Consistency by construction.** Every slide in a deck looks like it belongs in the same deck, because the same theme governs them all.
+- **Speed.** A slide is a Markdown block, separated from the next by `---`. Writing five slides takes about as long as writing five paragraphs.
+- **Editability.** You can rewrite the whole talk in five minutes the night before, because nothing is locked into hand-placed boxes.
+- **Version control.** Your slides are plain text. `git diff` works. Search works. Find-and-replace works.
+- **Focus on the talk, not the file.** The design happens once — in the theme. From then on, every slide is just "what do I want to say?"
 
-- **Speaker notes** - Regular paragraphs become notes visible only to you
-- **Footnotes** - Reference footnotes with `[^id]` syntax, rendered with hanging numbers
-- **Wiki-link stripping** - `[[page]]` renders as "page" when links are disabled
-- **Newline support** - `\n` and actual newlines render as `<br />` in HTML
-- **Comments** - Use `//` for hidden comments
-- **Code blocks** - Automatic syntax highlighting
-- **Tables** - Full Markdown table support with styled headers
-- **Nested lists** - Multi-level lists with visual hierarchy
+### How design happens, then
 
-### Presentation Mode
+Design lives in the **theme**. A theme is a small set of values — fonts, colors, sizes, margins, line heights — that the renderer applies to every slide. You can pick a theme, tweak it through the Inspector panel, save it as your own. You can have a "client pitch" theme and a "team standup" theme and a "lightning talk" theme. Each deck inherits its character from its theme.
 
-- **Frameless window** - Clean, distraction-free presentation window
-- **Aspect ratio locking** - 16:9, 4:3, or 16:10 with automatic letterboxing
-- **Keyboard navigation** - Arrow keys, space, home/end, escape to exit
-- **Click navigation** - Click left/right thirds to navigate slides
-- **Smooth transitions** - Fade, slide, or instant transitions
+Within a deck, you have a few semantic choices — which **layout family** a slide uses (cover, two columns, full image, section break), which color **mode** (light, dark, system), what **background** to set. These are deviations from the theme's defaults. Everything else is content.
 
-### Editor Integration
-
-- **Thumbnail navigator** - Visual slide overview in the left sidebar
-- **Drag-and-drop reordering** - Rearrange slides visually
-- **Inspector panel** - Edit properties, layouts, and design in the right sidebar
-- **Live preview** - Changes update automatically with debounced refresh
-- **Cursor sync** - Navigator highlights the slide at cursor position
-- **Demo presentation** - Create demo presentation button for quick setup with auto font installation
-
-### Export
-
-- **HTML export** - Standalone HTML with embedded styles and navigation
-- **Keyboard controls** - Exported presentations include full navigation
-- **Theme toggle** - Light/dark mode switch in exported files
-- **Help overlay** - Press `?` for keyboard shortcuts
-- **External images** - Images extracted to separate folder for smaller HTML
-- **Progress bar** - Visual slide position indicator in exported presentations
-
-### Presenter View
-
-- **Current slide** - Large view of what your audience sees
-- **Speaker notes** - Prominently displayed with paragraph navigation
-- **Timer** - Track elapsed time with play/pause/reset controls
-- **Slide focus / Text focus** - Toggle between seeing slides or notes prominently
-- **Dual-monitor support** - Electron-based presenter window for external displays
-
-<img width="600" height="420" alt="Presenter View" src="https://github.com/user-attachments/assets/1c53b40c-1ab5-4d0f-a6c7-9f234480cb4b" />
-
-
-## Known Issues
-
-- **UI rendering with Obsidian 1.11 on Windows**  
-  Issues with UI and font rendering in Obsidian 1.11 on Windows, related to the new Electron version.
-
-- **Non-slide Markdown files**  
-  Currently, any Markdown file can be opened as a preview/slide deck regardless of its content, which can lead to unexpected behavior or rendering issues.
-
-- **Delayed initialization**  
-  In some cases, the slide navigator (left sidebar), the inspector (right sidebar), or the preview window does not reflect the currently active file. Re-clicking the **“Open slide presentation”** icon in the Obsidian ribbon usually resolves this.
-
-- **Themes and Obsidian Sync**  
-   Custom themes that include images or fonts may not fully sync via Obsidian Sync due to binary file sync limitations. See [THEME_SYNC_GUIDE.md](THEME_SYNC_GUIDE.md) for comprehensive troubleshooting and best practices to ensure complete theme synchronization across devices.
-
-- **Footnote slide layout overflow**  
-  The footnotes slide layout does not currently handle large numbers of footnotes. If the content exceeds the available space, it is not automatically split across multiple slides.
-
-- **Limited per-layout settings**  
-  The plan is to provide each slide layout with a set of presentation-wide overrides stored in the theme. This would remove the need to repeat the same settings on individual slides.
-
-- **Growing frontmatter due to overrides**  
-  Presentation-wide overrides are currently stored in frontmatter. Heavy customization can lead to a large number of entries. Custom themes should persist overrides as new defaults so that values matching the theme defaults can be removed from the frontmatter.
+This works for the vast majority of presentations. It does not work if you need a Sankey diagram squeezed into the corner of a slide, or precise hand-tuned typography for a museum exhibit. For those, use the right tool. For everything else — internal updates, conference talks, lecture series, workshop decks, demo slides — Perspecta gets out of your way and lets you write.
 
 ---
 
-## Disclaimer
+## Quick start
 
-- **Intended trade-off**  
-  Perspecta Slides is designed as a *rapid* presentation tool once a theme has been adjusted to your needs. To reduce design effort for authors, it makes assumptions about slide layout (e.g. column detection, text placement in predefined slide layouts).
+Create a new note in your vault. Write this:
 
-- **Not a “design anything” tool**  
-  Design decisions are intentionally moved into the theme, minimizing layout instructions within individual slides. There is no design mode with freely placeable text areas. The plugin targets users for whom the provided presets and customization options are sufficient. Currently, slide layouts, design options, and overrides are hardcoded. Exposing layouts as separate slide-layout files may be considered in the future.
+```markdown
+---
+title: My First Deck
+---
+
+# Hello World
+
+This is a Markdown paragraph and becomes a speaker note.
+
+	Tab-indent a line to put it on the slide.
 
 ---
 
-## Quick Start
+## Second slide
 
-### Basic Slide Structure
+	- List items appear on the slide when tab-indented
+	- Plain paragraphs above stay as speaker notes
+```
 
-Separate slides with `---` (horizontal rule):
+Open the file. Click the slide icon in the ribbon. You have a presentation.
 
-```markdown
-# First Slide
+Two slides, separated by `---`. Headings are visible. Tab-indented content is visible. Everything else is a speaker note that only you see in the presenter view.
 
-Content here
+That is, almost in its entirety, the writing workflow.
 
 ---
 
-# Second Slide
+## How a slide is built
 
-More content
+Each slide has four conceptual layers:
+
+```
+┌─ Canvas        — the slide's rectangle (16:9 by default)
+├─ Grid          — safe area inside the canvas (margins, header/footer position)
+├─ Slots         — title region and body region (1–3 columns)
+└─ Content       — your headings, lists, blockquotes, images
 ```
 
-### Speaker Notes vs. Visible Content
+Themes set the canvas, the grid, and the size/color of content. Layouts select which slot configuration is used. You write the content.
 
-- **Headings** (`#`, `##`, etc.) → Visible on slide
-- **Tab-indented content** → Visible on slide
-- **Regular paragraphs** → Speaker notes (only you see them)
-
-```markdown
-# Welcome
-
-This is content on the slide!
-
-Notes:
-This paragraph is a speaker note.
-
-- This list appears in the speaker notes
-- So does this one
-
-More notes for the presenter.
-```
-
-### Images
-
-```markdown
-![[my-image.png]]
-![[folder/photo.jpg]]
-![Alt text](path/to/image.png)
-```
-
-### Excalidraw Drawings
-
-Embed Excalidraw drawings with optional reference types:
-
-```markdown
-![[drawing.excalidraw]]
-![[drawing#^frame=MyFrame]]
-![[drawing#^clippedframe=MyFrame]]
-![[drawing#^group=elementID]]
-![[drawing#^area=elementID]]
-```
-
-| Reference Type | Description |
-| --- | --- |
-| `frame=` | Shows frame contents in full (elements extend beyond frame if needed) |
-| `clippedframe=` | Clips elements at frame boundary like a window/mask, zero padding |
-| `group=` | Shows all elements in the same group |
-| `area=` | Cropped view around element's bounding box |
-
-Frames can be referenced by name or ID. Groups and areas can reference elements by ID or section heading (`# Heading`).
-
-### Comments
-
-```markdown
-// Hidden from everyone - slide and speaker notes
-```
-
-### Footnotes
-
-```markdown
-This statement needs a citation[^1].
-
-[^1]: Source: Research Paper, 2024
-```
+For a complete description of the layout system — what each variable controls, what is and isn't expressible — see **[docs/LAYOUT-BLUEPRINT.md](docs/LAYOUT-BLUEPRINT.md)**. It is the source of truth for the system's architecture.
 
 ---
 
-## YAML Frontmatter
+## Layout families
 
-Configure your presentation at the top of the file:
+A slide picks a layout via `layout:` in its meta block (or auto-detects one). The choices are grouped into four families:
+
+| Family | Layouts | Purpose |
+|---|---|---|
+| **Centered** | `cover`, `title`, `section` | Openers and act breaks. Sparse content, large headings, centered. |
+| **Slot-based** | `default`, `1-column`, `2-columns`, `3-columns`, `2-columns-1+2`, `2-columns-2+1` | The workhorse. A title region and one to three body columns. |
+| **Image-driven** | `full-image`, `half-image`, `half-image-horizontal`, `caption`, `grid` | When the image is the message. |
+| **Special** | `footnotes` | A dedicated end-of-deck slide for aggregated references. |
+
+You do not need to specify a layout. The `default` layout intelligently detects how many columns your content wants based on the structure of your Markdown.
+
+---
+
+## Setting things per deck and per slide
+
+### Deck-wide (YAML frontmatter)
+
+At the top of your file, between two lines of `---`:
 
 ```yaml
 ---
 title: My Presentation
 author: Your Name
 theme: default
-
-# Typography
-titleFont: Helvetica
-titleFontWeight: 700
-bodyFont: Georgia
-bodyFontWeight: 400
-textScale: 1.0
-lineHeight: 1.1
-
-# Colors (optional overrides)
-lightLinkColor: '#0066cc'
-darkLinkColor: '#66b3ff'
-
-# Header/Footer
-headerLeft: 'Company Name'
-footerRight: '{{slideNumber}}'
-
-# Settings
 aspectRatio: '16:9'
-lockAspectRatio: true
-transition: fade
-mode: light
+mode: system
 ---
 ```
 
----
+Frontmatter controls everything that applies to the whole deck: theme, aspect ratio, default mode, header/footer text, typography overrides. The Inspector panel exposes most of these as form controls.
 
-## Per-Slide Settings
+### Per-slide (meta block)
 
-Add metadata at the beginning of any slide:
+Immediately after the slide separator, before the content, a small block of `key: value` lines:
 
 ```markdown
 ---
 
-layout: title
+layout: full-image
+background: hero.jpg
 mode: dark
-background: hero-image.jpg
-opacity: 50%
 
-# Dark Title Slide
-
-With a background image
+# A bold title over an image
 ```
 
-### Available Layouts
+Recognized keys: `layout`, `background`, `opacity`, `mode`, `hide-overlay`, `filter`.
 
-| Layout                  | Description                                |
-| ----------------------- | ------------------------------------------ |
-| `default`               | Auto-detects columns from content          |
-| `title`                 | Centered title slide                       |
-| `section`               | Section divider with accent background     |
-| `cover`                 | Opening/closing slide (no header/footer)   |
-| `half-image`            | Vertical split (image + text side by side) |
-| `half-image-horizontal` | Horizontal split (stacked)                 |
-| `caption`               | Full image with title bar and caption      |
-| `full-image`            | Edge-to-edge image(s)                      |
-| `1-column`              | Single column layout                       |
-| `2-columns`             | Two equal columns                          |
-| `3-columns`             | Three equal columns                        |
-| `2-columns-1+2`         | Narrow left, wide right                    |
-| `2-columns-2+1`         | Wide left, narrow right                    |
-| `footnotes`             | Slide with footnotes section at bottom     |
+This is **not** YAML. It is a flat list of simple keys, terminated by a blank line.
+
+---
+
+## Content conventions
+
+Perspecta uses a Markdown convention to distinguish what lands on the slide from what stays as speaker notes:
+
+- **Headings** (`#`, `##`, `###`, …) → always on the slide.
+- **Tab-indented lines** (or 4 spaces) → on the slide.
+- **Plain paragraphs** → speaker notes, visible only in the presenter view.
+- **`^Kicker text`** → a small eyebrow line above a heading.
+- **`// commented line`** → hidden from both slide and notes.
+- **`notes:` on its own line** → everything after this is explicitly a speaker note.
+
+Need a different convention? Set `contentMode: advanced-slides` in the frontmatter to switch to a mode where all content is visible by default.
+
+For separating slides: `---` or `----` (three or four dashes) is a normal slide break. `-----` or more (five or more dashes) is an **act break** — it marks the start of a new narrative section. A future "light table" view will visualize these breaks; for now, the parser accepts the convention so you can start writing it today.
+
+---
+
+## Images
+
+```markdown
+![[my-image.png]]          ← Obsidian wikilink
+![alt text](path.png)      ← standard Markdown
+```
+
+Images placed in a body column become inline figures. Images on slides with `layout: full-image`, `half-image`, or `caption` become the slide's dominant visual.
+
+---
+
+## Excalidraw
+
+Excalidraw drawings render natively. You can reference parts of a drawing:
+
+| Reference | Meaning |
+|---|---|
+| `![[drawing.excalidraw]]` | The full drawing |
+| `![[drawing#^frame=Name]]` | A specific frame, including elements extending beyond it |
+| `![[drawing#^clippedframe=Name]]` | A frame's contents clipped to its boundary |
+| `![[drawing#^group=ID]]` | All elements in a named group |
+| `![[drawing#^area=ID]]` | A cropped view around an element |
 
 ---
 
 ## Themes
 
-### Built-in Theme
+A theme is a small bundle of values — fonts, colors, sizes, margins — that the renderer applies to every slide using it. Perspecta ships with one **built-in theme**, named `Default`. Any further themes you create are **custom themes**, stored in your vault under `perspecta-themes/`.
 
-- **default** - Clean, professional theme with Inter font and dynamic gradient backgrounds
+**To create a custom theme:** open a presentation, tune the Inspector until it looks the way you want, then run **"Save as custom theme"** from the command palette. The theme will appear in dropdowns marked with a ★.
 
-```yaml
----
-theme: default
----
-```
+**To switch themes mid-deck:** the Inspector offers two modes:
+- *Apply theme only (keep overrides)* — non-destructive re-application; your existing frontmatter overrides remain.
+- *Apply and reset overrides* — clears overrides so the new theme's defaults take effect.
 
-### Custom Themes
+**Sharing themes across devices:** custom themes live in the vault and can be synced via Obsidian Sync. Binary fonts and images may have sync caveats on some devices. See **[docs/THEME-SYNC-GUIDE.md](docs/THEME-SYNC-GUIDE.md)** for the full guide.
 
-1. Customize your presentation using the Inspector panel
-2. Run **"Save as custom theme"** from the command palette
-3. Enter a name for your theme
-
-Custom themes include fonts, colors, typography, and margin settings. They appear in dropdowns with a ★ marker.
-
-#### Syncing Themes Across Devices
-
-Custom themes are stored in the vault (`perspecta-themes/` folder) and can be synced via Obsidian Sync. However, binary files (fonts and images) may have sync issues on some devices.
-
-**For reliable multi-device syncing:**
-- See [THEME_SYNC_GUIDE.md](THEME_SYNC_GUIDE.md) for detailed setup instructions
-- Text files (theme.json, theme.css) always sync reliably
-- Fonts and images may need manual setup on secondary devices
-- Prefer system fonts and minimize image sizes for better compatibility
+For the theme file format, see **[docs/THEME-SPECIFICATION.md](docs/THEME-SPECIFICATION.md)**.
 
 ---
 
 ## Commands
 
-| Command                | Description                             |
-| ---------------------- | --------------------------------------- |
+| Command | Description |
+|---|---|
 | Open presentation view | Opens current file in presentation view |
-| Toggle slide navigator | Show/hide thumbnail navigator           |
-| Toggle slide inspector | Show/hide inspector panel               |
-| Start presentation     | Fullscreen presentation window          |
-| Start presenter view   | Speaker view with notes and timer       |
-| Export to HTML         | Export as standalone HTML               |
-| Save as custom theme   | Save current settings as theme          |
-| Insert slide separator | Insert `---` at cursor                  |
+| Toggle slide navigator | Show/hide thumbnail navigator |
+| Toggle slide inspector | Show/hide inspector panel |
+| Start presentation | Fullscreen presentation window |
+| Start presenter view | Speaker view with notes and timer |
+| Export to HTML | Export as standalone HTML |
+| Save as custom theme | Save current settings as a theme |
+| Insert slide separator | Insert `---` at the cursor |
 
 ---
 
-## Keyboard Shortcuts
+## Keyboard shortcuts
 
-### In Presentation Mode
+**In presentation mode:**
 
-| Key                        | Action                         |
-| -------------------------- | ------------------------------ |
-| `→` `↓` `Space` `PageDown` | Next slide                     |
-| `←` `↑` `PageUp`           | Previous slide                 |
-| `Home`                     | First slide                    |
-| `End`                      | Last slide                     |
-| `Escape`                   | Exit fullscreen / Close window |
+| Key | Action |
+|---|---|
+| `→` `↓` `Space` `PageDown` | Next slide |
+| `←` `↑` `PageUp` | Previous slide |
+| `Home` / `End` | First / last slide |
+| `Escape` | Exit |
 
-### In Presenter View
+**In presenter view:**
 
-| Key     | Action              |
-| ------- | ------------------- |
-| `↑` `↓` | Navigate slides     |
-| `←` `→` | Navigate paragraphs |
+| Key | Action |
+|---|---|
+| `↑` `↓` | Navigate slides |
+| `←` `→` | Navigate speaker-note paragraphs |
 
 ---
 
 ## Installation
 
-> **Note**: Perspecta Slides is currently in early development. Installation via the BRAT plugin is required until it reaches the Obsidian Community Plugins registry.
+> **Note:** Perspecta Slides is currently in early development. Installation via the BRAT plugin is required until it reaches the Obsidian Community Plugins registry.
 
-### Install via BRAT (Recommended)
+**Via BRAT (recommended):**
 
-1. Install the [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat) if you haven't already:
-   - Open Settings → Community plugins
-   - Click "Browse" and search for "BRAT"
-   - Install and enable BRAT
+1. Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) from Community Plugins.
+2. In BRAT settings: *Add Beta Plugin* → paste `https://github.com/owrede/perspecta-slides`.
+3. Enable Perspecta Slides under *Community plugins*.
 
-2. Add Perspecta Slides to BRAT:
-   - Open the BRAT plugin settings
-   - Click "Add Beta Plugin"
-   - Paste the repository URL: `https://github.com/owrede/perspecta-slides`
-   - Click "Add Plugin"
+**Manual:**
 
-3. Enable the plugin:
-   - Go to Settings → Community plugins
-   - Search for "Perspecta Slides"
-   - Click the toggle to enable
+1. Download the latest release from [GitHub Releases](https://github.com/owrede/perspecta-slides/releases).
+2. Extract to `.obsidian/plugins/perspecta-slides/`.
+3. Reload Obsidian and enable the plugin.
 
-### Manual Installation
+---
 
-1. Download the latest release from [GitHub Releases](https://github.com/owrede/perspecta-slides/releases)
-2. Extract the files to `.obsidian/plugins/perspecta-slides/`
-3. Reload Obsidian or go to Settings → Community plugins and enable "Perspecta Slides"
+## Documentation
+
+Deeper-dive references, kept close to the code:
+
+- **[docs/LAYOUT-BLUEPRINT.md](docs/LAYOUT-BLUEPRINT.md)** — the layout system as a normative blueprint: variables, families, freedoms, extension points.
+- **[docs/PERSPECTA-SLIDES-SPEC.md](docs/PERSPECTA-SLIDES-SPEC.md)** — Markdown syntax reference.
+- **[docs/THEME-SPECIFICATION.md](docs/THEME-SPECIFICATION.md)** — theme file format.
+- **[docs/THEME-SYNC-GUIDE.md](docs/THEME-SYNC-GUIDE.md)** — multi-device theme sync.
+- **[docs/IMAGE-SYSTEM.md](docs/IMAGE-SYSTEM.md)** — image resolution and rendering.
+- **[docs/INCREMENTAL-UPDATES.md](docs/INCREMENTAL-UPDATES.md)** — live-update internals.
+- **[CHANGELOG.md](CHANGELOG.md)** — version history.
+
+---
+
+## Known limitations
+
+- **Obsidian 1.11 on Windows** — known font and UI rendering issues, related to the new Electron version.
+- **Any Markdown file opens as a deck** — there is currently no check that a file is intended as a presentation.
+- **Sidebar sometimes stale** — re-clicking the *Open slide presentation* ribbon icon usually fixes it.
+- **Footnotes slide overflow** — large numbers of footnotes do not split across pages.
+- **Frontmatter can grow** — heavy per-deck customization accumulates many frontmatter keys. Save as a custom theme to fold these into defaults.
 
 ---
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).

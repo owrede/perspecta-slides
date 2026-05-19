@@ -31,20 +31,21 @@ export interface PresentationFrontmatter {
   // Legacy: fontSizeOffset affects all text (deprecated, use titleFontSize/bodyFontSize)
   fontSizeOffset?: number;
 
-  // Typography - Spacing (in em)
+  // Typography - Spacing (in slide-units; 1 slide-unit ≈ 1% of slide diagonal)
   headlineSpacingBefore?: number;
   headlineSpacingAfter?: number;
   listItemSpacing?: number;
-  lineHeight?: number; // Line height multiplier (default: 1.1)
+  lineHeight?: number; // Line height multiplier (default: 1.2)
 
-  // Typography - Margins (in em, absolute distance from slide edge)
-  headerTop?: number; // Distance of header from top edge (default: 2.5em)
-  footerBottom?: number; // Distance of footer from bottom edge (default: 2.5em)
-  titleTop?: number; // Distance of title from top edge (default: 5em)
-  contentTop?: number; // Distance of content from top edge (default: 12em)
-  contentLeft?: number; // Left margin for all content including header/footer (default: 5em)
-  contentRight?: number; // Right margin for all content including header/footer (default: 5em)
-  contentWidth?: number; // Legacy: Left/right margin (deprecated, use contentLeft/contentRight)
+  // Typography - Margins (in slide-units, absolute distance from the slide edge)
+  // See docs/LAYOUT-BLUEPRINT.md §2.2 for grid semantics.
+  headerTop?: number; // Distance of header strip from top edge
+  footerBottom?: number; // Distance of footer strip from bottom edge
+  titleTop?: number; // Distance of slot-header from top edge
+  contentTop?: number; // Distance of slot-columns from top edge
+  contentLeft?: number; // Left inset of the safe area (applies to header, footer, slots)
+  contentRight?: number; // Right inset of the safe area
+  contentWidth?: number; // Legacy: combined left/right inset (deprecated, use contentLeft/contentRight)
 
   // Legacy: contentTopOffset as percentage (deprecated)
   contentTopOffset?: number;
@@ -220,29 +221,44 @@ export interface SlideMetadata {
  * SPECIAL LAYOUTS:
  * - footnotes: Display footnotes as main slide content with special styling
  */
-export type SlideLayout =
-  // Standard slides
-  | 'cover'
-  | 'title'
-  | 'section'
-  | 'default'
-  // Column slides (Perspecta extension)
-  | '1-column'
-  | '2-columns'
-  | '3-columns'
-  | '2-columns-1+2'
-  | '2-columns-2+1'
-  // Image slides
-  | 'full-image'
-  | 'full-image-contained'
-  | 'half-image'
-  | 'half-image-horizontal'
-  | 'caption'
-  | 'caption-contained'
-  // Grid slides
-  | 'grid'
-  // Special layouts
-  | 'footnotes';
+/**
+ * Single source of truth for layout names.
+ * Grouped by Family (see docs/LAYOUT-BLUEPRINT.md §3).
+ * The SlideLayout type, parser recognition, and renderer class lookups must all derive from this.
+ */
+export const LAYOUTS = [
+  // Family A — Centered
+  'cover',
+  'title',
+  'section',
+  // Family B — Slot-based
+  'default',
+  '1-column',
+  '2-columns',
+  '3-columns',
+  '2-columns-1+2',
+  '2-columns-2+1',
+  // Family C — Image-driven
+  'full-image',
+  'full-image-contained',
+  'half-image',
+  'half-image-horizontal',
+  'caption',
+  'caption-contained',
+  'grid',
+  // Family D — Special
+  'footnotes',
+] as const;
+
+export type SlideLayout = (typeof LAYOUTS)[number];
+
+/**
+ * Runtime check whether a string is a recognized layout name.
+ * Used by the parser to validate layout values from slide meta blocks.
+ */
+export function isValidLayout(value: string): value is SlideLayout {
+  return (LAYOUTS as readonly string[]).includes(value);
+}
 
 /**
  * Image metadata for positioning and styling
@@ -432,6 +448,15 @@ export interface Theme {
       light: ThemeModePreset;
       dark: ThemeModePreset;
     };
+    bundledFonts?: Array<{
+      family: string;
+      files: Array<{
+        path: string;
+        weight: number;
+        style: string;
+        format: string;
+      }>;
+    }>;
   };
 }
 
@@ -481,8 +506,16 @@ export interface CachedFontData {
   cachedAt: number;
 }
 
+/**
+ * The canonical "fall back to this when no theme is selected" key.
+ * Refers to the built-in theme defined in src/themes/builtin/index.ts.
+ * If a user clears the theme dropdown, frontmatter.theme becomes undefined
+ * and the plugin resolves to this theme.
+ */
+export const PLUGIN_DEFAULT_THEME = 'default';
+
 export const DEFAULT_SETTINGS: PerspecaSlidesSettings = {
-  defaultTheme: '', // Empty = use CSS defaults
+  defaultTheme: PLUGIN_DEFAULT_THEME,
   showThumbnailNavigator: true,
   showInspector: true,
   defaultAspectRatio: '16:9',

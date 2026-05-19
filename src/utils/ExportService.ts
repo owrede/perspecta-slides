@@ -5,6 +5,7 @@ import type { ImagePathResolver } from '../renderer/SlideRenderer';
 import { SlideRenderer } from '../renderer/SlideRenderer';
 import type { FontManager } from './FontManager';
 import type { ExcalidrawRenderer } from './ExcalidrawRenderer';
+import { getObsidianColorScheme } from './ColorScheme';
 
 /**
  * Confirmation modal for overwriting export folder
@@ -96,7 +97,7 @@ export class ExportService {
   ): Promise<void> {
     try {
       const renderer = new SlideRenderer(presentation, theme || undefined, this.imagePathResolver);
-      renderer.setSystemColorScheme(this.getSystemColorScheme());
+      renderer.setSystemColorScheme(getObsidianColorScheme());
       if (customFontCSS) {
         renderer.setCustomFontCSS(customFontCSS);
       }
@@ -1913,13 +1914,6 @@ export class ExportService {
       .replace(/'/g, '&#39;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
-  }
-
-  private getSystemColorScheme(): 'light' | 'dark' {
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-    return 'light';
   }
 
   /**

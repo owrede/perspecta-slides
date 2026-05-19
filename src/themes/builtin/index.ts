@@ -122,36 +122,58 @@ const defaultThemeJson = {
   },
 };
 
-const defaultThemeCSS = `/* Default Theme CSS */
-/* Clean, professional theme with dynamic gradient backgrounds */
+const defaultThemeCSS = `/* Default Theme CSS — values aligned with docs/LAYOUT-BLUEPRINT.md §4 */
 
 :root {
-  /* Typography - Fonts */
+  /* Typography — Font weights */
   --title-font-weight: 700;
   --body-font-weight: 400;
   --header-font-weight: 400;
   --footer-font-weight: 400;
-  
-  /* Typography - Font Sizes */
-  --title-font-size-offset: -40;
-  --body-font-size-offset: -20;
-  --header-font-size-offset: 0;
-  --footer-font-size-offset: 0;
-  --text-scale: 1;
-  
-  /* Typography - Spacing */
+
+  /* Typography — Type scale (multipliers of --slide-unit; see Blueprint §4.2.5) */
+  /* Slot-based layouts (default, *-column) */
+  --h1-size-default: 7;
+  --h2-size-default: 5.5;
+  --h3-size-default: 4.5;
+  --h4-size-default: 3.5;
+  --h5-size-default: 3;
+  --h6-size-default: 2.5;
+  /* Centered layouts (cover, title) */
+  --h1-size-centered: 9;
+  --h2-size-centered: 7;
+  /* Body and accents */
+  --body-size: 2.8;
+  --blockquote-size: 2.8;
+  --kicker-size: 1.8;
+  --header-size: 1.8;
+  --footer-size: 1.8;
+  --footnote-size: 1.8;
+  --caption-size: 2;
+  --caption-title-size: 3.5;
+  --footnotes-title-size: 6;
+  --footnotes-list-size: 2;
+
+  /* Typography — Rhythm */
   --headline-spacing-before: 0;
   --headline-spacing-after: 1.3;
   --list-item-spacing: 1.2;
   --line-height: 1.2;
-  
-  /* Typography - Margins */
+
+  /* Grid (safe area) — distances from canvas edges, in slide-units */
   --header-top: 3;
   --footer-bottom: 2.5;
-  --title-top: 6.4;
-  --content-top: 22;
   --content-left: 4;
   --content-right: 4;
+
+  /* Slots — distances from canvas top, in slide-units */
+  --title-top: 6.4;
+  --content-top: 22;
+
+  /* Column geometry */
+  --column-gap-2: 3;
+  --column-gap-3: 5;
+  --columns-bottom-offset: 4;
 }`;
 
 /**
@@ -184,9 +206,12 @@ function createDefaultTheme(): Theme {
     DarkBodyTextColor: json.presets.dark.text.body,
     LightBodyTextColor: json.presets.light.text.body,
     
-    // Background colors
-    DarkBackgroundColor: json.presets.dark.backgrounds.general.colors?.[0] || '#1a1a1a',
-    LightBackgroundColor: json.presets.light.backgrounds.general.colors?.[0] || '#ffffff',
+    // Background colors — explicit neutral single-color defaults.
+    // The dynamic gradient list is exposed separately via LightBgGradient / DarkBgGradient
+    // and only takes effect when frontmatter.useDynamicBackground is enabled.
+    // Single-color and gradient are independent concerns.
+    DarkBackgroundColor: '#1a1a1a',
+    LightBackgroundColor: '#ffffff',
     
     // Semantic colors (light mode)
     LightLinkColor: json.presets.light.semanticColors.link,

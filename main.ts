@@ -32,19 +32,9 @@ import { getBuiltInThemeNames } from './src/themes/builtin';
 import { DebugService, setDebugService } from './src/utils/DebugService';
 import { ExportService } from './src/utils/ExportService';
 import { ExcalidrawRenderer } from './src/utils/ExcalidrawRenderer';
+import { getObsidianColorScheme } from './src/utils/ColorScheme';
 
 const SLIDES_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
-
-/**
- * Detect the system color scheme (light or dark)
- * Uses window.matchMedia which works in Obsidian's Electron context
- */
-function getSystemColorScheme(): 'light' | 'dark' {
-  if (typeof window !== 'undefined' && window.matchMedia) {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  }
-  return 'light';
-}
 
 export default class PerspectaSlidesPlugin extends Plugin {
   settings: PerspecaSlidesSettings = DEFAULT_SETTINGS;
@@ -762,23 +752,19 @@ export default class PerspectaSlidesPlugin extends Plugin {
       // IPC setup failed silently
     }
 
-    // Listen for system color scheme changes and refresh all views
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      const handleColorSchemeChange = () => {
-        // Refresh the active presentation if there is one
-        const activeFile = this.app.workspace.getActiveFile();
-        if (activeFile && activeFile.extension === 'md') {
-          void this.updateSidebars(activeFile);
-        }
-        // Also update the presentation window if it's open
-        if (this.presentationWindow?.isOpen() && this.currentPresentationFile) {
-          void this.refreshPresentationWindow();
-        }
-      };
-      colorSchemeQuery.addEventListener('change', handleColorSchemeChange);
-      this.register(() => colorSchemeQuery.removeEventListener('change', handleColorSchemeChange));
-    }
+    // Listen for Obsidian theme changes (light ↔ dark) and refresh all views.
+    // We follow Obsidian's own theme, not the OS-level prefers-color-scheme,
+    // because Obsidian's theme can be set independently of the OS.
+    const handleColorSchemeChange = () => {
+      const activeFile = this.app.workspace.getActiveFile();
+      if (activeFile && activeFile.extension === 'md') {
+        void this.updateSidebars(activeFile);
+      }
+      if (this.presentationWindow?.isOpen() && this.currentPresentationFile) {
+        void this.refreshPresentationWindow();
+      }
+    };
+    this.registerEvent(this.app.workspace.on('css-change', handleColorSchemeChange));
 
     addIcon('presentation', SLIDES_ICON);
 
@@ -1663,7 +1649,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       view.setImagePathResolver(this.imagePathResolver);
 
       // Update internal presentation reference WITHOUT triggering a full re-render
-      view.updatePresentationRef(presentation, file, theme);
+      view.updatePresentationRef(presentation, theme, file);
 
       // For structural changes, we need to be careful about order
       // Simplest approach: remove then add, then renumber
@@ -1705,7 +1691,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       if (!(view instanceof InspectorPanelView)) {
         continue;
       }
-      view.setPresentation(presentation, file);
+      view.setPresentation(presentation, undefined, file);
       if (presentation.slides[currentSlideIndex]) {
         view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
       }
@@ -1778,7 +1764,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
         view.setExcalidrawSvgCache(this.excalidrawRenderer.getSvgCache());
         view.setFailedDecompressionFiles(this.excalidrawRenderer.getFailedDecompressionFiles());
       }
-      view.setPresentation(presentation, file, theme);
+      view.setPresentation(presentation, theme, file);
       view.setOnSlideSelect((index) => {
         void this.navigateToSlide(index, presentation, file);
       });
@@ -1811,7 +1797,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       if (this.themeLoader) {
         view.setThemeLoader(this.themeLoader);
       }
-      view.setPresentation(presentation, file);
+      view.setPresentation(presentation, theme, file);
       if (presentation.slides.length > 0 && presentation.slides[currentSlideIndex]) {
         view.setCurrentSlide(presentation.slides[currentSlideIndex], currentSlideIndex);
       }

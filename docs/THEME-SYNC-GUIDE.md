@@ -13,6 +13,7 @@ perspecta-themes/
 └── my-theme/
     ├── theme.json          # Theme configuration (TEXT)
     ├── theme.css           # Theme styles (TEXT)
+    ├── bundledFonts[]      # Font manifest in theme.json (TEXT metadata)
     ├── demo.md             # Sample presentation (TEXT)
     ├── fonts/              # Font files (BINARY)
     │   ├── font1.woff2
@@ -23,6 +24,20 @@ perspecta-themes/
 ```
 
 ## Obsidian Sync Configuration
+
+## What Changed in 0.2.23+
+
+Theme packaging and re-application were hardened to improve cross-device reliability:
+
+- **Bundled font manifest:** `theme.json` now includes explicit bundled font metadata (`family`, `weight`, `style`, `format`, and relative path).
+- **Manifest-based loading:** Theme fonts are loaded from this manifest instead of inferred from filenames.
+- **Resolved export defaults:** Export now captures effective font defaults from frontmatter + base theme fallback, so required fonts are bundled even if not explicitly set in frontmatter.
+- **Optional font cache install:** Applying a theme no longer requires installing bundled fonts into the global Perspecta font cache. Installation is optional from Inspector.
+- **Theme apply mode:** Inspector now supports:
+  - `Apply theme only (keep overrides)`
+  - `Apply and reset overrides`
+  This prevents unintended full redesign when re-applying a synced theme.
+- **Extra asset portability:** Frontmatter-linked assets (`logo`, `imageOverlay`, `imageOverlays`) are now copied into the exported theme package and rewritten to theme-local paths.
 
 ### Option 1: Full Sync (Recommended for Small Themes)
 

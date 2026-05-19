@@ -9,6 +9,7 @@ import type { ThemeLoader } from '../themes/ThemeLoader';
 import { PresentationWindow } from './PresentationWindow';
 import { getDebugService } from '../utils/DebugService';
 import type { ExcalidrawCacheEntry } from '../utils/ExcalidrawRenderer';
+import { getObsidianColorScheme } from '../utils/ColorScheme';
 
 export const PRESENTATION_VIEW_TYPE = 'perspecta-presentation';
 
@@ -125,6 +126,27 @@ export class PresentationView extends ItemView {
   }
 
   /**
+   * Resolve the active theme for rendering, preferring:
+   *   1) the theme passed in via setPresentation (this.theme)
+   *   2) the theme named in the presentation's frontmatter
+   *   3) undefined — SlideRenderer falls back to generateDefaultCSS()
+   *
+   * Previously, renderSlides() looked up the theme by frontmatter only and
+   * silently dropped `this.theme`, which caused empty/transparent slides
+   * when frontmatter.theme was unset.
+   */
+  private resolveActiveTheme(): Theme | undefined {
+    if (this.theme) {
+      return this.theme;
+    }
+    const frontmatterTheme = this.presentation?.frontmatter.theme;
+    if (frontmatterTheme) {
+      return this.getThemeByName(frontmatterTheme);
+    }
+    return undefined;
+  }
+
+  /**
    * Create a SlideRenderer with the image path resolver
    */
   private createRenderer(theme?: Theme): SlideRenderer {
@@ -180,18 +202,8 @@ export class PresentationView extends ItemView {
       renderer.setFailedDecompressionFiles(this.failedDecompressionFiles);
     }
     // Set system color scheme so 'system' mode resolves correctly
-    renderer.setSystemColorScheme(this.getSystemColorScheme());
+    renderer.setSystemColorScheme(getObsidianColorScheme());
     return renderer;
-  }
-
-  /**
-   * Detect the system color scheme (light or dark)
-   */
-  private getSystemColorScheme(): 'light' | 'dark' {
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-    return 'light';
   }
 
   getViewType(): string {
@@ -419,7 +431,7 @@ export class PresentationView extends ItemView {
         return false;
       }
 
-      const theme = this.getThemeByName(this.presentation.frontmatter.theme || '');
+      const theme = this.resolveActiveTheme();
       const renderer = this.createRenderer(theme);
 
       const slideHTML = renderer.renderSingleSlideHTML(
@@ -630,7 +642,7 @@ More content here...`,
       return;
     }
 
-    const theme = this.getThemeByName(this.presentation.frontmatter.theme || '');
+    const theme = this.resolveActiveTheme();
     const themeClasses = theme?.template.CssClasses || '';
 
     // Create slide wrapper with aspect ratio
@@ -1370,7 +1382,7 @@ More content here...`,
         return;
       }
 
-      const theme = this.getThemeByName(this.presentation.frontmatter.theme || '');
+      const theme = this.resolveActiveTheme();
       const renderer = this.createRenderer(theme);
       const html = renderer.renderHTML();
 

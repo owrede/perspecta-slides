@@ -7,7 +7,7 @@ import type {
   SlideLayout,
 } from '../types';
 import { ImageData } from '../types';
-import { generateThemeCSS } from '../themes';
+import { generateThemeCSS, generateDefaultCSS } from '../themes';
 import { getDebugService } from '../utils/DebugService';
 import type { ExcalidrawCacheEntry } from '../utils/ExcalidrawRenderer';
 
@@ -283,7 +283,11 @@ export class SlideRenderer {
     context: 'thumbnail' | 'preview' | 'presentation' = 'thumbnail'
   ): string {
     const themeClasses = this.theme?.template.CssClasses || '';
-    const themeCSS = this.theme ? generateThemeCSS(this.theme, context) : '';
+    // If no theme is loaded, fall back to neutral plugin defaults so CSS variables
+    // (--light-background, --dark-background, --light-body-text, etc.) are always defined.
+    // Without this fallback, iframes would render with undefined variables, exposing
+    // the surrounding container (transparent slides, black text).
+    const themeCSS = this.theme ? generateThemeCSS(this.theme, context) : generateDefaultCSS();
     const bodyClass = context === 'thumbnail' ? 'perspecta-thumbnail' : 'perspecta-preview';
     const fontScaleCSS = this.getFontScaleCSS(frontmatter);
     // Include frontmatter CSS variable overrides so Inspector color changes apply
@@ -571,8 +575,8 @@ export class SlideRenderer {
 
   /**
    * Determine the effective mode for a slide
-   * Priority: per-slide override > presentation default > 'light'
-   * 'system' mode is now resolved to 'light' or 'dark' based on systemColorScheme
+   * Priority: per-slide override > presentation default > system color scheme
+   * 'system' mode is resolved to 'light' or 'dark' based on systemColorScheme
    */
   private getEffectiveMode(slide: Slide, frontmatter: PresentationFrontmatter): 'light' | 'dark' {
     // Per-slide override takes precedence
@@ -583,10 +587,9 @@ export class SlideRenderer {
       }
       return slide.metadata.mode;
     }
-    // Fall back to presentation-wide setting
-    const mode = frontmatter.mode || 'light';
-    // Resolve 'system' to actual scheme
-    if (mode === 'system') {
+    // Fall back to presentation-wide setting, then to system color scheme
+    const mode = frontmatter.mode;
+    if (!mode || mode === 'system') {
       return this.systemColorScheme;
     }
     return mode;
@@ -1995,9 +1998,9 @@ export class SlideRenderer {
         align-items: flex-start;
         font-family: var(--header-font, var(--body-font, system-ui, -apple-system, sans-serif));
         font-weight: var(--header-font-weight, var(--body-font-weight, 400));
-        font-size: calc(var(--slide-unit) * 1.8 * var(--header-font-scale, 1) * var(--font-scale, 1));
+        font-size: calc(var(--slide-unit) * var(--header-size, 1.8) * var(--header-font-scale, 1) * var(--font-scale, 1));
       }
-      
+
       .slide-footer {
         position: absolute;
         bottom: calc(var(--footer-bottom, 2.5) * var(--slide-unit));
@@ -2009,7 +2012,7 @@ export class SlideRenderer {
         align-items: flex-end;
         font-family: var(--footer-font, var(--body-font, system-ui, -apple-system, sans-serif));
         font-weight: var(--footer-font-weight, var(--body-font-weight, 400));
-        font-size: calc(var(--slide-unit) * 1.8 * var(--footer-font-scale, 1) * var(--font-scale, 1));
+        font-size: calc(var(--slide-unit) * var(--footer-size, 1.8) * var(--footer-font-scale, 1) * var(--font-scale, 1));
       }
       
       .slide-header > div, .slide-footer > div { flex: 1; display: flex; }
@@ -2058,15 +2061,15 @@ export class SlideRenderer {
       /* ============================================
          SLOT COLUMNS - Content area (absolute from top and bottom)
          ============================================ */
-      .slot-columns { 
+      .slot-columns {
         position: absolute;
         top: calc(var(--content-top, 24) * var(--slide-unit));
         left: 0;
         right: 0;
-        bottom: calc(var(--footer-bottom, 2.5) * var(--slide-unit) + var(--slide-unit) * 4);
-        display: flex; 
+        bottom: calc((var(--footer-bottom, 2.5) + var(--columns-bottom-offset, 4)) * var(--slide-unit));
+        display: flex;
         flex-direction: row;
-        gap: calc(var(--slide-unit) * 3); 
+        gap: calc(var(--column-gap-2, 3) * var(--slide-unit));
         align-items: stretch;
         overflow: visible;
       }
@@ -2081,7 +2084,7 @@ export class SlideRenderer {
       }
       .slot-columns.columns-1 { flex-direction: column; }
       .slot-columns.columns-2, .slot-columns.columns-3 { flex-direction: row; }
-      .slot-columns.columns-3 { gap: calc(var(--slide-unit) * 5); }
+      .slot-columns.columns-3 { gap: calc(var(--column-gap-3, 5) * var(--slide-unit)); }
       .slot-columns.columns-3 .column { min-width: 0; }
       .slot-columns.ratio-narrow-wide .column[data-column="1"] { flex: 1; }
       .slot-columns.ratio-narrow-wide .column[data-column="2"] { flex: 2; }
@@ -2099,7 +2102,7 @@ export class SlideRenderer {
         bottom: calc((var(--footer-bottom, 2.5) + 2.25) * var(--slide-unit) + var(--slide-unit) * 2.5);
         left: calc(var(--content-left, var(--content-width, 5)) * var(--slide-unit));
         right: calc(var(--content-right, var(--content-width, 5)) * var(--slide-unit));
-        font-size: calc(var(--slide-unit) * 1.8 * var(--body-font-scale, 1) * var(--font-scale, 1));
+        font-size: calc(var(--slide-unit) * var(--footnote-size, 1.8) * var(--body-font-scale, 1) * var(--font-scale, 1));
         color: var(--body-text);
         opacity: 0.75;
         /* Grow upward using flexbox */
@@ -2174,26 +2177,26 @@ export class SlideRenderer {
         margin-top: calc(var(--headline-spacing-before, 0) * var(--slide-unit));
         margin-bottom: calc(var(--headline-spacing-after, 0.5) * var(--slide-unit));
       }
-      h1 { font-size: calc(var(--slide-unit) * 7 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
-      h2 { font-size: calc(var(--slide-unit) * 5.5 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
-      h3 { font-size: calc(var(--slide-unit) * 4.5 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
-      h4 { font-size: calc(var(--slide-unit) * 3.5 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
-      h5 { font-size: calc(var(--slide-unit) * 3 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
-      h6 { font-size: calc(var(--slide-unit) * 2.5 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      h1 { font-size: calc(var(--slide-unit) * var(--h1-size-default, 7) * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      h2 { font-size: calc(var(--slide-unit) * var(--h2-size-default, 5.5) * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      h3 { font-size: calc(var(--slide-unit) * var(--h3-size-default, 4.5) * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      h4 { font-size: calc(var(--slide-unit) * var(--h4-size-default, 3.5) * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      h5 { font-size: calc(var(--slide-unit) * var(--h5-size-default, 3) * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      h6 { font-size: calc(var(--slide-unit) * var(--h6-size-default, 2.5) * var(--title-font-scale, 1) * var(--font-scale, 1)); }
       
-      p { 
+      p {
         font-weight: var(--body-font-weight, 400);
-        font-size: calc(var(--slide-unit) * 2.8 * var(--body-font-scale, 1) * var(--font-scale, 1)); 
-        line-height: var(--line-height, 1.1); 
+        font-size: calc(var(--slide-unit) * var(--body-size, 2.8) * var(--body-font-scale, 1) * var(--font-scale, 1));
+        line-height: var(--line-height, 1.1);
       }
-      
-      ul, ol { 
+
+      ul, ol {
         font-weight: var(--body-font-weight, 400);
         padding-left: 0;
         margin-left: 0;
         margin-top: 0;
         margin-bottom: 0;
-        font-size: calc(var(--slide-unit) * 2.8 * var(--body-font-scale, 1) * var(--font-scale, 1)); 
+        font-size: calc(var(--slide-unit) * var(--body-size, 2.8) * var(--body-font-scale, 1) * var(--font-scale, 1));
         line-height: var(--line-height, 1.1);
         list-style: none;
       }
@@ -2257,11 +2260,11 @@ export class SlideRenderer {
         width: calc(var(--slide-unit) * 3);
       }
       
-      .kicker { 
-        font-size: calc(var(--slide-unit) * 1.8 * var(--body-font-scale, 1) * var(--font-scale, 1)); 
-        text-transform: uppercase; 
-        letter-spacing: 0.08em; 
-        opacity: 0.7; 
+      .kicker {
+        font-size: calc(var(--slide-unit) * var(--kicker-size, 1.8) * var(--body-font-scale, 1) * var(--font-scale, 1));
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        opacity: 0.7;
       }
       
       /* ============================================
@@ -2296,6 +2299,7 @@ export class SlideRenderer {
         margin-left: 0;
         font-style: italic;
         opacity: 0.9;
+        font-size: calc(var(--slide-unit) * var(--blockquote-size, 2.8) * var(--body-font-scale, 1) * var(--font-scale, 1));
       }
       .slide.dark blockquote { 
         border-left-color: var(--dark-blockquote-border, #555555); 
@@ -2386,8 +2390,8 @@ export class SlideRenderer {
         text-align: center;
         padding: calc(var(--slide-unit) * 5);
       }
-      .cover-content h1 { font-size: calc(var(--slide-unit) * 9 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
-      .cover-content h2 { font-size: calc(var(--slide-unit) * 7 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      .cover-content h1 { font-size: calc(var(--slide-unit) * var(--h1-size-centered, 9) * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      .cover-content h2 { font-size: calc(var(--slide-unit) * var(--h2-size-centered, 7) * var(--title-font-scale, 1) * var(--font-scale, 1)); }
       
       /* ============================================
          LAYOUT: TITLE - Centered content
@@ -2405,8 +2409,8 @@ export class SlideRenderer {
         text-align: center;
         padding: calc(var(--slide-unit) * 5);
       }
-      .title-content h1 { font-size: calc(var(--slide-unit) * 9 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
-      .title-content h2 { font-size: calc(var(--slide-unit) * 7 * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      .title-content h1 { font-size: calc(var(--slide-unit) * var(--h1-size-centered, 9) * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      .title-content h2 { font-size: calc(var(--slide-unit) * var(--h2-size-centered, 7) * var(--title-font-scale, 1) * var(--font-scale, 1)); }
       
       /* ============================================
          LAYOUT: SECTION - Centered content
@@ -2425,6 +2429,9 @@ export class SlideRenderer {
         text-align: center;
         padding: calc(var(--slide-unit) * 5);
       }
+      /* Section-layout heading size — defaults to the centered H1 size */
+      .section-content h1 { font-size: calc(var(--slide-unit) * var(--section-title-size, var(--h1-size-centered, 9)) * var(--title-font-scale, 1) * var(--font-scale, 1)); }
+      .section-content h2 { font-size: calc(var(--slide-unit) * var(--section-title-size, var(--h2-size-centered, 7)) * var(--title-font-scale, 1) * var(--font-scale, 1)); }
 
       /* ============================================
          LAYOUT: FOOTNOTES - Display footnotes as main content
@@ -2440,7 +2447,7 @@ export class SlideRenderer {
         width: 100%;
       }
       .footnotes-title {
-        font-size: calc(var(--slide-unit) * 6 * var(--title-font-scale, 1) * var(--font-scale, 1));
+        font-size: calc(var(--slide-unit) * var(--footnotes-title-size, 6) * var(--title-font-scale, 1) * var(--font-scale, 1));
         font-weight: var(--title-font-weight, 700);
         font-family: var(--title-font, inherit);
         color: var(--title-text);
@@ -2451,7 +2458,7 @@ export class SlideRenderer {
         width: 100%;
         border-collapse: collapse;
         border: none;
-        font-size: calc(var(--slide-unit) * 2.5 * 0.8 * var(--body-font-scale, 1) * var(--font-scale, 1));
+        font-size: calc(var(--slide-unit) * var(--footnotes-list-size, 2) * var(--body-font-scale, 1) * var(--font-scale, 1));
         line-height: 1.5;
       }
       .footnotes-list tbody {
@@ -2600,7 +2607,7 @@ export class SlideRenderer {
       .layout-caption-contained .slot-title-bar h6 {
         font-family: var(--title-font, system-ui, -apple-system, sans-serif) !important;
         font-weight: var(--title-font-weight, 700) !important;
-        font-size: calc(var(--slide-unit) * 3.5 * var(--title-font-scale, 1) * var(--font-scale, 1));
+        font-size: calc(var(--slide-unit) * var(--caption-title-size, 3.5) * var(--title-font-scale, 1) * var(--font-scale, 1));
         margin: 0;
         line-height: 1.0;
         padding: 0;
@@ -2636,12 +2643,12 @@ export class SlideRenderer {
         display: block;
       }
       .layout-caption .slot-caption,
-      .layout-caption-contained .slot-caption { 
+      .layout-caption-contained .slot-caption {
         flex: 0 0 auto;
         padding: 0 calc(var(--slide-unit) * 2);
         background: transparent;
         text-align: left;
-        font-size: calc(var(--slide-unit) * 2 * var(--body-font-scale, 1) * var(--font-scale, 1));
+        font-size: calc(var(--slide-unit) * var(--caption-size, 2) * var(--body-font-scale, 1) * var(--font-scale, 1));
         display: flex;
         align-items: center;
         justify-content: flex-start;
@@ -2798,7 +2805,7 @@ export class SlideRenderer {
 
   private renderStyles(frontmatter: PresentationFrontmatter): string {
     const cssVars = this.generateCSSVariables(frontmatter);
-    const themeCSS = this.theme ? generateThemeCSS(this.theme, 'export') : '';
+    const themeCSS = this.theme ? generateThemeCSS(this.theme, 'export') : generateDefaultCSS();
     const headingOverrideCSS = this.generateHeadingColorOverrides(frontmatter);
     const textScale = frontmatter?.textScale || 1;
 

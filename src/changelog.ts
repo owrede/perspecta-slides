@@ -11,6 +11,46 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.0',
+    date: '2026-05-19',
+    changes: [
+      'New: Layout Blueprint document (docs/LAYOUT-BLUEPRINT.md) — normative architectural reference for the layout system',
+      'New: 18 theme-overridable CSS variables for typography sizes (H1–H6, body, blockquote, kicker, header/footer, footnote, caption, etc.) — themes can now define their typographic character, not just colors and fonts',
+      'New: Theme-overridable column geometry variables (--column-gap-2, --column-gap-3, --columns-bottom-offset)',
+      'New: Five-dash separator (-----) marks act breaks between slides; light-table UI will visualize this in a future release',
+      'New: README restructured to lead with the conceptual model — "not a layout tool, here is why and what you get instead"',
+      'Improved: Default theme renders consistently across thumbnail navigator, preview, and presentation window — no more rosa/dark-grey/black inconsistency',
+      'Improved: Slide mode follows Obsidian theme by default (not OS theme) — light/dark switches in Obsidian propagate to slides',
+      'Improved: Theme dropdown in Inspector clearly distinguishes the plugin-default option from the built-in Default theme',
+      'Improved: Inspector spacing/margin descriptions now correctly say "slide-units" instead of misleading "em"',
+      'Fix: Slides no longer render transparent with black text when the default-theme value is missing or unset',
+      'Fix: Background colors are now neutral white/dark-grey by default, not the first color of the dynamic-gradient palette',
+      'Fix: Theme passed to PresentationView is no longer silently dropped during render',
+      'Technical: Renamed THEME_SYNC_GUIDE.md to docs/THEME-SYNC-GUIDE.md to match other documentation locations',
+      'Technical: Unified setPresentation argument order across all views to (presentation, theme?, file?)',
+      'Technical: Single source of truth for layout names (LAYOUTS constant + isValidLayout helper)',
+      'Technical: Removed four duplicate getSystemColorScheme implementations in favour of one shared utility',
+    ],
+  },
+  {
+    version: '0.2.24',
+    date: '2026-02-04',
+    changes: [
+      'New: Explicit bundled font manifest support in theme.json (bundledFonts) for self-contained custom themes',
+      'New: Inspector theme apply modes - "Apply theme only (keep overrides)" and "Apply and reset overrides"',
+      'New: Optional manual "Install to cache" action for bundled theme fonts in Inspector',
+      'New: Frontmatter-linked asset export and rewrite for logo, imageOverlay, and imageOverlays',
+      'Improved: Theme export now resolves effective settings (frontmatter + base theme fallback values) before packaging',
+      'Improved: Theme font loading now uses bundled font manifest metadata first, with legacy filename fallback',
+      'Improved: Cross-device reliability for custom themes synced via Obsidian Sync',
+      'Fix: Missing bundled font exports when fonts came from base theme defaults rather than explicit frontmatter values',
+      'Fix: Fragile font-family inference from filename parsing in theme font loading',
+      'Fix: Theme re-application no longer requires destructive override reset by default',
+      'Fix: Reduced risk of cross-family cache pollution when installing bundled theme fonts',
+      'Docs: Updated README and THEME_SYNC_GUIDE for self-contained theme workflow and apply modes',
+    ],
+  },
+  {
     version: '0.2.21',
     date: '2026-01-21',
     changes: [

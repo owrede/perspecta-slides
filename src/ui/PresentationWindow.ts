@@ -6,6 +6,7 @@ import type { ImagePathResolver } from '../renderer/SlideRenderer';
 import { SlideRenderer } from '../renderer/SlideRenderer';
 import type { PresentationCache } from '../utils/SlideHasher';
 import type { ExcalidrawCacheEntry } from '../utils/ExcalidrawRenderer';
+import { getObsidianColorScheme } from '../utils/ColorScheme';
 import {
   buildPresentationCache,
   diffPresentations,
@@ -86,7 +87,7 @@ export class PresentationWindow {
     if (this.failedDecompressionFiles.size > 0) {
       renderer.setFailedDecompressionFiles(this.failedDecompressionFiles);
     }
-    renderer.setSystemColorScheme(this.getSystemColorScheme());
+    renderer.setSystemColorScheme(getObsidianColorScheme());
     return renderer;
   }
 
@@ -96,13 +97,6 @@ export class PresentationWindow {
 
   setFailedDecompressionFiles(files: Set<string>): void {
     this.failedDecompressionFiles = files;
-  }
-
-  private getSystemColorScheme(): 'light' | 'dark' {
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-    return 'light';
   }
 
   async open(

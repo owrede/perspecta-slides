@@ -2,6 +2,64 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.3.0] - 2026-05-19
+
+### Added
+- Added `docs/LAYOUT-BLUEPRINT.md` — normative architectural document for the layout system, including the four-layer model (canvas → grid → slots → content), layout families, freedom-of-override hierarchy, and extension-point guidance
+- Added 18 new theme-overridable CSS variables for typography sizes, replacing previously hard-coded multipliers: `--h1-size-default` through `--h6-size-default`, `--h1-size-centered`, `--h2-size-centered`, `--body-size`, `--blockquote-size`, `--kicker-size`, `--header-size`, `--footer-size`, `--footnote-size`, `--caption-size`, `--caption-title-size`, `--footnotes-title-size`, `--footnotes-list-size`, `--section-title-size`
+- Added theme-overridable column-geometry variables: `--column-gap-2`, `--column-gap-3`, `--columns-bottom-offset`
+- Added `LAYOUTS` constant and `isValidLayout()` helper in `src/types.ts` as the single source of truth for layout names
+- Added `src/utils/ColorScheme.ts` providing a single `getObsidianColorScheme()` utility (reads Obsidian's theme class instead of OS-level prefers-color-scheme)
+- Added `PLUGIN_DEFAULT_THEME` constant and explicit default-theme contract
+- Added five-dash separator convention (`-----` or more) as an act-break marker; behaves as a slide break today and surfaces as a narrative-section boundary for future light-table UI
+
+### Improved
+- Restructured README to lead with the conceptual model ("not a layout tool — here's why and what you get instead") before features and reference
+- Moved `THEME_SYNC_GUIDE.md` to `docs/THEME-SYNC-GUIDE.md` to align with other documentation locations
+- Themes can now define their typographic character: a "compact dense" theme and an "airy editorial" theme are now visually differentiable beyond just font choice
+- Themes can now control column rhythm (gap between columns, distance from body to footer)
+- The built-in Default theme's CSS reorganized into clearly grouped sections matching the blueprint (weights, type scale, rhythm, grid, slots, columns)
+- Inspector spacing/margins descriptions now say "slide-units (1 unit ≈ 1% of slide diagonal)" instead of the misleading "em"
+- `setPresentation` argument order unified across `ThumbnailNavigatorView`, `PresentationView`, and `InspectorPanelView` to `(presentation, theme?, file?)`
+
+### Fixed
+- Fixed Default-theme inconsistency where Navigator, Preview, and Presentation Window each rendered the same slide with different background colors
+- Fixed `DEFAULT_SETTINGS.defaultTheme = ''` resulting in slides with no theme variables, exposing the surrounding container's color through transparent iframes
+- Fixed Inspector theme dropdown having two visually identical "Default" entries; the empty-string option is now labelled `(Use plugin default)` and the built-in Default theme is filtered out of the user-themes list
+- Fixed Default theme's `LightBackgroundColor` / `DarkBackgroundColor` being derived from the dynamic gradient's first color (rosa / dark red); these are now explicit neutral defaults (`#ffffff` / `#1a1a1a`)
+- Fixed `getEffectiveMode` falling back to `'light'` regardless of system theme; it now follows Obsidian's theme class
+- Fixed `PresentationView.renderSlides()` ignoring the theme passed via `setPresentation()` and re-looking-up from frontmatter
+- Fixed `generateDefaultCSS()` being exported but never called, leaving the no-theme code path without CSS variables
+
+### Technical
+- Removed dead `--title-font-size-offset`, `--body-font-size-offset`, `--header-font-size-offset`, `--footer-font-size-offset`, `--text-scale` variables from the Default theme's CSS (they were not consumed by the renderer)
+- Removed four duplicate `getSystemColorScheme()` implementations in favour of a single utility
+- Replaced OS-level `prefers-color-scheme` change listener with Obsidian's `css-change` workspace event
+- Parser now logs unknown layout values to the debug channel without rejecting them (forward compatibility)
+- All visual defaults preserved through `var(--name, <fallback>)` patterns; existing themes that don't set the new variables render identically
+
+## [0.2.24] - 2026-02-04
+
+### Added
+- Added explicit bundled font manifest support in `theme.json` (`bundledFonts`) for self-contained custom themes
+- Added non-destructive theme apply mode in Inspector: "Apply theme only (keep overrides)"
+- Added explicit reset mode in Inspector: "Apply and reset overrides"
+- Added optional "Install to cache" action for bundled theme fonts in Inspector
+- Added frontmatter-linked asset export and rewrite for `logo`, `imageOverlay`, and `imageOverlays[].path`
+- Added implementation notes for agents in `.amp/agent-notes/THEME_SELF_CONTAINED_SYNC_FIX_2026-02-04.md`
+
+### Improved
+- Improved custom theme export to resolve effective settings (frontmatter + base theme fallbacks) before packaging
+- Improved bundled font loading to use manifest metadata first, with legacy fallback for older theme packages
+- Improved cross-device theme portability for Obsidian Sync scenarios
+- Improved sync docs and usage guidance for self-contained theme workflows
+
+### Fixed
+- Fixed missing bundled-font cases where fallback theme fonts were used but not copied into exported theme package
+- Fixed fragile font-family inference from filename parsing in theme font loading
+- Fixed destructive theme re-application being the only path when switching/reapplying themes
+- Fixed potential cross-family cache pollution during bundled font installation from theme packages
+
 ## [0.2.23] - 2026-02-02
 
 ### Improved

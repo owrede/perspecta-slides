@@ -222,6 +222,7 @@ class GradientEditorModal extends Modal {
 export const INSPECTOR_VIEW_TYPE = 'perspecta-inspector';
 
 type InspectorTab = 'presentation' | 'typography' | 'theme' | 'slide';
+type ThemeApplyMode = 'preserve' | 'reset';
 
 export class InspectorPanelView extends ItemView {
   private presentation: Presentation | null = null;
@@ -239,6 +240,7 @@ export class InspectorPanelView extends ItemView {
   private fontManager: FontManager | null = null;
   private themeLoader: ThemeLoader | null = null;
   private themeAppearanceMode: 'light' | 'dark' = 'light';
+  private themeApplyMode: ThemeApplyMode = 'preserve';
 
   private parser: SlideParser;
   
@@ -324,7 +326,7 @@ export class InspectorPanelView extends ItemView {
       try {
         const content = await this.app.vault.read(activeFile);
         const presentation = this.parser.parse(content);
-        this.setPresentation(presentation, activeFile);
+        this.setPresentation(presentation, undefined, activeFile);
       } catch (e) {
         // If parsing fails, just show the empty state
         this.renderEmptyState(container as HTMLElement);
@@ -338,7 +340,12 @@ export class InspectorPanelView extends ItemView {
     // Cleanup
   }
 
-  setPresentation(presentation: Presentation, file?: TFile) {
+  /**
+   * Convention: setPresentation(presentation, theme?, file?). The inspector
+   * does not currently consume the theme argument, but the signature matches
+   * other views so call sites are uniform.
+   */
+  setPresentation(presentation: Presentation, _theme?: Theme, file?: TFile) {
     this.presentation = presentation;
     if (file) {
       this.currentFile = file;
@@ -932,7 +939,10 @@ export class InspectorPanelView extends ItemView {
     this.createSectionHeader(container, 'SPACING');
 
     // Description
-    container.createDiv({ cls: 'section-description', text: 'Values in em' });
+    container.createDiv({
+      cls: 'section-description',
+      text: 'Values in slide-units (1 unit ≈ 1% of slide diagonal)',
+    });
 
     // Headline (before)
     new Setting(container)
@@ -1022,7 +1032,10 @@ export class InspectorPanelView extends ItemView {
     this.createSectionHeader(container, 'MARGINS');
 
     // Description
-    container.createDiv({ cls: 'section-description', text: 'Values in em' });
+    container.createDiv({
+      cls: 'section-description',
+      text: 'Values in slide-units (1 unit ≈ 1% of slide diagonal)',
+    });
 
     // Header (top)
     new Setting(container)
@@ -1233,14 +1246,29 @@ export class InspectorPanelView extends ItemView {
       return; // No font files in theme
     }
 
-    // Extract unique font names from theme font files
-    // Map files to font names (e.g., "Barlow-Regular.woff2" -> "Barlow")
+    // Extract unique font names from theme metadata (preferred) or filenames
     const themeFontNames = new Set<string>();
-    for (const file of fontFilesInTheme) {
-      // Extract font name from filename (e.g., "Barlow-Regular.woff2" -> "Barlow")
-      const match = file.basename.match(/^([^-\.]+)/);
-      if (match) {
-        themeFontNames.add(match[1]);
+    const manifestFonts = theme.themeJsonData?.bundledFonts || [];
+    if (manifestFonts.length > 0) {
+      for (const bundled of manifestFonts) {
+        if (bundled.family) {
+          themeFontNames.add(bundled.family);
+        }
+      }
+    } else {
+      for (const file of fontFilesInTheme) {
+        // Current naming convention: Family-700-normal.woff2 -> "Family"
+        const weighted = file.basename.match(/^(.+)-\d+-(normal|italic)$/i);
+        if (weighted) {
+          themeFontNames.add(weighted[1].replace(/-/g, ' '));
+          continue;
+        }
+
+        // Legacy fallback: Family-Regular.woff2 -> "Family"
+        const legacy = file.basename.match(/^([^-\.]+)/);
+        if (legacy) {
+          themeFontNames.add(legacy[1].replace(/-/g, ' '));
+        }
       }
     }
 
@@ -1297,7 +1325,37 @@ export class InspectorPanelView extends ItemView {
 
     for (const fontName of uncachedFonts) {
       try {
-        const result = await this.fontManager.cacheLocalFont(themeFontsPath, fontName);
+        let result: string | null = null;
+
+        // If manifest exists, install one family at a time to avoid cross-family cache pollution
+        const bundled = manifestFonts.find((f) => f.family === fontName);
+        if (bundled && bundled.files.length > 0) {
+          const tempFolderPath = `${theme.basePath}/.tmp-font-install-${fontName.replace(/\s+/g, '-').toLowerCase()}`;
+          await this.prepareTempFolder(tempFolderPath);
+
+          for (const fileRef of bundled.files) {
+            const sourcePath = `${theme.basePath}/${fileRef.path}`.replace(/\/+/g, '/');
+            const source = this.app.vault.getAbstractFileByPath(sourcePath);
+            if (!(source instanceof TFile)) {
+              continue;
+            }
+            const destPath = `${tempFolderPath}/${source.name}`;
+            const existing = this.app.vault.getAbstractFileByPath(destPath);
+            const data = await this.app.vault.readBinary(source);
+            if (existing instanceof TFile) {
+              await this.app.vault.modifyBinary(existing, data);
+            } else {
+              await this.app.vault.createBinary(destPath, data);
+            }
+          }
+
+          result = await this.fontManager.cacheLocalFont(tempFolderPath, fontName);
+          await this.deleteFolderRecursive(tempFolderPath);
+        } else {
+          // Fallback for legacy theme packages without manifest
+          result = await this.fontManager.cacheLocalFont(themeFontsPath, fontName);
+        }
+
         if (result) {
           successCount++;
         } else {
@@ -1316,6 +1374,40 @@ export class InspectorPanelView extends ItemView {
     if (failureCount > 0) {
       new Notice(`✗ Failed to install ${failureCount} font(s)`, 5000);
     }
+  }
+
+  private async prepareTempFolder(path: string): Promise<void> {
+    await this.deleteFolderRecursive(path);
+    await this.ensureFolder(path);
+  }
+
+  private async ensureFolder(path: string): Promise<void> {
+    const parts = path.split('/');
+    let currentPath = '';
+    for (const part of parts) {
+      currentPath = currentPath ? `${currentPath}/${part}` : part;
+      const existing = this.app.vault.getAbstractFileByPath(currentPath);
+      if (!existing) {
+        await this.app.vault.createFolder(currentPath);
+      }
+    }
+  }
+
+  private async deleteFolderRecursive(path: string): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFolder)) {
+      return;
+    }
+
+    for (const child of [...file.children]) {
+      if (child instanceof TFolder) {
+        await this.deleteFolderRecursive(child.path);
+      } else if (child instanceof TFile) {
+        await this.app.vault.delete(child);
+      }
+    }
+
+    await this.app.vault.delete(file);
   }
 
   /**
@@ -1463,29 +1555,32 @@ export class InspectorPanelView extends ItemView {
     this.createSectionHeader(container, 'THEME');
 
     new Setting(container).setName('Theme').addDropdown((dropdown) => {
-      // Add "Default" option for no theme
-      dropdown.addOption('', '(Default)');
-      // Add custom themes from themeLoader
+      // "(Use plugin default)" — clears frontmatter.theme; the plugin then
+      // resolves to the configured default (PLUGIN_DEFAULT_THEME, currently 'default').
+      // We deliberately do NOT also list the built-in Default theme separately to
+      // avoid two visually identical "Default" entries in the dropdown.
+      dropdown.addOption('', '(Use plugin default)');
       if (this.themeLoader) {
-        const customThemes = this.themeLoader.getCustomThemes();
-        customThemes.forEach((theme) => {
+        const allThemes = this.themeLoader.getCustomThemes();
+        allThemes.forEach((theme) => {
           const name = theme.template.Name.toLowerCase();
-          const displayName = theme.template.Name;
-          dropdown.addOption(name, displayName);
+          if (name === 'default') {
+            return; // Skip — represented by the "(Use plugin default)" option above
+          }
+          dropdown.addOption(name, theme.template.Name);
         });
       }
       dropdown.setValue(fm.theme || '');
       dropdown.onChange(async (value) => {
-        // Check if theme has fonts that need to be installed
-        if (value && this.fontManager && this.themeLoader) {
-          const theme = this.themeLoader.getTheme(value);
-          if (theme) {
-            await this.ensureThemeFontsInstalled(value, theme);
-          }
+        // Apply theme only (non-destructive) OR reset overrides and apply defaults
+        if (this.themeApplyMode === 'preserve') {
+          await this.updateFrontmatter({
+            theme: value || undefined,
+          });
+          this.render();
+          return;
         }
 
-        // When changing themes, apply the new theme's defaults for typography and colors
-        // Clear per-slide overrides but apply theme-defined defaults
         const clearProperties: Partial<PresentationFrontmatter> = {
           // Clear per-slide overrides for fonts (will use theme defaults)
           titleFont: undefined,
@@ -1557,7 +1652,7 @@ export class InspectorPanelView extends ItemView {
         // Get theme defaults (fonts and colors)
         const themeDefaults = this.getThemeDefaults(value);
 
-        // Apply the new theme and apply theme defaults
+        // Apply reset mode: clear overrides, then apply theme defaults
         await this.updateFrontmatter({ 
           theme: value || undefined,
           ...clearProperties,
@@ -1566,6 +1661,33 @@ export class InspectorPanelView extends ItemView {
         this.render();
       });
     });
+
+    new Setting(container)
+      .setName('Theme apply mode')
+      .setDesc('Choose whether changing theme keeps current overrides or resets them to theme defaults')
+      .addDropdown((dropdown) => {
+        dropdown.addOption('preserve', 'Apply theme only (keep overrides)');
+        dropdown.addOption('reset', 'Apply and reset overrides');
+        dropdown.setValue(this.themeApplyMode);
+        dropdown.onChange((value) => {
+          this.themeApplyMode = value as ThemeApplyMode;
+        });
+      });
+
+    const selectedThemeName = fm.theme || '';
+    if (selectedThemeName && this.themeLoader && this.fontManager) {
+      const selectedTheme = this.themeLoader.getTheme(selectedThemeName);
+      if (selectedTheme && !selectedTheme.isBuiltIn) {
+        new Setting(container)
+          .setName('Bundled fonts')
+          .setDesc('Optional: install this theme\'s bundled fonts into the global Perspecta font cache')
+          .addButton((btn) => {
+            btn.setButtonText('Install to cache').onClick(async () => {
+              await this.ensureThemeFontsInstalled(selectedThemeName, selectedTheme);
+            });
+          });
+      }
+    }
 
     new Setting(container).setName('Appearance').addDropdown((dropdown) => {
       dropdown.addOption('light', '☀️ Light');

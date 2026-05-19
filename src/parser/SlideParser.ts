@@ -9,6 +9,7 @@ import type {
   ImageData,
   Footnote,
 } from '../types';
+import { isValidLayout } from '../types';
 import { getDebugService } from '../utils/DebugService';
 
 export class SlideParser {
@@ -1237,6 +1238,18 @@ export class SlideParser {
       const layoutMatch = line.match(/^layout:\s*(.+)$/i);
       if (layoutMatch) {
         const layoutValue = layoutMatch[1].trim();
+        // Strip Perspecta-specific modifiers before validating: "(hidden)" suffix
+        // is processed downstream, and "default;no-autocolumn" / "no-autocolumn"
+        // are recognized variants that drop the trailing modifier.
+        const baseLayout = layoutValue
+          .replace(/\s*\(hidden\)\s*/i, '')
+          .split(';')[0]
+          .trim();
+        if (baseLayout && !isValidLayout(baseLayout)) {
+          this.debugLog(
+            `[SlideParser] Unknown layout "${layoutValue}" — accepted as-is; renderer will fall back to default.`
+          );
+        }
         metadata.layout = layoutValue as SlideLayout;
         startIndex = i + 1;
         continue;

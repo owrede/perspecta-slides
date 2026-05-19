@@ -13,6 +13,24 @@ export interface ThemeFontDef {
 }
 
 /**
+ * Bundled font file reference inside a custom theme package
+ */
+export interface ThemeBundledFontFile {
+  path: string; // Relative to the theme folder, e.g. "fonts/Inter-400-normal.woff2"
+  weight: number;
+  style: string; // normal | italic
+  format: string; // woff2 | woff | ttf | otf
+}
+
+/**
+ * Bundled font family metadata
+ */
+export interface ThemeBundledFont {
+  family: string;
+  files: ThemeBundledFontFile[];
+}
+
+/**
  * Background definition - can be solid, gradient, or dynamic
  */
 export interface ThemeBackground {
@@ -88,6 +106,7 @@ export interface ThemeJsonFile {
   };
 
   cssClasses?: string; // Optional CSS classes to add to body
+  bundledFonts?: ThemeBundledFont[]; // Optional explicit bundled font manifest
 
   presets: {
     light: ThemeModePreset;

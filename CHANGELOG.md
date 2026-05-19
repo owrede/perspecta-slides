@@ -2,6 +2,11 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.3.3] - 2026-05-19
+
+### Fixed
+- "Tidy all slides" and every separator rewrite no longer leave a blank line between the separator and a following meta block. A separator is now bound tightly to the meta block beneath it (`---\nlayout: cover`, not `---\n\nlayout: cover`). When the next chunk starts with regular content (heading, paragraph, list, …) the blank line is kept
+
 ## [0.3.2] - 2026-05-19
 
 ### Fixed

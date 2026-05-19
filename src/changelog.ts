@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.3',
+    date: '2026-05-19',
+    changes: [
+      'Fix: Tidy and other separator rewrites no longer leave a blank line between `---` and the meta block beneath it. A separator now binds tightly to the meta block (`---\\nlayout: cover`), while content chunks still keep their breathing room (`---\\n\\n# Heading`).',
+    ],
+  },
+  {
     version: '0.3.2',
     date: '2026-05-19',
     changes: [

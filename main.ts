@@ -2121,25 +2121,25 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
   /**
    * Inverse of `splitBodyAtSeparators`: join slide-content chunks back into
-   * a single body string with separator lines between them. Always emits a
-   * blank line both **before** and **after** every separator, regardless of
-   * what the chunks themselves end or start with.
+   * a single body string with separator lines between them.
    *
-   * That double-blank framing matters because Markdown otherwise treats
-   * `text\n---` as a Setext H2 (the `---` underlines `text` instead of
-   * rendering as an HR), and Obsidian's Live Preview shows no divider when
-   * the separator hugs content above it. Guaranteeing a blank line above
-   * the separator is therefore not just cosmetic — it's what keeps the HR
-   * visible in the editor.
+   * Spacing rules around each separator:
+   *
+   *  - **Before the separator**: always a blank line. Markdown reads
+   *    `text\n---` as a Setext H2 (the `---` underlines the preceding text)
+   *    instead of an HR, which is why Obsidian's Live Preview otherwise
+   *    drops the divider. Mandatory.
+   *
+   *  - **After the separator**: depends on what the next chunk starts with:
+   *      * If the next chunk's first non-blank line is a meta-block line
+   *        (matches `key:`), no blank line — the meta block binds tightly
+   *        to the separator.
+   *      * Otherwise (heading, paragraph, list, …) one blank line, so the
+   *        content has visual breathing room and Markdown doesn't fold the
+   *        line into the separator.
    *
    * Callers don't have to pre-clean their chunks: leading/trailing blank
-   * lines on chunks are trimmed here, and the `\n\n` framing is added
-   * unconditionally, so the result is always:
-   *
-   *     chunk0\n\n---\n\nchunk1\n\n---\n\nchunk2 …
-   *
-   * (with the actual separator line each chunk was originally preceded by;
-   * `---` is only used as a fallback if the original separator was lost).
+   * lines on chunks are trimmed here.
    */
   private joinSlideChunksWithSeparators(
     chunks: string[],
@@ -2147,10 +2147,17 @@ export default class PerspectaSlidesPlugin extends Plugin {
   ): string {
     if (chunks.length === 0) return '';
     const trim = (s: string) => s.replace(/^\n+/, '').replace(/\n+$/, '');
+    // A meta-block line is a `key: ...` line whose key matches an ASCII
+    // identifier — same pattern parseSlideChunk uses for detection.
+    const startsWithMeta = (chunk: string) =>
+      /^[a-zA-Z][\w-]*\s*:\s*/.test(chunk);
+
     let body = trim(chunks[0]);
     for (let i = 1; i < chunks.length; i++) {
       const separatorLine = separators[i - 1] || '---';
-      body += '\n\n' + separatorLine + '\n\n' + trim(chunks[i]);
+      const nextChunk = trim(chunks[i]);
+      const afterSeparator = startsWithMeta(nextChunk) ? '\n' : '\n\n';
+      body += '\n\n' + separatorLine + afterSeparator + nextChunk;
     }
     return body;
   }

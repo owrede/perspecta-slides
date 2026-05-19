@@ -11,6 +11,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.2',
+    date: '2026-05-19',
+    changes: [
+      'Fix: Slide and chapter separators always render as horizontal-rule dividers in Obsidian Live Preview — previous releases could produce `text\\n---` (which Markdown reads as a Setext H2) after reorder, hide/show, Inspector edits, the Tidy command, or "Insert slide separator" used mid-line',
+    ],
+  },
+  {
     version: '0.3.1',
     date: '2026-05-19',
     changes: [

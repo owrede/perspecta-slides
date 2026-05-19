@@ -840,8 +840,31 @@ export default class PerspectaSlidesPlugin extends Plugin {
       name: 'Insert slide separator',
       editorCallback: (editor) => {
         const cursor = editor.getCursor();
-        editor.replaceRange('\n---\n\n', cursor);
-        editor.setCursor({ line: cursor.line + 3, ch: 0 });
+        const currentLine = editor.getLine(cursor.line) ?? '';
+        const beforeCursor = currentLine.slice(0, cursor.ch);
+        const afterCursor = currentLine.slice(cursor.ch);
+
+        // Markdown needs a blank line **above** `---` for it to render as an
+        // HR rather than a Setext H2. We inspect the line the cursor sits on
+        // and decide how much padding to insert before the `---`:
+        //
+        //   cursor on a blank line, no text before  → `---\n\n`
+        //   cursor with text before the cursor      → `\n\n---\n\n`
+        //   cursor at column 0 of a non-blank line  → `\n---\n\n` (line break + blank line)
+        const needsBlankAbove = beforeCursor.trim() !== '';
+        const leadingPadding = needsBlankAbove ? '\n\n' : '';
+        const insertion = `${leadingPadding}---\n\n`;
+        editor.replaceRange(insertion, cursor);
+
+        // Place cursor on the first content line after the separator.
+        const lineAdvance = (insertion.match(/\n/g) ?? []).length;
+        editor.setCursor({ line: cursor.line + lineAdvance, ch: 0 });
+
+        // afterCursor is preserved by replaceRange (insertion happens at the
+        // cursor; everything after the cursor moves down). No explicit work
+        // needed here, but reference the binding so an accidental refactor
+        // doesn't drop the line-tail.
+        void afterCursor;
       },
     });
 
@@ -2097,6 +2120,42 @@ export default class PerspectaSlidesPlugin extends Plugin {
   }
 
   /**
+   * Inverse of `splitBodyAtSeparators`: join slide-content chunks back into
+   * a single body string with separator lines between them. Always emits a
+   * blank line both **before** and **after** every separator, regardless of
+   * what the chunks themselves end or start with.
+   *
+   * That double-blank framing matters because Markdown otherwise treats
+   * `text\n---` as a Setext H2 (the `---` underlines `text` instead of
+   * rendering as an HR), and Obsidian's Live Preview shows no divider when
+   * the separator hugs content above it. Guaranteeing a blank line above
+   * the separator is therefore not just cosmetic — it's what keeps the HR
+   * visible in the editor.
+   *
+   * Callers don't have to pre-clean their chunks: leading/trailing blank
+   * lines on chunks are trimmed here, and the `\n\n` framing is added
+   * unconditionally, so the result is always:
+   *
+   *     chunk0\n\n---\n\nchunk1\n\n---\n\nchunk2 …
+   *
+   * (with the actual separator line each chunk was originally preceded by;
+   * `---` is only used as a fallback if the original separator was lost).
+   */
+  private joinSlideChunksWithSeparators(
+    chunks: string[],
+    separators: string[]
+  ): string {
+    if (chunks.length === 0) return '';
+    const trim = (s: string) => s.replace(/^\n+/, '').replace(/\n+$/, '');
+    let body = trim(chunks[0]);
+    for (let i = 1; i < chunks.length; i++) {
+      const separatorLine = separators[i - 1] || '---';
+      body += '\n\n' + separatorLine + '\n\n' + trim(chunks[i]);
+    }
+    return body;
+  }
+
+  /**
    * Bring a slide-content chunk into canonical shape so that subsequent
    * meta-block operations have an unambiguous starting point. Without this,
    * users (or earlier code paths) leave blank lines inside or before the
@@ -2617,22 +2676,11 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const [movedSlide] = slideRawContents.splice(fromIndex, 1);
     slideRawContents.splice(toIndex, 0, movedSlide);
 
-    // Reconstruct the body: slide-N then separator-N for N = 0..M-1, then
-    // the final slide. There is always exactly one fewer separator than
-    // slide-content chunk.
-    const bodyChunks: string[] = [];
-    for (let i = 0; i < slideRawContents.length; i++) {
-      bodyChunks.push(slideRawContents[i]);
-      if (i < separators.length) {
-        // Re-insert the original separator with a leading newline so it sits
-        // on its own line. We don't append a trailing newline because the
-        // next slide chunk already starts with one (or the chunk was
-        // captured starting on the line after the separator, in which case
-        // the natural join below adds the newline back).
-        bodyChunks.push('\n' + separators[i]);
-      }
-    }
-    const newBody = bodyChunks.join('\n');
+    // Reconstruct the body. Always frames separators with `\n\n` on both
+    // sides so the HR renders correctly in Obsidian's Live Preview — without
+    // a blank line above the `---`, Markdown reads `text\n---` as a Setext
+    // H2 instead of an HR.
+    const newBody = this.joinSlideChunksWithSeparators(slideRawContents, separators);
     const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
 
     await this.app.vault.modify(file, newContent);
@@ -2742,11 +2790,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const { slideRawContents, separators } = this.splitBodyAtSeparators(bodyContent);
     const tidied = slideRawContents.map((chunk) => this.tidySlideChunk(chunk));
 
-    let newBody = tidied[0];
-    for (let i = 1; i < tidied.length; i++) {
-      const separatorLine = separators[i - 1] || '---';
-      newBody += '\n\n' + separatorLine + '\n\n' + tidied[i];
-    }
+    const newBody = this.joinSlideChunksWithSeparators(tidied, separators);
     const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
 
     if (newContent === content) {
@@ -2816,11 +2860,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     slideRawContents[slideIndex] = this.serializeSlideChunk(meta, slideContent);
 
-    let newBody = slideRawContents[0];
-    for (let i = 1; i < slideRawContents.length; i++) {
-      const separatorLine = separators[i - 1] || '---';
-      newBody += '\n' + separatorLine + '\n' + slideRawContents[i];
-    }
+    const newBody = this.joinSlideChunksWithSeparators(slideRawContents, separators);
     const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
 
     await this.app.vault.modify(file, newContent);
@@ -2881,12 +2921,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
     slideRawContents[slideIndex] = this.serializeSlideChunk(meta, slideContent);
 
-    // Reconstruct the document using the bare separator lines.
-    let newBody = slideRawContents[0];
-    for (let i = 1; i < slideRawContents.length; i++) {
-      const separatorLine = separators[i - 1] || '---';
-      newBody += '\n' + separatorLine + '\n' + slideRawContents[i];
-    }
+    const newBody = this.joinSlideChunksWithSeparators(slideRawContents, separators);
     const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
 
     // Clear presentation cache to trigger full re-render

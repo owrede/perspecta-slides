@@ -2,6 +2,12 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.3.2] - 2026-05-19
+
+### Fixed
+- Slide and chapter separators now always have a blank line above them in the markdown. Without this, Markdown reads `text\n---` as a Setext H2 heading and Obsidian's Live Preview shows no horizontal-rule divider. This affected every operation that rewrote separators (drag-and-drop reorder, Inspector edits, hide/show via eye icon, the new Tidy command) as well as the "Insert slide separator" command when invoked mid-line
+- All separator-rebuilding callsites now go through a single helper (`joinSlideChunksWithSeparators`) that frames every separator with `\n\n` on both sides
+
 ## [0.3.1] - 2026-05-19
 
 ### Added

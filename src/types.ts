@@ -190,6 +190,23 @@ export interface SlideMetadata {
   hideOverlay?: boolean;
   transition?: string;
   notes?: string;
+  /**
+   * Chapter (act) label that this slide belongs to.
+   *
+   * Set by the parser whenever a slide-separator line of the form
+   * `----- <label>` (≥5 dashes followed by text) starts a new act. The
+   * label is then propagated to every slide in the act, up to the next
+   * `----- <label>` separator or the end of the deck.
+   *
+   * Available as `{{chapter}}` placeholder in slide content (headings,
+   * paragraphs, lists, speaker notes). An empty string is substituted when
+   * a slide is outside any named chapter.
+   *
+   * Future consumers: Slide Navigator collapsing groups, Light-Table lane
+   * labels. The label itself never renders directly on the slide unless
+   * the user references `{{chapter}}` in their content.
+   */
+  chapter?: string;
 }
 
 /**

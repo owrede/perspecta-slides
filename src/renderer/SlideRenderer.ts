@@ -288,7 +288,13 @@ export class SlideRenderer {
     // Without this fallback, iframes would render with undefined variables, exposing
     // the surrounding container (transparent slides, black text).
     const themeCSS = this.theme ? generateThemeCSS(this.theme, context) : generateDefaultCSS();
-    const bodyClass = context === 'thumbnail' ? 'perspecta-thumbnail' : 'perspecta-preview';
+    const containerClass = context === 'thumbnail' ? 'perspecta-thumbnail' : 'perspecta-preview';
+    // Resolve effective mode so the iframe body/container honour the slide mode.
+    // Without this, the iframe body keeps the light background even when the slide
+    // is rendered in `mode: dark`, which makes the surrounding area show through
+    // as a bright stripe behind a dark slide.
+    const effectiveMode = this.getEffectiveMode(slide, frontmatter);
+    const bodyClass = `${containerClass} ${effectiveMode} ${themeClasses}`.trim();
     const fontScaleCSS = this.getFontScaleCSS(frontmatter);
     // Include frontmatter CSS variable overrides so Inspector color changes apply
     // IMPORTANT: Generate frontmatter variables BEFORE theme CSS so theme can be overridden
@@ -309,7 +315,7 @@ export class SlideRenderer {
     <style>${headingOverrideCSS}</style>
     <style>${fontScaleCSS}</style>
     </head>
-    <body class="${bodyClass} ${themeClasses}">
+    <body class="${bodyClass}">
     ${this.renderSlide(slide, index, frontmatter, false)}
     </body>
     </html>`;
@@ -2787,18 +2793,29 @@ export class SlideRenderer {
         /* Global text scale multiplier from frontmatter (default: 1) */
         --slide-unit: calc((1vw + 1vh) / 2 * ${textScale});
       }
-      html, body { 
-        width: 100%; 
-        height: 100%; 
+      html, body {
+        width: 100%;
+        height: 100%;
         font-family: var(--body-font, system-ui, -apple-system, sans-serif);
         overflow: hidden;
       }
-      .${containerClass} { 
+      /* Container mirrors the slide background so any area not covered by
+         the slide itself (aspect-ratio padding, padded thumbnail frames)
+         stays consistent with the slide's visual mode. Without this the
+         iframe body shows through with the wrong colour — most visible in
+         dark-mode decks where it appears as a bright bar. */
+      body.${containerClass}.light,
+      body.${containerClass}:not(.dark) {
         background: var(--light-background);
+      }
+      body.${containerClass}.dark {
+        background: var(--dark-background);
+      }
+      .${containerClass} {
         width: 100%;
         height: 100%;
       }
-      
+
       ${this.getSlideCSS()}
     `;
   }

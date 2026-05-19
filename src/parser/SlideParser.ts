@@ -529,16 +529,197 @@ export class SlideParser {
     contentMode: ContentMode,
     footnoteDefinitions: Map<string, string>
   ): Slide[] {
-    // Split by horizontal rule (---)
-    // Must be at least 3 dashes on their own line
-    const slideDelimiter = /\n---+\s*\n/;
-    const rawSlides = content.split(slideDelimiter);
+    // Split into slides at horizontal-rule lines (≥3 dashes on their own line),
+    // but with two properties the old naive regex split lacked:
+    //
+    //   1. Code-Fence awareness — a ``` or ~~~ fence opens a literal block;
+    //      ---/----- inside that block must NOT trigger a slide break (B6a).
+    //
+    //   2. No leading-blank-line requirement — a slide separator is recognized
+    //      whether or not the preceding/following line is blank. This lets a
+    //      meta block (`layout:`, `mode:`, …) start on the very next line
+    //      after the separator (B6b).
+    //
+    // The previous implementation used `content.split(/\n---+\s*\n/)`, which
+    // forced blank lines around every separator and was blind to code fences.
+    //
+    // Chapter labels are read from each slide's per-slide meta block
+    // (`chapter:` key). When a slide sets `chapter:`, all following slides
+    // inherit it until another slide sets a new `chapter:`. Setting
+    // `chapter:` to an empty string explicitly resets to "no chapter".
+    const rawSlides = this.splitIntoSlideRawContents(content);
 
+    let currentChapter: string | undefined;
     return rawSlides
-      .map((rawContent, index) =>
-        this.parseSlide(rawContent.trim(), index, contentMode, footnoteDefinitions)
-      )
+      .map((rawContent, index) => {
+        const slide = this.parseSlide(
+          rawContent.trim(),
+          index,
+          contentMode,
+          footnoteDefinitions
+        );
+        // The meta block may have set `chapter` directly. If it did, that
+        // becomes the new running chapter. Otherwise, inherit the running
+        // chapter from previous slides.
+        if (slide.metadata.chapter !== undefined) {
+          currentChapter = slide.metadata.chapter || undefined;
+        } else if (currentChapter !== undefined) {
+          slide.metadata.chapter = currentChapter;
+        }
+        // Resolve `{{chapter}}` (and future `{{…}}` placeholders) in every
+        // text-carrying field of every element, plus speaker notes. Doing it
+        // here keeps the renderer template-agnostic — by the time HTML
+        // generation runs, the substitution has already happened.
+        this.applyContentPlaceholders(slide);
+        return slide;
+      })
       .filter((slide) => slide.elements.length > 0 || slide.speakerNotes.length > 0);
+  }
+
+  /**
+   * Substitutes `{{name}}` placeholders in slide-visible content and speaker
+   * notes. Today we only support `{{chapter}}` (the act/chapter label, "" if
+   * the slide is outside any named chapter), but the lookup table is the
+   * single place to add future placeholders (e.g. `{{slide-number}}`,
+   * `{{slide-count}}`, `{{author}}`).
+   *
+   * Unknown placeholders are left as-is so user-typed `{{foo}}` doesn't
+   * silently disappear — that way mistakes become visible in the rendered
+   * deck instead of being swallowed.
+   */
+  private applyContentPlaceholders(slide: Slide): void {
+    const values: Record<string, string> = {
+      chapter: slide.metadata.chapter ?? '',
+    };
+    const substitute = (text: string): string =>
+      text.replace(/\{\{\s*([a-z][a-z0-9_-]*)\s*\}\}/gi, (match, name: string) => {
+        const key = name.toLowerCase();
+        return Object.prototype.hasOwnProperty.call(values, key) ? values[key] : match;
+      });
+
+    for (const el of slide.elements) {
+      if (typeof el.content === 'string') el.content = substitute(el.content);
+      if (typeof el.raw === 'string') el.raw = substitute(el.raw);
+    }
+    for (let i = 0; i < slide.speakerNotes.length; i++) {
+      slide.speakerNotes[i] = substitute(slide.speakerNotes[i]);
+    }
+  }
+
+  /**
+   * Split a presentation's content into raw slide chunks at horizontal-rule
+   * separators (`---+` on their own line), while:
+   *
+   *  - tracking fenced code blocks (``` or ~~~) so a `---` line inside a code
+   *    block is NOT treated as a slide separator (B6a);
+   *  - not requiring blank lines before/after the separator (B6b) — the meta
+   *    block of the following slide may start on the very next line.
+   *
+   * Chapter (act) labels are NOT carried inline on the separator line any
+   * more — that broke Obsidian's Live Preview HR rendering (the editor only
+   * shows a divider for pure `---+` lines, not `----- Foo`). Chapter labels
+   * now live in the per-slide meta block as a `chapter:` key (see
+   * `extractSlideMetadata`) and propagate through subsequent slides in
+   * `parseSlides`.
+   *
+   * A fence opens on a line whose trimmed form starts with at least three
+   * backticks or tildes (the standard CommonMark fence), and closes on the
+   * next line that starts with the same character.
+   */
+  private splitIntoSlideRawContents(content: string): string[] {
+    const lines = content.split('\n');
+    const slides: string[] = [];
+    let current: string[] = [];
+    let fenceChar: '`' | '~' | null = null;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      if (fenceChar === null) {
+        if (trimmed.startsWith('```')) {
+          fenceChar = '`';
+          current.push(line);
+          continue;
+        }
+        if (trimmed.startsWith('~~~')) {
+          fenceChar = '~';
+          current.push(line);
+          continue;
+        }
+      } else {
+        const closer = fenceChar.repeat(3);
+        if (trimmed.startsWith(closer)) fenceChar = null;
+        current.push(line);
+        continue;
+      }
+
+      if (/^-{3,}\s*$/.test(line)) {
+        slides.push(current.join('\n'));
+        current = [];
+        continue;
+      }
+
+      current.push(line);
+    }
+
+    slides.push(current.join('\n'));
+    return slides;
+  }
+
+  /**
+   * Recognises the line that switches a slide into its speaker-notes section.
+   *
+   * The trigger is case-insensitive and whitespace-tolerant. We accept the
+   * common English and German spellings people reach for, plus a few
+   * punctuation variants (with or without trailing colon, hyphen or space
+   * between the words). Anything matching here ends the slide-visible
+   * content and starts the notes block.
+   *
+   * Accepted (after `.trim().toLowerCase()`):
+   *   note:                  notes:
+   *   speaker note:          speaker notes:
+   *   speaker-note:          speaker-notes:
+   *   presenter note:        presenter notes:
+   *   presenter-note:        presenter-notes:
+   *   moderator note:        moderator notes:
+   *   moderator-note:        moderator-notes:
+   *   moderation:
+   *   sprechertext:          sprecher-notiz:    sprechernotiz:
+   *   notiz:                 notizen:
+   *
+   * Bare words without the trailing colon are NOT accepted — the colon is
+   * the disambiguator that distinguishes a marker line from regular prose
+   * that happens to start with "note" or "notes".
+   */
+  private isSpeakerNotesMarker(line: string): boolean {
+    const normalized = line.trim().toLowerCase();
+    if (!normalized.endsWith(':')) return false;
+    // Strip the trailing colon and any whitespace before it, then collapse
+    // internal whitespace and dashes to a single space so "speaker  note",
+    // "speaker-note" and "speaker note" all match the same canonical form.
+    const head = normalized
+      .slice(0, -1)
+      .trim()
+      .replace(/[\s-]+/g, ' ');
+    switch (head) {
+      case 'note':
+      case 'notes':
+      case 'speaker note':
+      case 'speaker notes':
+      case 'presenter note':
+      case 'presenter notes':
+      case 'moderator note':
+      case 'moderator notes':
+      case 'moderation':
+      case 'sprechertext':
+      case 'sprecher notiz':
+      case 'sprechernotiz':
+      case 'notiz':
+      case 'notizen':
+        return true;
+      default:
+        return false;
+    }
   }
 
   private parseSlide(
@@ -658,243 +839,37 @@ export class SlideParser {
   }
 
   /**
-   * Parse slide content using Perspecta mode:
-   * - Tab-indented content = visible on slide
-   * - Non-indented paragraphs = speaker notes
-   * - Headings, images, code blocks = always visible
+   * Parse slide content using Perspecta mode (new convention since 0.3.x).
+   *
+   * Rules:
+   * - All content is slide-visible by default (headings, lists, paragraphs, images, code, …).
+   * - Speaker notes start AFTER an explicit `note:` or `notes:` line.
+   * - Tab indentation has NO semantic meaning for slide-vs-notes — it is plain
+   *   Markdown indentation (e.g. nested list items) and passed through unchanged.
+   * - Column assignment is performed by `autoDetectColumnsNew()` based on H3/H2
+   *   headings, explicit `--` delimiters, or empty-line-separated blocks.
+   *
+   * This was previously called "IA Presenter mode" and used tab indentation as
+   * the visibility marker. That convention came from the abandoned iA Presenter
+   * compatibility mode and conflicted with normal Markdown (nested lists became
+   * invisible). The new behaviour delegates to `parseSlideAdvancedMode`, which
+   * already implements the "all visible by default" semantics.
+   *
+   * `hasExplicitColumnLayout` is computed here from the meta-block; it tells
+   * the advanced parser whether to use `--` delimiters for column assignment.
    */
   private parseSlideIAPresenterMode(
     contentLines: string[],
     elements: SlideElement[],
     speakerNotes: string[]
   ): void {
-    // Detect column blocks for multi-column layouts (tab-indented only)
-    const columnBlocks = this.detectColumnBlocks(contentLines);
-    const hasTabColumns = columnBlocks.length > 1;
-
-    // Detect image-based columns (count non-indented images)
-    const imageColumnCount = this.countImageColumns(contentLines);
-    const hasImageColumns = imageColumnCount > 1;
-    const hasColumns = hasTabColumns || hasImageColumns;
-
-    this.debugLog('Column detection:', { hasTabColumns, hasImageColumns, imageColumnCount });
-
-    // Count explicit column delimiters to determine max column index
-    const columnDelimiterCount = contentLines.filter((line) => line.trim() === '--').length;
-    const maxColumnIndex = Math.min(columnDelimiterCount, 2); // Max 3 columns (0, 1, 2)
-
-    let i = 0;
-    let currentColumnIndex = 0;
-    let imageIndexCounter = 0; // Simple counter for non-indented images
-    let lastWasColumnContent = false;
-    let inExplicitSpeakerNotes = false; // Track if we've hit note: or notes: marker
-
-    while (i < contentLines.length) {
-      const line = contentLines[i];
-
-      // Check for explicit note: or notes: marker (case-insensitive, can have whitespace)
-      // Supports both Advanced Slides (note:) and Perspecta (notes:) syntax
-      if (line.trim().toLowerCase() === 'note:' || line.trim().toLowerCase() === 'notes:') {
-        inExplicitSpeakerNotes = true;
-        i++;
-        continue;
-      }
-
-      // Once we hit explicit notes marker, everything goes to speaker notes
-      if (inExplicitSpeakerNotes) {
-        if (line.trim() !== '') {
-          speakerNotes.push(line);
-        }
-        i++;
-        continue;
-      }
-
-      // Check for column break delimiter -- (on its own line)
-      if (line.trim() === '--') {
-        currentColumnIndex++;
-        i++;
-        continue;
-      }
-
-      // Check if line is truly empty (not starting with tab)
-      const isTabIndented = line.startsWith('\t') || line.startsWith('    ');
-      const isTrulyEmpty = line.trim() === '' && !isTabIndented;
-
-      // Skip truly empty lines but track for column separation
-      if (isTrulyEmpty) {
-        if (lastWasColumnContent && hasTabColumns) {
-          // Check if next non-empty line is also column content
-          let nextI = i + 1;
-          while (
-            nextI < contentLines.length &&
-            contentLines[nextI].trim() === '' &&
-            !contentLines[nextI].startsWith('\t') &&
-            !contentLines[nextI].startsWith('    ')
-          ) {
-            nextI++;
-          }
-          if (nextI < contentLines.length) {
-            const nextLine = contentLines[nextI];
-            if (nextLine.startsWith('\t') || nextLine.startsWith('    ')) {
-              currentColumnIndex++;
-            }
-          }
-        }
-        lastWasColumnContent = false;
-        i++;
-        continue;
-      }
-
-      // Tab-indented empty line - continuation of current column
-      if (isTabIndented && line.trim() === '') {
-        i++;
-        continue;
-      }
-
-      // Comments (// at start) - skip entirely
-      if (line.trim().startsWith('//')) {
-        i++;
-        continue;
-      }
-
-      // Kicker (^text)
-      const kickerMatch = line.match(/^\^(.+)$/);
-      if (kickerMatch) {
-        elements.push({
-          type: 'kicker',
-          content: kickerMatch[1].trim(),
-          visible: true,
-          raw: line,
-        });
-        i++;
-        lastWasColumnContent = false;
-        continue;
-      }
-
-      // Headings - always visible
-      // If followed by tab-indented content, assign to current column
-      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-      if (headingMatch) {
-        // Check if next non-empty line is tab-indented (column content)
-        let nextI = i + 1;
-        while (nextI < contentLines.length && contentLines[nextI].trim() === '') {
-          nextI++;
-        }
-        const nextIsColumnContent =
-          nextI < contentLines.length &&
-          (contentLines[nextI].startsWith('\t') || contentLines[nextI].startsWith('    '));
-
-        const headingElement: SlideElement = {
-          type: 'heading',
-          content: headingMatch[2],
-          level: headingMatch[1].length,
-          visible: true,
-          raw: line,
-        };
-
-        // If this heading precedes column content, assign it to that column
-        if (hasColumns && nextIsColumnContent) {
-          headingElement.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
-        }
-
-        elements.push(headingElement);
-        i++;
-        lastWasColumnContent = false;
-        continue;
-      }
-
-      // Tab-indented content - visible (potential column content)
-      if (isTabIndented) {
-        const unindentedLine = line.replace(/^(\t| {4})/, '');
-        const element = this.parseElement(unindentedLine, contentLines, i, true);
-
-        if (hasColumns) {
-          element.element.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
-        }
-
-        elements.push(element.element);
-        i = element.nextIndex;
-        lastWasColumnContent = true;
-        continue;
-      }
-
-      // Images - visible (both standard markdown and Obsidian wiki-link syntax)
-      // Check if the line (before unindenting for tab-indented) contains an image
-      const lineToCheckForImage = isTabIndented ? line.replace(/^(\t| {4})/, '') : line;
-      const imageResult = this.parseImageWithMetadata(
-        lineToCheckForImage,
-        contentLines,
-        i,
-        isTabIndented
-      );
-      if (imageResult) {
-        // Assign columnIndex based on context
-        if (hasTabColumns && isTabIndented) {
-          // Tab-indented images use tab column index
-          imageResult.element.columnIndex = Math.min(currentColumnIndex, maxColumnIndex);
-          lastWasColumnContent = true;
-        } else if (hasImageColumns && !isTabIndented) {
-          // Non-indented images get sequential column indices (0, 1, 2, ...)
-          imageResult.element.columnIndex = Math.min(imageIndexCounter, maxColumnIndex);
-          imageIndexCounter++;
-          this.debugLog('Assigned image column:', {
-            imageIndexCounter: imageIndexCounter - 1,
-            path: imageResult.element.content,
-          });
-        }
-        lastWasColumnContent = isTabIndented;
-        elements.push(imageResult.element);
-        i = imageResult.nextIndex;
-        continue;
-      }
-
-      // Code blocks - visible
-      if (line.startsWith('```')) {
-        const codeBlock = this.parseCodeBlock(contentLines, i);
-        elements.push({
-          type: 'code',
-          content: codeBlock.content,
-          visible: true,
-          raw: codeBlock.raw,
-        });
-        i = codeBlock.nextIndex;
-        lastWasColumnContent = false;
-        continue;
-      }
-
-      // Tables - visible
-      if (line.includes('|') && line.trim().startsWith('|')) {
-        const table = this.parseTable(contentLines, i);
-        elements.push({
-          type: 'table',
-          content: table.content,
-          visible: true,
-          raw: table.raw,
-        });
-        i = table.nextIndex;
-        lastWasColumnContent = false;
-        continue;
-      }
-
-      // Math blocks - visible
-      if (line.startsWith('$$')) {
-        const mathBlock = this.parseMathBlock(contentLines, i);
-        elements.push({
-          type: 'math',
-          content: mathBlock.content,
-          visible: true,
-          raw: mathBlock.raw,
-        });
-        i = mathBlock.nextIndex;
-        lastWasColumnContent = false;
-        continue;
-      }
-
-      // Regular paragraph - speaker notes (not visible in Perspecta mode)
-      speakerNotes.push(line);
-      i++;
-      lastWasColumnContent = false;
-    }
+    const hasExplicitColumnLayout = this.hasExplicitColumnLayout(contentLines);
+    this.parseSlideAdvancedMode(
+      contentLines,
+      elements,
+      speakerNotes,
+      hasExplicitColumnLayout
+    );
   }
 
   /**
@@ -920,8 +895,9 @@ export class SlideParser {
     while (i < contentLines.length) {
       const line = contentLines[i];
 
-      // Check for note: marker (case-insensitive, can have whitespace)
-      if (line.trim().toLowerCase() === 'note:' || line.trim().toLowerCase() === 'notes:') {
+      // Check for speaker-notes marker (case-insensitive, whitespace-tolerant).
+      // See isSpeakerNotesMarker() for the full list of accepted variants.
+      if (this.isSpeakerNotesMarker(line)) {
         inSpeakerNotes = true;
         i++;
         continue;
@@ -1290,6 +1266,16 @@ export class SlideParser {
           | 'lighten'
           | 'blur'
           | 'none';
+        startIndex = i + 1;
+        continue;
+      }
+
+      // Chapter label — opens (or renames) an act. The value is everything
+      // after `chapter:`; trimmed. An empty value resets the running
+      // chapter for subsequent slides (see parseSlides).
+      const chapterMatch = line.match(/^chapter:\s*(.*)$/i);
+      if (chapterMatch) {
+        metadata.chapter = chapterMatch[1].trim();
         startIndex = i + 1;
         continue;
       }

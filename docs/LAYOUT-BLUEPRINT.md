@@ -385,9 +385,13 @@ The following are constants of the layout system. They are **not** variables and
 A presentation is a Markdown file. Slides are separated by horizontal-rule lines on their own:
 
 - `---` or `----` (3 or 4 dashes) → normal slide break.
-- `-----` or more (5+ dashes) → act break. Behaves as a slide break for rendering, but additionally flags the following slide as the start of a new act. Future UI surfaces (e.g. the light-table view) will visualize this break.
+- `-----` or more (5+ dashes) → act break. Behaves as a slide break, plus opens a new act for UI grouping.
 
-A blank line is required before and after the separator. After a separator, an optional per-slide meta block may appear before the blank line that begins the slide content (§5.3).
+Chapter labels live in the per-slide meta block as the `chapter:` key (§5.3), **not** inline on the separator line. The inline form (`----- Foo`) was removed because it prevented Obsidian's Live Preview from rendering the HR. A slide that sets `chapter:` opens (or renames) the running chapter; following slides inherit it until another slide sets `chapter:` again. An explicitly empty value (`chapter:` with nothing after the colon) clears the running chapter.
+
+Blank lines around separators are **not** required since 0.3.x. A per-slide meta block may start on the very next line after the separator.
+
+Code fences (` ``` ` and `~~~`) are honoured by the splitter: a `---`/`-----` line inside a fenced block is content, not a separator.
 
 The YAML frontmatter at the top of the file (delimited by `---` on its own lines) is parsed separately and never counts as a slide separator.
 
@@ -395,17 +399,34 @@ The YAML frontmatter at the top of the file (delimited by `---` on its own lines
 
 Two content modes determine how Markdown is split between slide-visible content and speaker notes. The mode is selected via `contentMode` in frontmatter; the default is `perspecta`.
 
-**Mode `perspecta` (default):**
-- Headings (`#`…`######`) are always slide-visible.
-- Tab-indented (or 4-space-indented) text is slide-visible.
-- Non-indented plain paragraphs are speaker notes.
+**Mode `perspecta` (default, since 0.3.x):**
+- All content is slide-visible by default.
 - A `^Kicker` line above a heading becomes a kicker (eyebrow text).
 - A line starting with `//` is a comment, hidden from both slide and notes.
-- `note:` or `notes:` on its own line begins an explicit speaker-notes section.
+- A speaker-notes marker line begins the notes section. Everything after it on this slide is hidden from the slide and shown only in the presenter view.
 
 **Mode `advanced-slides`:**
 - All content is slide-visible by default.
-- `note:` or `notes:` on its own line begins the speaker-notes section.
+- A speaker-notes marker line begins the notes section.
+
+**Speaker-notes markers (both modes):**
+A marker line is a line whose trimmed, case-insensitive content matches one of these forms (with internal `-` and whitespace treated as equivalent, ending with `:` and nothing else after the colon):
+
+| English | German |
+|---|---|
+| `note:` | `notiz:` |
+| `notes:` | `notizen:` |
+| `speaker note:` / `speaker notes:` | `sprechertext:` |
+| `speaker-note:` / `speaker-notes:` | `sprecher-notiz:` / `sprechernotiz:` |
+| `presenter note:` / `presenter notes:` | |
+| `presenter-note:` / `presenter-notes:` | |
+| `moderator note:` / `moderator notes:` | |
+| `moderator-note:` / `moderator-notes:` | |
+| `moderation:` | |
+
+The canonical form used in generated content (skills, demo decks) is `notes:`. The others exist for user-typed compatibility.
+
+> **Note on tab indentation (historical):** before 0.3.x, the perspecta mode used tab-indent as the slide-visible marker (a legacy of the iA-Presenter compatibility era). That convention conflicted with normal Markdown indentation (nested lists became invisible) and was removed. Tab indentation is now plain Markdown indentation with no parser semantics.
 
 ### 5.3 Per-slide meta block
 
@@ -421,6 +442,7 @@ The meta block is **not** YAML, **not** HTML comments, and **not** the same as f
 | `mode` | `light` / `dark` | Per-slide mode override |
 | `hide-overlay` or `hideOverlay` | `true` / `false` | Hides header/footer strips on this slide |
 | `filter` | `darken` / `lighten` / `blur` / `none` | Filter applied over a background image |
+| `chapter` | Free text | Opens (or renames) the running chapter/act. Inherits to following slides until another `chapter:` is set. Empty value clears the chapter. See §5.6 for the `{{chapter}}` placeholder. |
 
 Unrecognized keys are ignored (silently). This is by design: forward compatibility for future keys.
 
@@ -451,6 +473,22 @@ For slot-based layouts:
 - If the layout is `1-column`, `2-columns`, `3-columns`, `2-columns-1+2`, or `2-columns-2+1`, the column count is fixed by the layout name. Content is distributed across columns based on the order of H3 blocks (or, when no H3s, by explicit `--` column-break markers on their own lines).
 
 The `--` column-break (two dashes on a line by itself within a slide) forces a column transition. It is independent of the slide separator (which is 3+ dashes).
+
+### 5.6 Content placeholders
+
+A small placeholder syntax lets slide content reference deck/slide-level metadata without duplicating it. Placeholders use double-brace syntax — `{{name}}` — and are substituted at parse time, after slides have been split and metadata resolved. They work in any text-bearing element (headings, paragraphs, list items, blockquotes, kicker, speaker notes).
+
+Current placeholders:
+
+| Placeholder | Substituted with | Empty when |
+|---|---|---|
+| `{{chapter}}` | The label of the act/chapter the slide belongs to (see §5.1) | The slide is outside any named chapter |
+
+**Unknown placeholders are left intact.** A typo like `{{chpter}}` renders as the literal string `{{chpter}}` rather than disappearing silently, so authoring mistakes are visible.
+
+Names are case-insensitive (`{{Chapter}}` works), whitespace inside the braces is tolerated (`{{ chapter }}` works), and the recognised charset is `[a-z][a-z0-9_-]*` (to leave room for future placeholders like `{{slide-number}}` without re-thinking the lexer).
+
+This is a deliberately minimal mechanism. It is not a templating engine: no conditionals, no loops, no nested expressions. Adding more variables happens in one place (the parser's substitution table) and requires a one-line entry in the table here.
 
 ---
 

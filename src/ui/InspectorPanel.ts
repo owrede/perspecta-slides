@@ -2630,6 +2630,27 @@ export class InspectorPanelView extends ItemView {
           toggle.setValue(this.currentSlide?.metadata.hideOverlay || false);
           toggle.onChange((value) => this.updateSlideMetadata({ hideOverlay: value || undefined }, true));
         });
+
+      // Chapter — opens (or renames) an act/chapter. Inherits to following
+      // slides until another slide sets a new chapter. Empty value clears
+      // the chapter for this slide.
+      // Distinguish "explicitly set on this slide" from "inherited" by
+      // checking metadata directly on rawContent — we can't know inheritance
+      // here without re-parsing, so we just bind to metadata.chapter and let
+      // the user re-type the label if they want to rename mid-chapter.
+      new Setting(overridesSection)
+        .setName('Chapter')
+        .setDesc('Start a new chapter on this slide. Following slides inherit this label until another chapter is set. Available as {{chapter}} placeholder.')
+        .addText((text) => {
+          text.setPlaceholder('e.g. Act 1 — Setup').setValue(this.currentSlide?.metadata.chapter ?? '');
+          text.inputEl.addEventListener('blur', () => {
+            const value = text.getValue().trim();
+            // Empty string explicitly clears the chapter on this slide.
+            // We pass it through as '' (not undefined) so the writer
+            // distinguishes "clear" from "no change".
+            this.updateSlideMetadata({ chapter: value === '' ? undefined : value }, true);
+          });
+        });
     }
     }
 

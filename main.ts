@@ -905,6 +905,21 @@ export default class PerspectaSlidesPlugin extends Plugin {
       },
     });
 
+    this.addCommand({
+      id: 'tidy-all-slides',
+      name: 'Tidy all slides (canonical meta block)',
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        if (file && file.extension === 'md') {
+          if (!checking) {
+            void this.tidyAllSlides(file);
+          }
+          return true;
+        }
+        return false;
+      },
+    });
+
     this.addRibbonIcon('presentation', 'Open presentation view', () => {
       console.log('[Presentation Button] Clicked');
       const file = this.app.workspace.getActiveFile();
@@ -2009,8 +2024,238 @@ export default class PerspectaSlidesPlugin extends Plugin {
   }
 
   private isSlideSeparator(line: string): boolean {
-    // Must be exactly `---` (3 or more dashes) at the start of the line, with optional trailing whitespace
-    return /^---+\s*$/.test(line);
+    // A slide separator is `---+` (≥3 dashes) followed by optional
+    // whitespace only. Chapter labels used to be carried inline on the
+    // separator line (`----- Foo`), but that prevented Obsidian's Live
+    // Preview from rendering the HR. Chapter labels now live in the
+    // per-slide meta block as `chapter:`. MUST stay in sync with
+    // SlideParser.splitIntoSlideRawContents and splitBodyAtSeparators.
+    return /^-{3,}\s*$/.test(line);
+  }
+
+  /**
+   * Splits a presentation body (markdown after the frontmatter block) into
+   * slide-content chunks and the literal separator lines between them, with
+   * the same semantics as `SlideParser.splitIntoSlideRawContents`:
+   *
+   *   - `---+` (≥3 dashes, only whitespace after) → plain slide separator
+   *   - `-----+ <label>` (≥5 dashes, then text) → named act separator
+   *   - Lines inside ``` / ~~~ fenced code blocks are content, not separators
+   *
+   * Result invariant: `separators.length === slideRawContents.length - 1`
+   * (one separator between each adjacent pair of slide chunks). Each
+   * `separators[i]` is the bare separator line as it appeared in the
+   * source (no surrounding newlines), so callers that re-assemble the body
+   * must add newlines around it.
+   *
+   * Use this helper in any place that previously did
+   * `bodyContent.split(/(\n---+\s*\n)/)` — that regex misses code fences,
+   * named act breaks, and any separator without surrounding blank lines.
+   */
+  private splitBodyAtSeparators(bodyContent: string): {
+    slideRawContents: string[];
+    separators: string[];
+  } {
+    const slideRawContents: string[] = [];
+    const separators: string[] = [];
+    const bodyLines = bodyContent.split('\n');
+    let currentSlideLines: string[] = [];
+    let fenceChar: '`' | '~' | null = null;
+
+    const flush = () => {
+      slideRawContents.push(currentSlideLines.join('\n'));
+      currentSlideLines = [];
+    };
+
+    for (const line of bodyLines) {
+      const trimmed = line.trim();
+      if (fenceChar === null) {
+        if (trimmed.startsWith('```')) {
+          fenceChar = '`';
+          currentSlideLines.push(line);
+          continue;
+        }
+        if (trimmed.startsWith('~~~')) {
+          fenceChar = '~';
+          currentSlideLines.push(line);
+          continue;
+        }
+      } else {
+        if (trimmed.startsWith(fenceChar.repeat(3))) fenceChar = null;
+        currentSlideLines.push(line);
+        continue;
+      }
+      if (/^-{3,}\s*$/.test(line)) {
+        flush();
+        separators.push(line);
+        continue;
+      }
+      currentSlideLines.push(line);
+    }
+    flush();
+    return { slideRawContents, separators };
+  }
+
+  /**
+   * Bring a slide-content chunk into canonical shape so that subsequent
+   * meta-block operations have an unambiguous starting point. Without this,
+   * users (or earlier code paths) leave blank lines inside or before the
+   * meta block, and the heuristic meta-block detector ends up classifying
+   * meta lines as content (or vice versa).
+   *
+   * Canonical form:
+   *
+   *     key1: value1
+   *     key2: value2
+   *     ...
+   *     <single blank line>
+   *     content line 1
+   *     content line 2
+   *     ...
+   *
+   * Concretely:
+   *
+   *  - All `key: value` lines from the run at the top of the chunk (where
+   *    "the run" allows interspersed blank lines, so misplaced spacing
+   *    isn't lost) are collected and re-emitted in semantic order:
+   *
+   *      layout, mode, background, opacity, filter, hide-overlay, chapter,
+   *      then any other keys we don't have an explicit slot for, alphabetic.
+   *
+   *  - Keys are lowercased on read; we write them back exactly as in the
+   *    semantic-order table (e.g. `hide-overlay`, not `hideOverlay`) for
+   *    consistency. Unknown keys keep their original capitalisation.
+   *
+   *  - Trailing whitespace on every line is stripped.
+   *
+   *  - Runs of two or more blank lines in the content area collapse to one.
+   *
+   *  - Leading and trailing blank lines of the entire chunk are removed.
+   *
+   *  - If the chunk has no meta block, the leading-blank-line collapse and
+   *    end-trimming still happen.
+   *
+   * Detection of meta lines stops at the first non-blank, non-meta line
+   * (e.g. a heading, list item, paragraph) — everything from that point on
+   * is content. A meta line is `^[a-zA-Z][\w-]*\s*:\s*.*$`; lines that look
+   * like metadata syntactically but aren't recognised keys are still moved
+   * into the meta block so we don't surprise the user by relegating a
+   * one-off `class: foo` to content.
+   */
+  /**
+   * Semantic order used when serialising the meta block back to text.
+   * Keys not in this list are emitted alphabetically after these.
+   */
+  private static readonly META_ORDER = [
+    'layout',
+    'mode',
+    'background',
+    'opacity',
+    'filter',
+    'hide-overlay',
+    'chapter',
+  ];
+
+  /**
+   * Aliases the user (or older versions of this plugin) might have written.
+   * Applied when reading; the output always uses the canonical form on the
+   * right-hand side.
+   */
+  private static readonly META_KEY_ALIASES: Record<string, string> = {
+    hideoverlay: 'hide-overlay',
+  };
+
+  /**
+   * Parse a slide-content chunk into a meta dictionary and a content body.
+   *
+   * Tolerates the kinds of "almost-canonical" formatting humans (and prior
+   * naïve writes) leave behind: leading blank lines, blank lines within the
+   * meta block, trailing whitespace, capitalised keys, mixed key
+   * separators. Anything before the first line that is non-blank and not a
+   * `key: value` pattern is the meta block.
+   *
+   * Returns the meta as a Record keyed by canonical lower-case (with
+   * `hide-overlay` not `hideOverlay`), and the content as a raw string (no
+   * leading/trailing blanks). Companion to `serializeSlideChunk`.
+   */
+  private parseSlideChunk(chunk: string): {
+    meta: Record<string, string>;
+    content: string;
+  } {
+    const lines = chunk.split('\n').map((l) => l.replace(/\s+$/, ''));
+    while (lines.length > 0 && lines[0] === '') lines.shift();
+    while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+
+    const meta: Record<string, string> = {};
+    let contentStart = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line === '') continue; // blank inside meta region — tolerated
+      const m = line.match(/^([a-zA-Z][\w-]*)\s*:\s*(.*)$/);
+      if (!m) {
+        contentStart = i;
+        break;
+      }
+      const rawKey = m[1].toLowerCase();
+      const key = PerspectaSlidesPlugin.META_KEY_ALIASES[rawKey] ?? rawKey;
+      meta[key] = m[2];
+      contentStart = i + 1;
+    }
+
+    const contentLines = lines.slice(contentStart);
+    while (contentLines.length > 0 && contentLines[0] === '') contentLines.shift();
+    while (contentLines.length > 0 && contentLines[contentLines.length - 1] === '') {
+      contentLines.pop();
+    }
+    const collapsed: string[] = [];
+    let prevBlank = false;
+    for (const line of contentLines) {
+      const isBlank = line === '';
+      if (isBlank && prevBlank) continue;
+      collapsed.push(line);
+      prevBlank = isBlank;
+    }
+    return { meta, content: collapsed.join('\n') };
+  }
+
+  /**
+   * Serialise a meta dictionary + content body into canonical slide-chunk
+   * form (meta keys in semantic order, single blank line between meta and
+   * content). Companion to `parseSlideChunk`.
+   */
+  private serializeSlideChunk(meta: Record<string, string>, content: string): string {
+    const orderedKeys: string[] = [];
+    for (const k of PerspectaSlidesPlugin.META_ORDER) {
+      if (k in meta) orderedKeys.push(k);
+    }
+    const extras = Object.keys(meta).filter((k) => !PerspectaSlidesPlugin.META_ORDER.includes(k));
+    extras.sort();
+    orderedKeys.push(...extras);
+
+    const metaLines = orderedKeys
+      .filter((k) => meta[k] !== undefined && meta[k] !== '')
+      .map((k) => `${k}: ${meta[k]}`.replace(/\s+$/, ''));
+
+    if (metaLines.length === 0 && content === '') return '';
+    if (metaLines.length === 0) return content;
+    if (content === '') return metaLines.join('\n');
+    return metaLines.join('\n') + '\n\n' + content;
+  }
+
+  /**
+   * Bring a slide-content chunk into canonical shape so that subsequent
+   * meta-block operations have an unambiguous starting point: meta keys
+   * collected and sorted in semantic order, single blank line separating
+   * meta from content, runs of blank lines in content collapsed to one,
+   * trailing whitespace stripped, leading/trailing blank lines removed.
+   *
+   * Used both as a preprocessing step in every meta-mutating operation
+   * (`updateSlideMetadata`, `updateSlideHiddenState`) and standalone by the
+   * "Tidy all slides" command.
+   */
+  private tidySlideChunk(chunk: string): string {
+    const { meta, content } = this.parseSlideChunk(chunk);
+    return this.serializeSlideChunk(meta, content);
   }
 
   private findFrontmatterEnd(lines: string[]): number {
@@ -2360,30 +2605,34 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const frontmatter = lines.slice(0, frontmatterEnd).join('\n');
     const bodyContent = lines.slice(frontmatterEnd).join('\n');
 
-    // Split by slide separator, preserving exact content
-    const separatorPattern = /(\n---+\s*\n)/;
-    const parts = bodyContent.split(separatorPattern);
+    // Split into slide-content chunks + separator lines with the same
+    // semantics as the parser (`splitIntoSlideRawContents`). Code-fence and
+    // labeled-act-break aware. See `splitBodyAtSeparators` for the contract.
+    const { slideRawContents, separators } = this.splitBodyAtSeparators(bodyContent);
 
-    // parts is: [slide0, sep0, slide1, sep1, slide2, ...]
-    // Extract slide contents (even indices) and separators (odd indices)
-    const slideRawContents: string[] = [];
-    const separators: string[] = [];
-    for (let i = 0; i < parts.length; i++) {
-      if (i % 2 === 0) {
-        slideRawContents.push(parts[i]);
-      } else {
-        separators.push(parts[i]);
-      }
-    }
-
-    // Reorder slides
+    // Reorder slides. Separators stay at their original positions — only
+    // the slide contents between them are permuted. This preserves named
+    // act breaks (`----- Chapter`) so that chapter boundaries don't shift
+    // when a regular slide is dragged across them.
     const [movedSlide] = slideRawContents.splice(fromIndex, 1);
     slideRawContents.splice(toIndex, 0, movedSlide);
 
-    // Reconstruct the document preserving original separator style
-    // Use the first separator as template, or default to '\n---\n'
-    const sep = separators[0] || '\n---\n';
-    const newBody = slideRawContents.join(sep);
+    // Reconstruct the body: slide-N then separator-N for N = 0..M-1, then
+    // the final slide. There is always exactly one fewer separator than
+    // slide-content chunk.
+    const bodyChunks: string[] = [];
+    for (let i = 0; i < slideRawContents.length; i++) {
+      bodyChunks.push(slideRawContents[i]);
+      if (i < separators.length) {
+        // Re-insert the original separator with a leading newline so it sits
+        // on its own line. We don't append a trailing newline because the
+        // next slide chunk already starts with one (or the chunk was
+        // captured starting on the line after the separator, in which case
+        // the natural join below adds the newline back).
+        bodyChunks.push('\n' + separators[i]);
+      }
+    }
+    const newBody = bodyChunks.join('\n');
     const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
 
     await this.app.vault.modify(file, newContent);
@@ -2463,6 +2712,53 @@ export default class PerspectaSlidesPlugin extends Plugin {
     await this.navigateToSlide(newSlideIndex, tempPresentation, file);
   }
 
+  /**
+   * Run `tidySlideChunk` on every slide in the file. Frontmatter is left
+   * untouched. Separator lines are preserved. Used by the
+   * "Tidy all slides" command — useful for cleaning up imported decks or
+   * a file that's been hand-edited into an inconsistent shape.
+   */
+  async tidyAllSlides(file: TFile) {
+    const content = await this.app.vault.read(file);
+    const lines = content.split('\n');
+
+    // Find frontmatter end (same logic as elsewhere).
+    let inFrontmatter = false;
+    let frontmatterEnd = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (i === 0 && lines[i].trim() === '---') {
+        inFrontmatter = true;
+        continue;
+      }
+      if (inFrontmatter && lines[i].trim() === '---') {
+        frontmatterEnd = i + 1;
+        break;
+      }
+    }
+
+    const frontmatter = lines.slice(0, frontmatterEnd).join('\n');
+    const bodyContent = lines.slice(frontmatterEnd).join('\n');
+
+    const { slideRawContents, separators } = this.splitBodyAtSeparators(bodyContent);
+    const tidied = slideRawContents.map((chunk) => this.tidySlideChunk(chunk));
+
+    let newBody = tidied[0];
+    for (let i = 1; i < tidied.length; i++) {
+      const separatorLine = separators[i - 1] || '---';
+      newBody += '\n\n' + separatorLine + '\n\n' + tidied[i];
+    }
+    const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
+
+    if (newContent === content) {
+      new Notice('All slides are already tidy.');
+      return;
+    }
+
+    await this.app.vault.modify(file, newContent);
+    new Notice(`Tidied ${tidied.length} slide${tidied.length === 1 ? '' : 's'}.`);
+    this.updateSidebarsIncrementalWithContent(file, newContent);
+  }
+
   async updateSlideMetadata(file: TFile, slideIndex: number, metadata: Record<string, any>) {
     const content = await this.app.vault.read(file);
     const lines = content.split('\n');
@@ -2484,117 +2780,50 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const frontmatter = lines.slice(0, frontmatterEnd).join('\n');
     const bodyContent = lines.slice(frontmatterEnd).join('\n');
 
-    // Split by slide separator, preserving the separator pattern
-    const separatorPattern = /(\n---+\s*\n)/;
-    const parts = bodyContent.split(separatorPattern);
-
-    // parts is now: [slide0, sep0, slide1, sep1, slide2, ...]
-    // Extract just the slide contents (even indices) and separators (odd indices)
-    const slideRawContents: string[] = [];
-    const separators: string[] = [];
-    for (let i = 0; i < parts.length; i++) {
-      if (i % 2 === 0) {
-        slideRawContents.push(parts[i]);
-      } else {
-        separators.push(parts[i]);
-      }
-    }
+    const { slideRawContents, separators } = this.splitBodyAtSeparators(bodyContent);
 
     if (slideIndex < 0 || slideIndex >= slideRawContents.length) {
       return;
     }
 
-    // Get the slide content
-    const slideContent = slideRawContents[slideIndex];
-    const slideLines = slideContent.split('\n');
+    // Parse → mutate → serialise. Going through `parseSlideChunk` gives us
+    // a tidied meta dictionary regardless of how messy the on-disk format
+    // was (blank lines inside the meta block, unsorted keys, mixed casing,
+    // …). This is the fix for the longstanding "blank line turns meta into
+    // content" bug. Output goes through `serializeSlideChunk`, which emits
+    // keys in semantic order with exactly one blank line before content.
+    const { meta, content: slideContent } = this.parseSlideChunk(slideRawContents[slideIndex]);
 
-    // Find or create metadata block at start of slide
-    let metadataEndLine = 0;
-    const existingMetadata: Record<string, string> = {};
-
-    // Check for existing metadata lines at start
-    for (let i = 0; i < slideLines.length; i++) {
-      const line = slideLines[i].trim();
-      if (line === '') {
-        metadataEndLine = i;
-        break;
-      }
-      const match = line.match(/^([\w-]+):\s*(.*)$/i);
-      if (match) {
-        existingMetadata[match[1].toLowerCase()] = match[2];
-        metadataEndLine = i + 1;
-      } else if (!line.startsWith('#') && !line.startsWith('!') && !line.startsWith('-')) {
-        // Not a metadata line and not content, check if it looks like metadata
-        break;
-      } else {
-        // This is content, no more metadata
-        break;
-      }
-    }
-
-    // Merge new metadata with existing
-    const finalMetadata: Record<string, string> = { ...existingMetadata };
     for (const [key, value] of Object.entries(metadata)) {
-      // Convert camelCase to kebab-case for markdown
-      let writeKey = key;
-      if (key === 'hideOverlay') {
-        writeKey = 'hide-overlay';
-      }
-      
+      const writeKey = key === 'hideOverlay' ? 'hide-overlay' : key;
       if (value === undefined || value === null || value === '') {
-        delete finalMetadata[writeKey];
-        delete finalMetadata[key]; // Also remove old key variant if it exists
-      } else if (typeof value === 'boolean') {
-        finalMetadata[writeKey] = value ? 'true' : 'false';
+        delete meta[writeKey];
+        delete meta[key]; // remove any alias variant too
+        continue;
+      }
+      if (typeof value === 'boolean') {
+        meta[writeKey] = value ? 'true' : 'false';
       } else if (typeof value === 'number') {
         if (key === 'backgroundOpacity') {
-          finalMetadata['opacity'] = `${Math.round(value * 100)}%`;
+          meta['opacity'] = `${Math.round(value * 100)}%`;
         } else {
-          finalMetadata[writeKey] = String(value);
+          meta[writeKey] = String(value);
         }
       } else {
-        finalMetadata[writeKey] = String(value);
+        meta[writeKey] = String(value);
       }
     }
 
-    // Build new metadata lines
-    const metadataLines: string[] = [];
-    for (const [key, value] of Object.entries(finalMetadata)) {
-      if (value) {
-        metadataLines.push(`${key}: ${value}`);
-      }
-    }
+    slideRawContents[slideIndex] = this.serializeSlideChunk(meta, slideContent);
 
-    // Get content after metadata
-    const contentLines = slideLines.slice(metadataEndLine);
-
-    // Remove leading empty lines from content
-    while (contentLines.length > 0 && contentLines[0].trim() === '') {
-      contentLines.shift();
-    }
-
-    // Reconstruct slide
-    let newSlideContent = '';
-    if (metadataLines.length > 0) {
-      newSlideContent = metadataLines.join('\n') + '\n\n' + contentLines.join('\n');
-    } else {
-      newSlideContent = contentLines.join('\n');
-    }
-
-    slideRawContents[slideIndex] = newSlideContent;
-
-    // Reconstruct the document using original separators
     let newBody = slideRawContents[0];
     for (let i = 1; i < slideRawContents.length; i++) {
-      // Use original separator if available, otherwise default
-      const separator = separators[i - 1] || '\n---\n';
-      newBody += separator + slideRawContents[i];
+      const separatorLine = separators[i - 1] || '---';
+      newBody += '\n' + separatorLine + '\n' + slideRawContents[i];
     }
     const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
 
     await this.app.vault.modify(file, newContent);
-
-    // Immediately refresh views for responsive updates
     this.updateSidebarsIncrementalWithContent(file, newContent);
   }
 
@@ -2619,92 +2848,44 @@ export default class PerspectaSlidesPlugin extends Plugin {
     const frontmatter = lines.slice(0, frontmatterEnd).join('\n');
     const bodyContent = lines.slice(frontmatterEnd).join('\n');
 
-    // Split by slide separator
-    const separatorPattern = /(\n---+\s*\n)/;
-    const parts = bodyContent.split(separatorPattern);
-
-    const slideRawContents: string[] = [];
-    const separators: string[] = [];
-    for (let i = 0; i < parts.length; i++) {
-      if (i % 2 === 0) {
-        slideRawContents.push(parts[i]);
-      } else {
-        separators.push(parts[i]);
-      }
-    }
+    const { slideRawContents, separators } = this.splitBodyAtSeparators(bodyContent);
 
     if (slideIndex < 0 || slideIndex >= slideRawContents.length) {
       return;
     }
 
-    // Get the slide content
-    const slideContent = slideRawContents[slideIndex];
-    const slideLines = slideContent.split('\n');
-
-    // Find layout metadata line
-    let layoutLineIndex = -1;
-    for (let i = 0; i < slideLines.length; i++) {
-      const line = slideLines[i].trim();
-      if (line.match(/^layout\s*:/i)) {
-        layoutLineIndex = i;
-        break;
-      }
-      // Stop if we hit non-metadata
-      if (
-        line === '' ||
-        (!line.match(/^\w+\s*:/) && !line.startsWith('#') && !line.startsWith('!'))
-      ) {
-        break;
-      }
-    }
+    // Parse → mutate the `layout` value → serialise. The `(hidden)` marker
+    // is a suffix on the layout value, so we touch that single key and
+    // leave everything else (including any blank-lines-inside-meta the user
+    // may have left behind) to be tidied implicitly.
+    const { meta, content: slideContent } = this.parseSlideChunk(slideRawContents[slideIndex]);
 
     if (hidden) {
-      // Add or modify layout to include "(hidden)"
-      if (layoutLineIndex >= 0) {
-        // Modify existing layout line
-        const currentLine = slideLines[layoutLineIndex];
-        const match = currentLine.match(/^(layout\s*:\s*)(.*)$/i);
-        if (match) {
-          const layoutValue = match[2].trim();
-          if (!layoutValue.includes('(hidden)')) {
-            if (layoutValue) {
-              slideLines[layoutLineIndex] = `${match[1]}${layoutValue} (hidden)`;
-            } else {
-              slideLines[layoutLineIndex] = `${match[1]}(hidden)`;
-            }
-          }
-        }
-      } else {
-        // Add new layout line with (hidden)
-        slideLines.unshift('layout: (hidden)');
+      const currentLayout = (meta.layout ?? '').trim();
+      if (currentLayout === '') {
+        meta.layout = '(hidden)';
+      } else if (!currentLayout.includes('(hidden)')) {
+        meta.layout = `${currentLayout} (hidden)`;
       }
+      // else: already hidden, nothing to do
     } else {
-      // Remove "(hidden)" from layout
-      if (layoutLineIndex >= 0) {
-        const currentLine = slideLines[layoutLineIndex];
-        const match = currentLine.match(/^(layout\s*:\s*)(.*)$/i);
-        if (match) {
-          const layoutValue = match[2]
-            .trim()
-            .replace(/\s*\(hidden\)\s*/, '')
-            .trim();
-          if (layoutValue) {
-            slideLines[layoutLineIndex] = `${match[1]}${layoutValue}`;
-          } else {
-            // If layout becomes empty, remove the line
-            slideLines.splice(layoutLineIndex, 1);
-          }
+      if (meta.layout !== undefined) {
+        const cleaned = meta.layout.replace(/\s*\(hidden\)\s*/, '').trim();
+        if (cleaned === '') {
+          delete meta.layout;
+        } else {
+          meta.layout = cleaned;
         }
       }
     }
 
-    slideRawContents[slideIndex] = slideLines.join('\n');
+    slideRawContents[slideIndex] = this.serializeSlideChunk(meta, slideContent);
 
-    // Reconstruct the document
+    // Reconstruct the document using the bare separator lines.
     let newBody = slideRawContents[0];
     for (let i = 1; i < slideRawContents.length; i++) {
-      const separator = separators[i - 1] || '\n---\n';
-      newBody += separator + slideRawContents[i];
+      const separatorLine = separators[i - 1] || '---';
+      newBody += '\n' + separatorLine + '\n' + slideRawContents[i];
     }
     const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
 

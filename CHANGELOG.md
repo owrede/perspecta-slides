@@ -2,6 +2,32 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.3.1] - 2026-05-19
+
+### Added
+- Chapter labels: a slide can open a chapter by setting `chapter: My Chapter` in its meta block; the label propagates to every following slide until another `chapter:` is set or an empty value clears it
+- `{{chapter}}` placeholder usable in any slide-visible text (headings, lists, paragraphs, speaker notes); substitutes to the active chapter label, or empty if none. Unknown placeholders like `{{typo}}` render verbatim so mistakes stay visible
+- Inspector field "Chapter" for editing the chapter label of the current slide without touching the markdown
+- Agent slide-preview workflow: a CDP-based script that captures any slide in a clean 1920×1080 PNG via the plugin's PresentationWindow (see `docs/AGENT-PREVIEW.md`)
+- Command "Perspecta: Tidy all slides (canonical meta block)" — normalises every slide's meta block in the active deck (semantic key order, single blank line before content, no leading blank lines, collapsed multi-blank-lines in content)
+- Expanded speaker-notes markers: in addition to `note:` / `notes:`, the parser now recognises `speaker note(s):`, `presenter note(s):`, `moderator note(s):`, `moderation:`, plus German `notiz`, `notizen`, `sprechertext`, `sprecher(-)notiz`. Hyphens and whitespace are treated equivalently; the canonical form in generated content remains `notes:`
+
+### Improved
+- `mode: dark` slides now render with the correct dark background everywhere — Navigator thumbnails no longer flash bright when a dark deck is open
+- Slide separators are now code-fence aware: `---` and `-----` lines inside a fenced code block are content, not slide breaks. Blank lines around separators are no longer required either — `layout: default` may start on the line immediately after `---`
+- Meta-block operations (Inspector edits, eye-icon hide/show) now run through a tidy step automatically, so accidental blank lines inside the meta block no longer turn meta into content (or vice versa)
+- Sidebar drag-and-drop now moves the correct slide across chapter boundaries (the old splitter was blind to chapter separators, which shifted off-by-N)
+- Markdown cursor sync with the navigator no longer drifts when the deck contains act/chapter breaks
+
+### Fixed
+- Two-column layouts now also work when the column headlines are H2 (the parser's heuristic already supported this, but the upstream visibility marker was swallowing the body)
+- Tab indentation no longer hides content: previously a slide whose bullets weren't tab-indented rendered blank (the old iA-Presenter-era marker). Indentation is now plain Markdown indentation, only `note:` / `notes:` (and the new variants) divide slide content from notes
+- Slides with `----- Chapter` inline labels no longer appear as broken horizontal-rules in Obsidian's Live Preview — chapter labels moved to the meta block as the `chapter:` key
+
+### Migration notes
+- Old `----- Chapter Name` inline labels on separator lines no longer parse as chapter labels. Move the label down to the slide's meta block: `-----` on one line, then `chapter: Chapter Name` on the next
+- Decks that relied on tab-indented content being slide-visible (and non-indented content being notes) need a one-time edit: drop the tab indentation, and add a `notes:` line wherever speaker notes should start
+
 ## [0.3.0] - 2026-05-19
 
 ### Added

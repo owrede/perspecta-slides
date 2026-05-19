@@ -11,6 +11,26 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.1',
+    date: '2026-05-19',
+    changes: [
+      'New: Chapter labels — set `chapter: My Chapter` in any slide and the label propagates to following slides; use `{{chapter}}` in any text to print it on the slide',
+      'New: Inspector field "Chapter" — edit the running chapter label without touching the markdown',
+      'New: Command "Tidy all slides" — normalises every slide\'s meta block (semantic key order, single blank line before content, no orphan blank lines)',
+      'New: Expanded speaker-notes markers — also accepts `speaker note(s):`, `presenter note(s):`, `moderator note(s):`, `moderation:`, German `notiz`, `notizen`, `sprechertext`, `sprecher(-)notiz`',
+      'Improved: `mode: dark` slides now render with the correct dark background in the navigator thumbnails (no more bright flashes behind dark slides)',
+      'Improved: Slide separators are code-fence aware — `---` inside a fenced code block stays content',
+      'Improved: Blank lines around separators are no longer required — meta blocks can start directly on the line after `---`',
+      'Improved: Meta-block operations (Inspector edits, eye-icon hide/show) auto-tidy the slide, so accidental blank lines inside the meta no longer convert meta lines into content',
+      'Improved: Sidebar drag-and-drop and cursor sync now work correctly across chapter/act breaks',
+      'Fix: Two-column layouts with H2 column headlines now render two-column (used to collapse to one)',
+      'Fix: Tab-indented content no longer hides — indentation is plain Markdown indentation, only `notes:` divides slide content from notes',
+      'Fix: Chapter labels (formerly `----- Chapter Name` inline) no longer break the horizontal-rule rendering in Obsidian\'s Live Preview',
+      'Migration: Old `----- Chapter Name` inline labels need to move to the meta block as `chapter: Chapter Name`',
+      'Migration: Decks that relied on tab indentation for slide visibility need a one-time edit (drop tabs, add `notes:` where speaker notes should start)',
+    ],
+  },
+  {
     version: '0.3.0',
     date: '2026-05-19',
     changes: [

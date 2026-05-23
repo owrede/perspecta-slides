@@ -300,8 +300,19 @@ export class PptxFontEmbedder {
       }
 
       if (slotEntries.length === 0) continue;
+
+      // Extract panose from the first slot's bytes (they all share the same
+      // metric since they're flattened from the same source). PowerPoint uses
+      // panose as a secondary key when matching theme typeface references to
+      // embedded font data — without it, font resolution falls back to
+      // Calibri even when the typeface name matches.
+      const firstSlotBytes = filesToAdd[filesToAdd.length - slotEntries.length].bytes;
+      const panose = extractPanoseHex(firstSlotBytes);
+      const panoseAttr = panose ? ` panose="${panose}"` : '';
+      const pitchFamilyAttr = this.derivePitchFamilyAttr(panose);
+
       fontElements.push(
-        `<p:embeddedFont><p:font typeface="${this.escapeXml(font.typeface)}"/>${slotEntries.join('')}</p:embeddedFont>`
+        `<p:embeddedFont><p:font typeface="${this.escapeXml(font.typeface)}"${panoseAttr}${pitchFamilyAttr}/>${slotEntries.join('')}</p:embeddedFont>`
       );
     }
 
@@ -420,4 +431,49 @@ export class PptxFontEmbedder {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&apos;');
   }
+
+  /**
+   * Derive PowerPoint's `pitchFamily` attribute from the panose classification.
+   * Default 0x22 (34) = "Variable Pitch + Roman family" matches most modern
+   * sans-serif and serif fonts. We could be smarter (panose bSerifStyle byte
+   * tells us serif vs sans), but PptxGenJS's text runs hardcode 34 too — so
+   * staying consistent here keeps Office's matcher happy.
+   */
+  private derivePitchFamilyAttr(panose: string | null): string {
+    if (!panose) return '';
+    // pitchFamily 34 = variable-pitch roman; 18 = variable-pitch swiss (sans).
+    // The byte at panose offset 1 (bSerifStyle) tells us — 0..10 vary widely;
+    // 0/11/12 = sans, 1..10 = various serif. Default to 34.
+    return ' pitchFamily="34" charset="0"';
+  }
+}
+
+/**
+ * Read the 10-byte Panose classification from a TTF's OS/2 table and format
+ * it as the uppercase hex string PPTX expects (e.g. "020F0502020204030204").
+ * Returns null if the font is malformed or the table is absent.
+ */
+function extractPanoseHex(ttf: Uint8Array): string | null {
+  if (ttf.length < 12) return null;
+  const dv = new DataView(ttf.buffer, ttf.byteOffset, ttf.byteLength);
+  const numTables = dv.getUint16(4);
+  for (let i = 0; i < numTables; i++) {
+    const dirOff = 12 + i * 16;
+    const tag = String.fromCharCode(
+      ttf[dirOff],
+      ttf[dirOff + 1],
+      ttf[dirOff + 2],
+      ttf[dirOff + 3]
+    );
+    if (tag !== 'OS/2') continue;
+    const off = dv.getUint32(dirOff + 8);
+    // panose lives at OS/2 offset 32, 10 bytes long.
+    if (off + 42 > ttf.length) return null;
+    let hex = '';
+    for (let j = 0; j < 10; j++) {
+      hex += ttf[off + 32 + j].toString(16).padStart(2, '0').toUpperCase();
+    }
+    return hex;
+  }
+  return null;
 }

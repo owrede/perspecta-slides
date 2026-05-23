@@ -51,8 +51,19 @@ export class PptxFontEmbedder {
    *
    * @param pptxBuffer the zipped PPTX as produced by PptxGenJS
    * @param typefaces the unique typeface names referenced in the deck
+   * @param majorFont typeface to set as the theme's major (heading) font —
+   *        Microsoft Office only honors embedded fonts that are also declared
+   *        in theme1.xml's <a:majorFont>/<a:minorFont>. Without this patch,
+   *        Mac and Windows PowerPoint show the typeface name in the picker
+   *        but render Calibri (the PptxGenJS default theme font) instead.
+   * @param minorFont typeface to set as the theme's minor (body) font
    */
-  async embedFonts(pptxBuffer: ArrayBuffer, typefaces: string[]): Promise<ArrayBuffer> {
+  async embedFonts(
+    pptxBuffer: ArrayBuffer,
+    typefaces: string[],
+    majorFont?: string,
+    minorFont?: string
+  ): Promise<ArrayBuffer> {
     if (typefaces.length === 0) return pptxBuffer;
 
     const resolved: ResolvedFont[] = [];
@@ -68,11 +79,57 @@ export class PptxFontEmbedder {
 
     const zip = await JSZip.loadAsync(pptxBuffer);
     await this.injectFonts(zip, resolved);
+    await this.patchThemeFonts(zip, majorFont, minorFont);
     return await zip.generateAsync({
       type: 'arraybuffer',
       compression: 'DEFLATE',
       compressionOptions: { level: 6 },
     });
+  }
+
+  /**
+   * Replace the theme's <a:majorFont> and <a:minorFont> latin typefaces so
+   * that Microsoft Office's font-resolution path picks up our embedded fonts.
+   * The replacement is conservative: we only swap the `typeface` attribute of
+   * the <a:latin> elements; the surrounding `<a:ea>`, `<a:cs>`, and
+   * `<a:font script="...">` entries are left untouched so non-latin scripts
+   * keep their fallbacks.
+   *
+   * Patches every ppt/theme/theme*.xml entry — PptxGenJS emits one theme file
+   * per slide-master and we don't want a single straggler to break the chain.
+   */
+  private async patchThemeFonts(
+    zip: JSZip,
+    majorFont?: string,
+    minorFont?: string
+  ): Promise<void> {
+    if (!majorFont && !minorFont) return;
+
+    const themeFiles = Object.keys(zip.files).filter((p) =>
+      /^ppt\/theme\/theme\d+\.xml$/.test(p)
+    );
+    for (const path of themeFiles) {
+      const xml = await zip.file(path)?.async('string');
+      if (!xml) continue;
+      let patched = xml;
+
+      if (majorFont) {
+        patched = patched.replace(
+          /(<a:majorFont>[\s\S]*?<a:latin\s+typeface=")[^"]+("[^>]*\/>)/,
+          `$1${this.escapeXml(majorFont)}$2`
+        );
+      }
+      if (minorFont) {
+        patched = patched.replace(
+          /(<a:minorFont>[\s\S]*?<a:latin\s+typeface=")[^"]+("[^>]*\/>)/,
+          `$1${this.escapeXml(minorFont)}$2`
+        );
+      }
+
+      if (patched !== xml) {
+        zip.file(path, patched);
+      }
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────────────

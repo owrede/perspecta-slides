@@ -132,11 +132,25 @@ export class PptxExportService {
       // them installed. Best-effort: only TTF/OTF/WOFF2 fonts in the
       // FontManager cache are embeddable; everything else falls back to
       // typeface-name reference.
+      //
+      // CRUCIAL for Microsoft Office: also patch the theme's majorFont and
+      // minorFont entries to point at our typefaces. Without this, MS Office
+      // (Mac and Windows both) honors the typeface name in the picker but
+      // renders Calibri because that's what theme1.xml's <a:majorFont> says.
+      // Google Slides and macOS Quick Look don't care about theme fonts —
+      // they always honor the embedded list directly. That's why the same
+      // PPTX rendered correctly in Google Slides but fell back to Office's
+      // default font in PowerPoint.
       if (this.fontManager) {
         const typefaces = this.collectTypefaces(themeConfig);
         const embedder = new PptxFontEmbedder(this.app, this.fontManager);
         try {
-          arrayBuffer = await embedder.embedFonts(arrayBuffer, typefaces);
+          arrayBuffer = await embedder.embedFonts(
+            arrayBuffer,
+            typefaces,
+            themeConfig.titleFont,
+            themeConfig.bodyFont
+          );
         } catch (err) {
           console.warn('[PptxExportService] Font embedding failed:', err);
         }

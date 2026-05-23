@@ -1,6 +1,7 @@
 import type { App } from 'obsidian';
 import JSZip from 'jszip';
 import { decompress as woff2Decompress } from 'wawoff2';
+import ttf2eot from 'ttf2eot';
 import { FontManager } from './FontManager';
 import { flattenVariableFont, isVariableFont } from './VariableFontFlattener';
 
@@ -261,6 +262,7 @@ export class PptxFontEmbedder {
       ];
 
       const slotEntries: string[] = [];
+      let firstSlotTtf: Uint8Array | null = null;
       for (const spec of slotSpecs) {
         let bytes: Uint8Array | null = null;
         if (hasVariable) {
@@ -288,11 +290,33 @@ export class PptxFontEmbedder {
 
         if (!bytes) continue;
 
+        // PowerPoint's font-embed loader expects EOT-wrapped font data, NOT
+        // raw TTF. This is the actual root cause of the long-running "font
+        // appears in PPTX but Office renders Calibri" symptom: a Microsoft-
+        // generated PPTX shows file5.fntdata starting with EOT magic 0x504C,
+        // and PowerPoint silently rejects anything that doesn't match. Quick
+        // Look, Google Slides, and LibreOffice all accept raw TTF directly,
+        // which is why the same PPTX rendered correctly there. We only
+        // discovered this by diffing a Microsoft-produced reference PPTX.
+        // Capture the raw TTF panose BEFORE wrapping (EOT's panose is at a
+        // different offset so we'd have to re-extract anyway).
+        if (!firstSlotTtf) firstSlotTtf = bytes;
+        let eotBytes: Uint8Array;
+        try {
+          eotBytes = ttf2eot(bytes);
+        } catch (err) {
+          console.warn(
+            `[PptxFontEmbedder] ttf2eot failed for ${font.typeface} (${spec.name}):`,
+            err
+          );
+          continue;
+        }
+
         const target = `fonts/font${fontFileIndex}.fntdata`;
         const fontPath = `ppt/${target}`;
         const rid = `rId${nextRid++}`;
 
-        filesToAdd.push({ path: fontPath, bytes });
+        filesToAdd.push({ path: fontPath, bytes: eotBytes });
         newRels.push({ id: rid, target });
         slotEntries.push(`<p:${spec.name} r:id="${rid}"/>`);
 
@@ -301,13 +325,9 @@ export class PptxFontEmbedder {
 
       if (slotEntries.length === 0) continue;
 
-      // Extract panose from the first slot's bytes (they all share the same
-      // metric since they're flattened from the same source). PowerPoint uses
-      // panose as a secondary key when matching theme typeface references to
-      // embedded font data — without it, font resolution falls back to
-      // Calibri even when the typeface name matches.
-      const firstSlotBytes = filesToAdd[filesToAdd.length - slotEntries.length].bytes;
-      const panose = extractPanoseHex(firstSlotBytes);
+      // Panose comes from the original TTF (firstSlotTtf), captured above
+      // before EOT wrapping moved everything to different offsets.
+      const panose = firstSlotTtf ? extractPanoseHex(firstSlotTtf) : null;
       const panoseAttr = panose ? ` panose="${panose}"` : '';
       const pitchFamilyAttr = this.derivePitchFamilyAttr(panose);
 

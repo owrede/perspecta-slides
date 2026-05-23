@@ -43,6 +43,7 @@
     "pako": "^2.1.0",
     "pptxgenjs": "^4.0.1",
     "subset-font": "^2.5.0",
+    "ttf2eot": "^3.1.0",
     "wawoff2": "^2.0.1"
   }
 }

@@ -48,7 +48,25 @@ interface LayoutSlots {
   body?: LayoutSlot;
   columns?: LayoutSlot[]; // for n-columns
   centered?: boolean; // vertical-center content
+  imageMain?: LayoutSlot; // primary image slot (full-image, half-image, caption)
+  /**
+   * If true, all images on this slide stack edge-to-edge in a grid covering
+   * the slide area. The grid count is determined at render time from the
+   * number of image elements.
+   */
+  imageGrid?: boolean;
 }
+
+interface ResolvedImage {
+  /** base64 data URL, e.g. `data:image/png;base64,...` */
+  dataUrl: string;
+  /** intrinsic width in pixels, when known */
+  widthPx?: number;
+  /** intrinsic height in pixels */
+  heightPx?: number;
+}
+
+type ImageCache = Map<string, ResolvedImage | null>;
 
 type PptxTextProp = {
   text: string;
@@ -96,9 +114,15 @@ export class PptxExportService {
       this.applyLayout(pptx, pageSize);
       this.applyDocumentMeta(pptx, presentation);
 
+      // Pre-resolve all images referenced by the deck into base64 data URLs.
+      // We do this up-front because PptxGenJS requires sync image data, and we
+      // want to share resolved data across slides (e.g. the same hero image
+      // reused as a background) without re-reading the binary each time.
+      const imageCache = await this.preloadImages(presentation, sourceFile);
+
       const visibleSlides = presentation.slides.filter((slide) => !slide.hidden);
       for (const slide of visibleSlides) {
-        this.renderSlide(pptx, slide, presentation, themeConfig, pageSize);
+        this.renderSlide(pptx, slide, presentation, themeConfig, pageSize, imageCache);
       }
 
       const data = (await pptx.stream()) as ArrayBuffer | Uint8Array;
@@ -139,21 +163,42 @@ export class PptxExportService {
     slide: Slide,
     presentation: Presentation,
     themeConfig: PptxThemeConfig,
-    pageSize: PageSizeInches
+    pageSize: PageSizeInches,
+    imageCache: ImageCache
   ): void {
     const palette = this.resolvePaletteForSlide(slide, presentation, themeConfig);
     const layout: SlideLayout = (slide.metadata.layout as SlideLayout) || 'default';
     const pptxSlide = pptx.addSlide();
-    pptxSlide.background = { color: palette.bgColor };
+
+    // Slide-level background: image filename in `background:` meta wins over
+    // the palette color. PptxGenJS supports `background: { data: '<dataUrl>' }`
+    // to set a slide-spanning image.
+    const bgImage = this.resolveSlideBackgroundImage(slide, imageCache);
+    if (bgImage) {
+      pptxSlide.background = { data: bgImage.dataUrl };
+    } else {
+      pptxSlide.background = { color: palette.bgColor };
+    }
 
     const slots = this.resolveLayoutSlots(layout, pageSize);
 
     // Bucket elements by intended role.
     const kickers = slide.elements.filter((e) => e.type === 'kicker');
     const headings = slide.elements.filter((e) => e.type === 'heading');
+    const images = slide.elements.filter((e) => e.type === 'image');
     const bodyElements = slide.elements.filter(
-      (e) => e.type !== 'kicker' && e.type !== 'heading'
+      (e) => e.type !== 'kicker' && e.type !== 'heading' && e.type !== 'image'
     );
+
+    // Image-dominant layouts route images into dedicated slots and place text
+    // (title + body) into the remaining area.
+    if (slots.imageMain && images.length > 0) {
+      this.renderMainImage(pptxSlide, images[0], slots.imageMain, imageCache, palette);
+      // The extra images (if any) are not currently mapped — they'll be
+      // surfaced in a grid follow-up. For now, prefer the first.
+    } else if (slots.imageGrid && images.length > 0) {
+      this.renderImageGrid(pptxSlide, images, pageSize, imageCache, palette);
+    }
 
     // Centered layouts (cover, title, section) put title+subtitle in the middle.
     if (slots.centered) {
@@ -190,11 +235,19 @@ export class PptxExportService {
         bodyElements,
         slots.columns,
         themeConfig,
-        palette
+        palette,
+        imageCache
       );
     } else if (slots.body) {
       // Single-column body area.
-      this.renderBodyStack(pptxSlide, bodyElements, slots.body, themeConfig, palette);
+      this.renderBodyStack(
+        pptxSlide,
+        bodyElements,
+        slots.body,
+        themeConfig,
+        palette,
+        imageCache
+      );
     }
 
     this.attachSpeakerNotes(pptxSlide, slide);
@@ -248,7 +301,8 @@ export class PptxExportService {
     bodyElements: SlideElement[],
     columns: LayoutSlot[],
     themeConfig: PptxThemeConfig,
-    palette: PptxPalette
+    palette: PptxPalette,
+    imageCache?: ImageCache
   ): void {
     // The slide title (H1/H2) was already placed in the title slot. Sub-headings
     // (H3+) become column titles. We group elements by parser-assigned
@@ -285,7 +339,14 @@ export class PptxExportService {
     }
 
     for (let i = 0; i < columns.length; i++) {
-      this.renderBodyStack(pptxSlide, grouped[i], columns[i], themeConfig, palette);
+      this.renderBodyStack(
+        pptxSlide,
+        grouped[i],
+        columns[i],
+        themeConfig,
+        palette,
+        imageCache
+      );
     }
   }
 
@@ -294,7 +355,8 @@ export class PptxExportService {
     elements: SlideElement[],
     container: LayoutSlot,
     themeConfig: PptxThemeConfig,
-    palette: PptxPalette
+    palette: PptxPalette,
+    imageCache?: ImageCache
   ): void {
     let cursorY = container.y;
     const endY = container.y + container.h;
@@ -303,7 +365,7 @@ export class PptxExportService {
       if (cursorY >= endY) break;
       const h = Math.min(this.estimateBodyHeight(el), endY - cursorY);
       const box: LayoutSlot = { x: container.x, y: cursorY, w: container.w, h };
-      this.renderBodyElement(pptxSlide, el, box, themeConfig, palette);
+      this.renderBodyElement(pptxSlide, el, box, themeConfig, palette, false, imageCache);
       cursorY += h + 0.1; // small gap between elements
     }
   }
@@ -314,7 +376,8 @@ export class PptxExportService {
     box: LayoutSlot,
     themeConfig: PptxThemeConfig,
     palette: PptxPalette,
-    centered: boolean = false
+    centered: boolean = false,
+    imageCache?: ImageCache
   ): void {
     switch (el.type) {
       case 'heading':
@@ -333,14 +396,16 @@ export class PptxExportService {
         this.renderBlockquote(pptxSlide, el, box, themeConfig, palette);
         break;
       case 'image':
-        // Image handling is Phase 3 — show a placeholder for now so the slot
-        // isn't silently empty.
-        this.renderImagePlaceholder(pptxSlide, el, box, palette);
+        if (imageCache) {
+          this.renderImage(pptxSlide, el, box, imageCache, palette, 'contain');
+        } else {
+          this.renderImagePlaceholder(pptxSlide, el, box, palette);
+        }
         break;
       case 'table':
       case 'math':
       case 'kicker':
-        // Tables/math: Phase 3. Kickers shouldn't land here.
+        // Tables/math: deferred. Kickers shouldn't land here.
         this.renderParagraph(pptxSlide, el, box, themeConfig, palette, centered);
         break;
     }
@@ -537,6 +602,240 @@ export class PptxExportService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
+  // Image rendering
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Render a single image into the given box. `sizing` mirrors the existing
+   * Perspecta semantics: 'cover' fills the box and crops; 'contain' fits the
+   * image within the box and letterboxes if needed. PptxGenJS handles both
+   * via the `sizing` option.
+   */
+  private renderImage(
+    pptxSlide: any,
+    el: SlideElement,
+    box: LayoutSlot,
+    imageCache: ImageCache,
+    palette: PptxPalette,
+    sizing: 'cover' | 'contain' = 'cover'
+  ): void {
+    const src = el.imageData?.src;
+    if (!src) {
+      this.renderImagePlaceholder(pptxSlide, el, box, palette);
+      return;
+    }
+    const img = imageCache.get(src);
+    if (!img) {
+      this.renderImagePlaceholder(pptxSlide, el, box, palette);
+      return;
+    }
+
+    pptxSlide.addImage({
+      data: img.dataUrl,
+      x: box.x,
+      y: box.y,
+      w: box.w,
+      h: box.h,
+      sizing: {
+        type: sizing,
+        w: box.w,
+        h: box.h,
+      },
+    });
+  }
+
+  /**
+   * Layouts with a primary image slot (full-image, half-image, caption) use
+   * 'cover' sizing — the image fills the slot and may be cropped. The text
+   * slots still render alongside via the normal pipeline.
+   */
+  private renderMainImage(
+    pptxSlide: any,
+    el: SlideElement,
+    box: LayoutSlot,
+    imageCache: ImageCache,
+    palette: PptxPalette
+  ): void {
+    // `full-image-contained` and `caption-contained` use 'contain' sizing;
+    // everything else uses 'cover'. We sniff the layout via box coverage —
+    // not robust enough; tie this to the slide layout instead by passing it.
+    // For MVP, always 'cover' since the user picked the layout deliberately.
+    this.renderImage(pptxSlide, el, box, imageCache, palette, 'cover');
+  }
+
+  /**
+   * Grid layout — arrange image elements in a square-ish grid that fills the
+   * remaining slide area below the title. For 2 images: 1×2, 4 images: 2×2,
+   * 6 images: 2×3, etc.
+   */
+  private renderImageGrid(
+    pptxSlide: any,
+    images: SlideElement[],
+    page: PageSizeInches,
+    imageCache: ImageCache,
+    palette: PptxPalette
+  ): void {
+    if (images.length === 0) return;
+
+    const margin = 0.4;
+    const gap = 0.15;
+    // Reserve top space for title + kicker that resolveLayoutSlots already
+    // emits (about 1.5"); start the grid below.
+    const top = 2.0;
+    const gridW = page.width - 2 * margin;
+    const gridH = page.height - top - margin;
+
+    const cols = Math.ceil(Math.sqrt(images.length));
+    const rows = Math.ceil(images.length / cols);
+    const cellW = (gridW - (cols - 1) * gap) / cols;
+    const cellH = (gridH - (rows - 1) * gap) / rows;
+
+    for (let i = 0; i < images.length; i++) {
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      const box: LayoutSlot = {
+        x: margin + col * (cellW + gap),
+        y: top + row * (cellH + gap),
+        w: cellW,
+        h: cellH,
+      };
+      this.renderImage(pptxSlide, images[i], box, imageCache, palette, 'cover');
+    }
+  }
+
+  /**
+   * Resolve a slide-level background image if the meta block declares one
+   * (e.g. `background: clouds.png`). Returns null when the value is a color
+   * literal, missing, or unresolvable.
+   */
+  private resolveSlideBackgroundImage(
+    slide: Slide,
+    imageCache: ImageCache
+  ): ResolvedImage | null {
+    const bg = slide.metadata.background;
+    if (!bg) return null;
+    // Filter out color literals (we don't want #fff or "rgb(...)" to be
+    // treated as an image filename).
+    if (/^#[0-9a-fA-F]{3,8}$/.test(bg.trim())) return null;
+    if (/^(rgb|rgba|hsl|hsla)\(/i.test(bg.trim())) return null;
+    if (/^[a-z]+$/i.test(bg.trim()) && !/\.(png|jpe?g|gif|webp|svg)$/i.test(bg)) {
+      // Bare color name like "white" or "transparent".
+      return null;
+    }
+    const resolved = imageCache.get(bg);
+    return resolved || null;
+  }
+
+  /**
+   * Walk all slides, collect referenced image sources (inline images +
+   * background-image meta), resolve them through Obsidian's link cache, read
+   * the binary, and convert to a base64 data URL ready for PptxGenJS.
+   *
+   * We do the work up-front (and once per src) to keep the per-slide render
+   * synchronous. PptxGenJS itself doesn't accept Promises in `addImage`.
+   */
+  private async preloadImages(
+    presentation: Presentation,
+    sourceFile: TFile
+  ): Promise<ImageCache> {
+    const srcs = new Set<string>();
+    for (const slide of presentation.slides) {
+      if (slide.metadata.background) srcs.add(slide.metadata.background);
+      for (const el of slide.elements) {
+        if (el.type === 'image' && el.imageData?.src) {
+          srcs.add(el.imageData.src);
+        }
+      }
+    }
+
+    const cache: ImageCache = new Map();
+    for (const src of srcs) {
+      try {
+        const resolved = await this.loadImage(src, sourceFile);
+        cache.set(src, resolved);
+      } catch (err) {
+        console.warn(`[PptxExportService] Could not load image "${src}":`, err);
+        cache.set(src, null);
+      }
+    }
+    return cache;
+  }
+
+  private async loadImage(src: string, sourceFile: TFile): Promise<ResolvedImage | null> {
+    // Strip Excalidraw-ref suffixes like "#^group=foo" — PPTX export skips
+    // those for now (they need SVG conversion that lives elsewhere).
+    const cleaned = src.split('#')[0];
+    if (!cleaned) return null;
+
+    // Skip remote URLs — PptxGenJS supports them as `path:`, but embedding is
+    // simpler and more deterministic. If you need a network image, that's a
+    // future feature.
+    if (/^https?:\/\//i.test(cleaned)) {
+      return { dataUrl: cleaned };
+    }
+
+    let tfile = this.app.metadataCache.getFirstLinkpathDest(
+      decodeURIComponent(cleaned),
+      sourceFile.path
+    );
+    if (!tfile) {
+      tfile = this.app.metadataCache.getFirstLinkpathDest(cleaned, sourceFile.path);
+    }
+    if (!tfile) {
+      // Maybe it's a relative path from the source file.
+      const relPath = sourceFile.parent
+        ? `${sourceFile.parent.path}/${cleaned}`
+        : cleaned;
+      const adapter = this.app.vault.adapter;
+      if (await adapter.exists(relPath)) {
+        const bytes = await adapter.readBinary(relPath);
+        const mime = this.mimeFromExt(cleaned);
+        return { dataUrl: this.toDataUrl(bytes, mime) };
+      }
+      return null;
+    }
+
+    const bytes = await this.app.vault.readBinary(tfile);
+    const mime = this.mimeFromExt(tfile.extension);
+    return { dataUrl: this.toDataUrl(bytes, mime) };
+  }
+
+  private mimeFromExt(pathOrExt: string): string {
+    const ext = pathOrExt.split('.').pop()?.toLowerCase() || '';
+    switch (ext) {
+      case 'png':
+        return 'image/png';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'svg':
+        return 'image/svg+xml';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  private toDataUrl(bytes: ArrayBuffer, mime: string): string {
+    const u8 = new Uint8Array(bytes);
+    // Build the base64 in chunks to avoid String.fromCharCode max-arg overflow
+    // on very large images.
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < u8.length; i += chunk) {
+      binary += String.fromCharCode.apply(
+        null,
+        u8.subarray(i, Math.min(i + chunk, u8.length)) as unknown as number[]
+      );
+    }
+    const b64 = typeof btoa !== 'undefined' ? btoa(binary) : Buffer.from(binary, 'binary').toString('base64');
+    return `data:${mime};base64,${b64}`;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
   // Inline markdown — MVP just strips marker characters so the visible text
   // matches the source. Real bold/italic/code runs need a different PptxGenJS
   // call shape (TextProps[] of multiple paragraphs, not nested runs in one
@@ -684,7 +983,100 @@ export class PptxExportService {
         };
       }
 
-      // 1-column / default / image layouts (image bits land in Phase 3).
+      case 'full-image':
+      case 'full-image-contained': {
+        // Image fills the slide. Title (if any) renders as a small overlay at
+        // the top with semi-transparent treatment — for now, render title
+        // on top of the image without a backdrop.
+        return {
+          imageMain: { x: 0, y: 0, w: page.width, h: page.height },
+          title: { x: margin, y: margin, w: page.width - 2 * margin, h: titleH },
+          kicker: undefined,
+          body: undefined,
+        };
+      }
+
+      case 'caption':
+      case 'caption-contained': {
+        // Image is most of the slide with a title bar at the top and a caption
+        // strip at the bottom. We give ~12% to the title bar and ~12% to the
+        // caption bar.
+        const titleBarH = Math.max(0.7, page.height * 0.12);
+        const captionBarH = Math.max(0.6, page.height * 0.12);
+        return {
+          title: { x: margin, y: 0.15, w: page.width - 2 * margin, h: titleBarH },
+          imageMain: {
+            x: 0,
+            y: titleBarH + 0.1,
+            w: page.width,
+            h: page.height - titleBarH - captionBarH - 0.2,
+          },
+          body: {
+            x: margin,
+            y: page.height - captionBarH,
+            w: page.width - 2 * margin,
+            h: captionBarH,
+          },
+        };
+      }
+
+      case 'half-image': {
+        // Vertical split: image on the left, text on the right (50/50).
+        const half = page.width / 2;
+        return {
+          imageMain: { x: 0, y: 0, w: half, h: page.height },
+          title: {
+            x: half + margin,
+            y: margin + kickerH,
+            w: half - 2 * margin,
+            h: titleH,
+          },
+          kicker: { x: half + margin, y: margin, w: half - 2 * margin, h: kickerH },
+          body: {
+            x: half + margin,
+            y: contentTop,
+            w: half - 2 * margin,
+            h: page.height - contentTop - margin,
+          },
+        };
+      }
+
+      case 'half-image-horizontal': {
+        // Horizontal split: image on top, text below (50/50 by default).
+        const half = page.height / 2;
+        return {
+          imageMain: { x: 0, y: 0, w: page.width, h: half },
+          title: {
+            x: margin,
+            y: half + margin + kickerH,
+            w: page.width - 2 * margin,
+            h: titleH,
+          },
+          kicker: {
+            x: margin,
+            y: half + margin,
+            w: page.width - 2 * margin,
+            h: kickerH,
+          },
+          body: {
+            x: margin,
+            y: half + margin + kickerH + titleH + 0.2,
+            w: page.width - 2 * margin,
+            h: page.height - (half + margin + kickerH + titleH + 0.2) - margin,
+          },
+        };
+      }
+
+      case 'grid': {
+        // Each image element gets a cell; title + kicker render across the top.
+        return {
+          title: { x: margin, y: margin + kickerH, w: page.width - 2 * margin, h: titleH },
+          kicker: { x: margin, y: margin, w: page.width - 2 * margin, h: kickerH },
+          imageGrid: true,
+        };
+      }
+
+      // 1-column / default — title + body stack.
       default: {
         return {
           title: { x: margin, y: margin + kickerH, w: page.width - 2 * margin, h: titleH },

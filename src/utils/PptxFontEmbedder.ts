@@ -2,6 +2,7 @@ import type { App } from 'obsidian';
 import JSZip from 'jszip';
 import { decompress as woff2Decompress } from 'wawoff2';
 import { FontManager } from './FontManager';
+import { flattenVariableFont, isVariableFont } from './VariableFontFlattener';
 
 /**
  * Font format detected from the raw bytes (NOT from filename — we want to be
@@ -244,25 +245,56 @@ export class PptxFontEmbedder {
 
     let fontFileIndex = 1;
     for (const font of fonts) {
-      // PPTX defines at most one font file per slot (regular, bold, italic,
-      // boldItalic). Pick the closest variant for each slot.
-      const slotMap: Record<string, ResolvedFontVariant | undefined> = {
-        regular: this.pickVariant(font.variants, 400, false),
-        bold: this.pickVariant(font.variants, 700, false),
-        italic: this.pickVariant(font.variants, 400, true),
-        boldItalic: this.pickVariant(font.variants, 700, true),
-      };
+      // Determine slot bytes. If any source variant is a variable font, we
+      // flatten it four times — one per (weight, italic) target — so that
+      // Microsoft Office's font resolver sees four genuine static TTFs.
+      const hasVariable = font.variants.some((v) => isVariableFont(v.ttfBuffer));
+      const slotSpecs: Array<{
+        name: 'regular' | 'bold' | 'italic' | 'boldItalic';
+        weight: number;
+        italic: boolean;
+      }> = [
+        { name: 'regular', weight: 400, italic: false },
+        { name: 'bold', weight: 700, italic: false },
+        { name: 'italic', weight: 400, italic: true },
+        { name: 'boldItalic', weight: 700, italic: true },
+      ];
 
       const slotEntries: string[] = [];
-      for (const [slotName, variant] of Object.entries(slotMap)) {
-        if (!variant) continue;
+      for (const spec of slotSpecs) {
+        let bytes: Uint8Array | null = null;
+        if (hasVariable) {
+          // Pick any variable-font source (usually only one) and flatten it
+          // at the requested instance location.
+          const vfVariant = font.variants.find((v) => isVariableFont(v.ttfBuffer));
+          if (vfVariant) {
+            try {
+              bytes = await flattenVariableFont(vfVariant.ttfBuffer, {
+                weight: spec.weight,
+                italic: spec.italic,
+              });
+            } catch (err) {
+              console.warn(
+                `[PptxFontEmbedder] Variable-font flatten failed for ${font.typeface} (${spec.name}):`,
+                err
+              );
+            }
+          }
+        } else {
+          // Static font fleet — pick the closest existing variant for this slot.
+          const picked = this.pickVariant(font.variants, spec.weight, spec.italic);
+          if (picked) bytes = picked.ttfBuffer;
+        }
+
+        if (!bytes) continue;
+
         const target = `fonts/font${fontFileIndex}.fntdata`;
         const fontPath = `ppt/${target}`;
         const rid = `rId${nextRid++}`;
 
-        filesToAdd.push({ path: fontPath, bytes: variant.ttfBuffer });
+        filesToAdd.push({ path: fontPath, bytes });
         newRels.push({ id: rid, target });
-        slotEntries.push(`<p:${slotName} r:id="${rid}"/>`);
+        slotEntries.push(`<p:${spec.name} r:id="${rid}"/>`);
 
         fontFileIndex++;
       }

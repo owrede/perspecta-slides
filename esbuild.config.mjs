@@ -39,6 +39,7 @@ const context = await esbuild.context({
   outdir: ".",
   loader: {
     ".css": "text",  // Load CSS files as text strings
+    ".wasm": "base64",  // Inline .wasm files as base64 strings (decoded at runtime)
   },
 });
 

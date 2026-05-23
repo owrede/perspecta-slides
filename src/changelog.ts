@@ -11,6 +11,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.4.0',
+    date: '2026-05-24',
+    changes: [
+      'New: "Export as PPTX" menu item produces an editable PowerPoint file with native text frames (headings, paragraphs, bullets, numbered lists, code blocks, blockquotes, kickers). Built on PptxGenJS.',
+      'New: image-aware PPTX layouts — `full-image`, `half-image`, `caption`, `grid`, plus slide-level `background: image.png` becomes a slide-spanning background.',
+      'New: `use-dynamic-background` color sequences interpolated per slide and applied as solid backgrounds in PPTX.',
+      'New: font embedding in PPTX. Theme/frontmatter typefaces embedded as TTF; WOFF2 decompressed via wawoff2; variable fonts flattened to per-slot static instances via HarfBuzz hb-subset; theme1.xml major/minor fonts patched to match. Verified rendering in Google Slides and macOS Quick Look; Microsoft PowerPoint for Mac currently ignores third-party embedded fonts and falls back to Calibri (install the font system-wide as a workaround); other targets not yet verified.',
+      'New: speaker notes carried into PPTX as native notes-slide entries.',
+    ],
+  },
+  {
     version: '0.3.4',
     date: '2026-05-23',
     changes: [

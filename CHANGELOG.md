@@ -2,6 +2,21 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.4.0] - 2026-05-24
+
+### Added
+- **PPTX export** — new menu item "Export as PPTX" produces an editable PowerPoint file with native text frames (headings, paragraphs, bullets, numbered lists, code blocks, blockquotes, kickers) instead of flattened images. Built on PptxGenJS.
+- **Image-aware PPTX layouts** — `full-image`, `half-image`, `half-image-horizontal`, `caption`, `grid` layouts route the image into a primary slot with text alongside. Slide-level `background: image.png` becomes a slide-spanning background image.
+- **Dynamic-background gradients in PPTX** — `use-dynamic-background` color sequences are interpolated per visible slide and applied as solid backgrounds (PPTX has no deck-spanning gradient concept; we discretize at export).
+- **Font embedding in PPTX** — typefaces from the deck's theme and frontmatter are embedded as TTF data in the PPTX zip. WOFF2 fonts are decompressed via wawoff2. Variable fonts are pinned to per-slot static instances (regular / bold / italic / bold-italic) via HarfBuzz hb-subset, with axis residue (`STAT`, `fvar`, `gvar`, axis-value names) stripped so the result is structurally clean. Theme1.xml's major/minor font entries are patched to match.
+- Speaker notes carried into PPTX as native notes-slide entries.
+
+### Compatibility — embedded PPTX fonts
+- Verified rendering correctly in: Google Slides, macOS Quick Look.
+- Verified NOT rendering in: Microsoft PowerPoint for Mac (renders Calibri fallback; appears to ignore third-party embedded fonts regardless of structural correctness).
+- Not yet verified: Windows PowerPoint, Keynote, LibreOffice Impress.
+- Workaround for Mac PowerPoint recipients: install the source font system-wide (Font Book).
+
 ## [0.3.4] - 2026-05-23
 
 ### Fixed

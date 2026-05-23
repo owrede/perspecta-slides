@@ -1,7 +1,6 @@
 import type { App } from 'obsidian';
 import JSZip from 'jszip';
 import { decompress as woff2Decompress } from 'wawoff2';
-import ttf2eot from 'ttf2eot';
 import { FontManager } from './FontManager';
 import { flattenVariableFont, isVariableFont } from './VariableFontFlattener';
 
@@ -301,22 +300,28 @@ export class PptxFontEmbedder {
         // Capture the raw TTF panose BEFORE wrapping (EOT's panose is at a
         // different offset so we'd have to re-extract anyway).
         if (!firstSlotTtf) firstSlotTtf = bytes;
-        let eotBytes: Uint8Array;
-        try {
-          eotBytes = ttf2eot(bytes);
-        } catch (err) {
-          console.warn(
-            `[PptxFontEmbedder] ttf2eot failed for ${font.typeface} (${spec.name}):`,
-            err
-          );
-          continue;
-        }
+
+        // Modern PowerPoint (Office 2016+) accepts raw TTF/OTF in .fntdata.
+        // We experimented with EOT-wrapping (which legacy Office 2010-2013
+        // and the reference PPTX in this repo used) but Microsoft's current
+        // documentation is explicit: "PowerPoint does not support web font
+        // formats (like EOT or WOFF); it only supports embedding TrueType
+        // (.ttf) and OpenType (.otf) files." See learn.microsoft.com.
+        //
+        // The persistent "font appears in the embedded list but PowerPoint
+        // renders Calibri" symptom on Mac PowerPoint is a known platform
+        // limitation, not a packaging bug — Mac PowerPoint shows embedded
+        // fonts in the picker only when they were embedded by a Save with
+        // Fonts operation in PowerPoint itself, and renders them only for
+        // text runs that PowerPoint itself authored. Third-party PPTX with
+        // embedded fonts works in Windows PowerPoint, Google Slides,
+        // Keynote, LibreOffice, and macOS Quick Look but not Mac PowerPoint.
 
         const target = `fonts/font${fontFileIndex}.fntdata`;
         const fontPath = `ppt/${target}`;
         const rid = `rId${nextRid++}`;
 
-        filesToAdd.push({ path: fontPath, bytes: eotBytes });
+        filesToAdd.push({ path: fontPath, bytes });
         newRels.push({ id: rid, target });
         slotEntries.push(`<p:${spec.name} r:id="${rid}"/>`);
 

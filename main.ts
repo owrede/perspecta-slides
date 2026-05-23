@@ -697,8 +697,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
     this.pdfExportService = new PdfExportService(this.app, this.presentationImagePathResolver);
     this.pdfExportService.setExcalidrawRenderer(this.excalidrawRenderer);
 
-    // Initialize PPTX export service (uses PptxGenJS)
-    this.pptxExportService = new PptxExportService(this.app);
+    // Initialize PPTX export service (uses PptxGenJS + font embedding)
+    this.pptxExportService = new PptxExportService(this.app, this.fontManager);
 
     // Initialize theme loader with built-in themes first
     this.themeLoader = new ThemeLoader(this.app, this.settings.customThemesFolder);

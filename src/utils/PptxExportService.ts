@@ -9,6 +9,8 @@ import type {
   Theme,
   ThemePreset,
 } from '../types';
+import type { FontManager } from './FontManager';
+import { PptxFontEmbedder } from './PptxFontEmbedder';
 
 interface PageSizeInches {
   width: number;
@@ -72,7 +74,14 @@ type PptxTextProp = {
  * fonts are applied. Per-slide `mode: dark` swaps the palette.
  */
 export class PptxExportService {
-  constructor(private app: App) {}
+  constructor(
+    private app: App,
+    private fontManager: FontManager | null = null
+  ) {}
+
+  setFontManager(fontManager: FontManager): void {
+    this.fontManager = fontManager;
+  }
 
   async export(
     presentation: Presentation,
@@ -81,7 +90,7 @@ export class PptxExportService {
   ): Promise<void> {
     try {
       const pptx = new PptxGenJS();
-      const themeConfig = this.resolveThemeConfig(theme);
+      const themeConfig = this.resolveThemeConfig(theme, presentation);
       const pageSize = this.resolvePageSize(presentation.frontmatter.aspectRatio);
 
       this.applyLayout(pptx, pageSize);
@@ -93,7 +102,21 @@ export class PptxExportService {
       }
 
       const data = (await pptx.stream()) as ArrayBuffer | Uint8Array;
-      const arrayBuffer = this.toArrayBuffer(data);
+      let arrayBuffer = this.toArrayBuffer(data);
+
+      // Embed referenced fonts so the deck looks right on machines without
+      // them installed. Best-effort: only TTF/OTF/WOFF2 fonts in the
+      // FontManager cache are embeddable; everything else falls back to
+      // typeface-name reference.
+      if (this.fontManager) {
+        const typefaces = this.collectTypefaces(themeConfig);
+        const embedder = new PptxFontEmbedder(this.app, this.fontManager);
+        try {
+          arrayBuffer = await embedder.embedFonts(arrayBuffer, typefaces);
+        } catch (err) {
+          console.warn('[PptxExportService] Font embedding failed:', err);
+        }
+      }
 
       const exportPath = this.computeExportPath(sourceFile);
       await this.app.vault.adapter.writeBinary(exportPath, arrayBuffer);
@@ -775,7 +798,31 @@ export class PptxExportService {
     pptx.company = '';
   }
 
-  private resolveThemeConfig(theme: Theme | null): PptxThemeConfig {
+  private collectTypefaces(themeConfig: PptxThemeConfig): string[] {
+    const set = new Set<string>();
+    if (themeConfig.titleFont) set.add(themeConfig.titleFont);
+    if (themeConfig.bodyFont) set.add(themeConfig.bodyFont);
+    if (themeConfig.monoFont) set.add(themeConfig.monoFont);
+    // Filter out system fonts that aren't worth embedding (and likely aren't
+    // in the font cache anyway).
+    const systemFonts = new Set([
+      'Calibri',
+      'Arial',
+      'Helvetica',
+      'Times New Roman',
+      'Consolas',
+      'Courier New',
+      'Verdana',
+      '-apple-system',
+      'system-ui',
+    ]);
+    return Array.from(set).filter((f) => !systemFonts.has(f));
+  }
+
+  private resolveThemeConfig(
+    theme: Theme | null,
+    presentation?: Presentation
+  ): PptxThemeConfig {
     const fallback: PptxThemeConfig = {
       titleFont: 'Calibri',
       bodyFont: 'Calibri',
@@ -800,14 +847,34 @@ export class PptxExportService {
       },
     };
 
-    if (!theme) return fallback;
+    // Frontmatter font overrides win over the theme.json values — they
+    // represent author intent for this specific deck.
+    const fm = presentation?.frontmatter;
+    const fmTitleFont = this.cleanFontName(fm?.titleFont);
+    const fmBodyFont = this.cleanFontName(fm?.bodyFont);
+
+    if (!theme) {
+      return {
+        ...fallback,
+        titleFont: fmTitleFont || fallback.titleFont,
+        bodyFont: fmBodyFont || fallback.bodyFont,
+      };
+    }
 
     const preset = theme.presets?.[0];
-    if (!preset) return fallback;
+    if (!preset) {
+      return {
+        ...fallback,
+        titleFont: fmTitleFont || fallback.titleFont,
+        bodyFont: fmBodyFont || fallback.bodyFont,
+      };
+    }
 
     return {
-      titleFont: this.cleanFontName(preset.TitleFont) || fallback.titleFont,
-      bodyFont: this.cleanFontName(preset.BodyFont) || fallback.bodyFont,
+      titleFont:
+        fmTitleFont || this.cleanFontName(preset.TitleFont) || fallback.titleFont,
+      bodyFont:
+        fmBodyFont || this.cleanFontName(preset.BodyFont) || fallback.bodyFont,
       monoFont: fallback.monoFont,
       light: this.buildPalette(preset, 'light', fallback.light),
       dark: this.buildPalette(preset, 'dark', fallback.dark),

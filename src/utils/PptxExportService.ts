@@ -170,14 +170,25 @@ export class PptxExportService {
     const layout: SlideLayout = (slide.metadata.layout as SlideLayout) || 'default';
     const pptxSlide = pptx.addSlide();
 
-    // Slide-level background: image filename in `background:` meta wins over
-    // the palette color. PptxGenJS supports `background: { data: '<dataUrl>' }`
-    // to set a slide-spanning image.
+    // Resolve slide background. Priority mirrors the runtime renderer:
+    //   1. per-slide `background:` image (or color literal)
+    //   2. dynamic-background gradient color interpolated for this slide
+    //   3. palette base color from theme/mode
     const bgImage = this.resolveSlideBackgroundImage(slide, imageCache);
     if (bgImage) {
       pptxSlide.background = { data: bgImage.dataUrl };
     } else {
-      pptxSlide.background = { color: palette.bgColor };
+      const bgColorLiteral = this.extractBackgroundColorLiteral(slide.metadata.background);
+      if (bgColorLiteral) {
+        pptxSlide.background = { color: bgColorLiteral };
+      } else {
+        const dynamicColor = this.resolveDynamicBackgroundColor(
+          slide,
+          presentation,
+          themeConfig
+        );
+        pptxSlide.background = { color: dynamicColor || palette.bgColor };
+      }
     }
 
     const slots = this.resolveLayoutSlots(layout, pageSize);
@@ -1133,6 +1144,146 @@ export class PptxExportService {
     if (notes.length > 0) {
       pptxSlide.addNotes(notes.join('\n\n'));
     }
+  }
+
+  private extractBackgroundColorLiteral(bg: string | undefined): string | null {
+    if (!bg) return null;
+    const trimmed = bg.trim();
+    const hex = this.toHex6(trimmed);
+    if (hex) return hex;
+    return null;
+  }
+
+  /**
+   * Resolve a per-slide dynamic background color (linear interpolation across
+   * the deck's color sequence). Mirrors the runtime SlideRenderer behavior:
+   *   - opt-in via `use-dynamic-background: light|dark|both|none`
+   *   - color sequence comes from `light-dynamic-background` /
+   *     `dark-dynamic-background` in frontmatter, with theme fallback
+   *   - position 0..1 is the slide's index among visible slides
+   *   - optional `dynamic-background-restart-at-section` restarts the
+   *     interpolation at every `layout: section` slide
+   */
+  private resolveDynamicBackgroundColor(
+    slide: Slide,
+    presentation: Presentation,
+    themeConfig: PptxThemeConfig
+  ): string | null {
+    const fm = presentation.frontmatter;
+    const use = fm.useDynamicBackground;
+    if (!use || use === 'none') return null;
+
+    const mode = slide.metadata.mode || fm.mode || 'light';
+    const effectiveMode: 'light' | 'dark' =
+      mode === 'system' ? 'light' : (mode as 'light' | 'dark');
+
+    if (use !== 'both' && use !== effectiveMode) return null;
+
+    let colors: string[] | undefined =
+      effectiveMode === 'light' ? fm.lightDynamicBackground : fm.darkDynamicBackground;
+
+    // Theme fallback — peek at preset's gradient list.
+    if ((!colors || colors.length === 0) && themeConfig) {
+      // themeConfig doesn't carry the gradient itself; this is a no-op until
+      // we widen the type. Inline a sensible default so we always have at
+      // least 2 stops to interpolate.
+    }
+    if (!colors || colors.length === 0) {
+      colors =
+        effectiveMode === 'light'
+          ? ['#ffffff', '#f0f0f0', '#e0e0e0']
+          : ['#1a1a2e', '#2d2d44', '#3d3d5c'];
+    }
+
+    const slides = presentation.slides;
+    let position = 0;
+
+    if (fm.dynamicBackgroundRestartAtSection) {
+      let sectionStart = slide.index;
+      let sectionEnd = slide.index;
+      for (let i = slide.index; i >= 0; i--) {
+        if (!slides[i].hidden && slides[i].metadata.layout === 'section') {
+          sectionStart = i;
+          break;
+        }
+      }
+      for (let i = slide.index + 1; i < slides.length; i++) {
+        if (!slides[i].hidden && slides[i].metadata.layout === 'section') {
+          sectionEnd = i - 1;
+          break;
+        }
+      }
+      let visibleIndexInSection = 0;
+      let visibleCountInSection = 0;
+      for (let i = sectionStart; i <= sectionEnd && i < slides.length; i++) {
+        if (!slides[i].hidden) {
+          if (i <= slide.index) visibleIndexInSection++;
+          visibleCountInSection++;
+        }
+      }
+      position =
+        visibleCountInSection > 1
+          ? (visibleIndexInSection - 1) / (visibleCountInSection - 1)
+          : 0;
+    } else {
+      const visibleSlides = slides.filter((s) => !s.hidden);
+      const visibleIndex = visibleSlides.findIndex((s) => s.index === slide.index);
+      const visibleCount = visibleSlides.length;
+      position = visibleCount > 1 ? visibleIndex / (visibleCount - 1) : 0;
+    }
+
+    return this.interpolateGradient(colors, position);
+  }
+
+  private interpolateGradient(colors: string[], position: number): string | null {
+    if (colors.length === 0) return null;
+    if (colors.length === 1) return this.toHex6(colors[0]);
+    const clamped = Math.max(0, Math.min(1, position));
+    const segment = clamped * (colors.length - 1);
+    const index = Math.floor(segment);
+    const t = segment - index;
+    if (index >= colors.length - 1) return this.toHex6(colors[colors.length - 1]);
+
+    const a = this.parseHexRgb(colors[index]);
+    const b = this.parseHexRgb(colors[index + 1]);
+    if (!a || !b) return null;
+    const r = Math.round(a.r + (b.r - a.r) * t);
+    const g = Math.round(a.g + (b.g - a.g) * t);
+    const bl = Math.round(a.b + (b.b - a.b) * t);
+    return [r, g, bl]
+      .map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0'))
+      .join('')
+      .toUpperCase();
+  }
+
+  private parseHexRgb(color: string): { r: number; g: number; b: number } | null {
+    const trimmed = color.trim();
+    const hex6 = trimmed.match(/^#?([0-9a-fA-F]{6})$/);
+    if (hex6) {
+      return {
+        r: parseInt(hex6[1].substring(0, 2), 16),
+        g: parseInt(hex6[1].substring(2, 4), 16),
+        b: parseInt(hex6[1].substring(4, 6), 16),
+      };
+    }
+    const hex3 = trimmed.match(/^#?([0-9a-fA-F]{3})$/);
+    if (hex3) {
+      const [r, g, b] = hex3[1].split('');
+      return {
+        r: parseInt(r + r, 16),
+        g: parseInt(g + g, 16),
+        b: parseInt(b + b, 16),
+      };
+    }
+    const rgb = trimmed.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if (rgb) {
+      return {
+        r: parseInt(rgb[1], 10),
+        g: parseInt(rgb[2], 10),
+        b: parseInt(rgb[3], 10),
+      };
+    }
+    return null;
   }
 
   private resolvePaletteForSlide(

@@ -242,16 +242,49 @@ export class PptxFontEmbedder {
     zip.file(relsPath, newRelsXml);
 
     // 3. Update ppt/presentation.xml — insert <p:embeddedFontLst>.
-    // The element must appear in the schema-defined order: after sldIdLst,
-    // notesSz/sldSz, and defaultTextStyle but before custShowLst/extLst.
-    // Safe insertion point: just before </p:presentation>.
+    // The OOXML schema requires this element to appear in a specific order:
+    //   sldMasterIdLst → notesMasterIdLst → handoutMasterIdLst → sldIdLst →
+    //   sldSz → notesSz → smartTags → embeddedFontLst → custShowLst →
+    //   photoAlbum → kinsoku → defaultTextStyle → modifyVerifier → extLst
+    // PowerPoint (especially on Mac) silently drops embedded fonts when the
+    // element appears out of order. We insert right after </p:notesSz> when
+    // present, otherwise after </p:sldSz>, otherwise just before any of the
+    // later children, falling back to before </p:presentation>.
     const embeddedFontLst = `<p:embeddedFontLst>${fontElements.join('')}</p:embeddedFontLst>`;
     let newPresXml = presXml;
     if (presXml.includes('<p:embeddedFontLst')) {
-      // Replace existing list (in case we re-embed).
-      newPresXml = presXml.replace(/<p:embeddedFontLst[\s\S]*?<\/p:embeddedFontLst>/, embeddedFontLst);
+      newPresXml = presXml.replace(
+        /<p:embeddedFontLst[\s\S]*?<\/p:embeddedFontLst>/,
+        embeddedFontLst
+      );
     } else {
-      newPresXml = presXml.replace(/<\/p:presentation>\s*$/, embeddedFontLst + '</p:presentation>');
+      // Order: sldSz comes first, then notesSz, then embeddedFontLst.
+      // We need to find whichever appears LAST among the legal-predecessor
+      // elements so we don't accidentally insert too early.
+      const predecessorPatterns = [
+        /<p:notesSz[^/]*\/>/,
+        /<\/p:notesSz>/,
+        /<p:sldSz[^/]*\/>/,
+        /<\/p:sldSz>/,
+        /<\/p:sldIdLst>/,
+      ];
+      let bestEnd = -1;
+      for (const re of predecessorPatterns) {
+        const match = newPresXml.match(re);
+        if (match && match.index !== undefined) {
+          const end = match.index + match[0].length;
+          if (end > bestEnd) bestEnd = end;
+        }
+      }
+      if (bestEnd >= 0) {
+        newPresXml =
+          newPresXml.slice(0, bestEnd) + embeddedFontLst + newPresXml.slice(bestEnd);
+      } else {
+        newPresXml = newPresXml.replace(
+          /<\/p:presentation>\s*$/,
+          embeddedFontLst + '</p:presentation>'
+        );
+      }
     }
     zip.file(presPath, newPresXml);
 

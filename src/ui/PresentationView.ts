@@ -34,6 +34,7 @@ export class PresentationView extends ItemView {
   private onStartPresenterView: ((file: TFile) => Promise<void>) | null = null;
   private onExportHTML: ((file: TFile) => Promise<void>) | null = null;
   private onExportPDF: ((file: TFile) => Promise<void>) | null = null;
+  private onExportPPTX: ((file: TFile) => Promise<void>) | null = null;
   private fontWeightsCache: Map<string, number[]> = new Map();
   private excalidrawSvgCache: Map<string, ExcalidrawCacheEntry> | null = null;
   private failedDecompressionFiles: Set<string> = new Set();
@@ -301,6 +302,10 @@ export class PresentationView extends ItemView {
 
   setOnExportPDF(callback: (file: TFile) => Promise<void>) {
     this.onExportPDF = callback;
+  }
+
+  setOnExportPPTX(callback: (file: TFile) => Promise<void>) {
+    this.onExportPPTX = callback;
   }
 
   private setupLiveUpdates(sourceFile: TFile) {
@@ -1417,6 +1422,16 @@ More content here...`,
       item.onClick(() => {
         if (this.onExportPDF && this.file) {
           void this.onExportPDF(this.file);
+        }
+      });
+    });
+
+    menu.addItem((item) => {
+      item.setTitle('Export as PPTX');
+      item.setIcon('presentation');
+      item.onClick(() => {
+        if (this.onExportPPTX && this.file) {
+          void this.onExportPPTX(this.file);
         }
       });
     });

@@ -32,6 +32,7 @@ import { getBuiltInThemeNames } from './src/themes/builtin';
 import { DebugService, setDebugService } from './src/utils/DebugService';
 import { ExportService } from './src/utils/ExportService';
 import { PdfExportService } from './src/utils/PdfExportService';
+import { PptxExportService } from './src/utils/PptxExportService';
 import { ExcalidrawRenderer } from './src/utils/ExcalidrawRenderer';
 import { getObsidianColorScheme } from './src/utils/ColorScheme';
 
@@ -45,6 +46,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
   debugService: DebugService = new DebugService();
   exportService: ExportService | null = null;
   pdfExportService: PdfExportService | null = null;
+  pptxExportService: PptxExportService | null = null;
   excalidrawRenderer: ExcalidrawRenderer | null = null;
   private settingsTab: PerspectaSlidesSettingTab | null = null;
   private presentationWindow: PresentationWindow | null = null;
@@ -695,6 +697,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
     this.pdfExportService = new PdfExportService(this.app, this.presentationImagePathResolver);
     this.pdfExportService.setExcalidrawRenderer(this.excalidrawRenderer);
 
+    // Initialize PPTX export service (uses PptxGenJS)
+    this.pptxExportService = new PptxExportService(this.app);
+
     // Initialize theme loader with built-in themes first
     this.themeLoader = new ThemeLoader(this.app, this.settings.customThemesFolder);
     await this.themeLoader.loadThemes();
@@ -1326,6 +1331,27 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
   }
 
+  private async exportPresentationPPTX(file: TFile) {
+    try {
+      const content = await this.app.vault.read(file);
+      const presentation = this.parser.parse(content);
+      const themeName = presentation.frontmatter.theme || this.settings.defaultTheme;
+      const theme = this.getThemeByName(themeName);
+
+      if (!this.pptxExportService) {
+        new Notice('PPTX export service not initialized');
+        return;
+      }
+
+      await this.pptxExportService.export(presentation, theme || null, file);
+    } catch (error) {
+      console.error('PPTX export failed:', error);
+      new Notice(
+        `Failed to export PPTX: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
   private async convertToPresentation(file: TFile) {
     try {
       const content = await this.app.vault.read(file);
@@ -1929,6 +1955,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
       // Wire up PDF export callback
       view.setOnExportPDF(async (f) => {
         await this.exportPresentationPDF(f);
+      });
+      // Wire up PPTX export callback
+      view.setOnExportPPTX(async (f) => {
+        await this.exportPresentationPPTX(f);
       });
       // Preserve current slide position (without triggering callback)
       view.goToSlide(currentSlideIndex, false);

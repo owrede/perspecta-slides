@@ -2,6 +2,14 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.3.4] - 2026-05-23
+
+### Fixed
+- PDF export now produces a real PDF of the actual deck instead of a blank A4 page. The previous "Print / PDF" item ran `window.print()` against the Obsidian shell, which captured the UI chrome and dropped the slide iframes. The new path opens an offscreen Electron window, waits for iframes and fonts to settle, then calls `webContents.printToPDF` with the deck's native aspect ratio (16:9 → 13.33″×7.5″ landscape, 4:3 → 10″×7.5″, 16:10 → 13.33″×8.33″). One slide per page, theme and content preserved, written next to the source `.md`
+
+### Changed
+- Renamed the menu item "Print / PDF" to "Export as PDF" to reflect that it produces a file directly without opening a print dialog
+
 ## [0.3.3] - 2026-05-19
 
 ### Fixed

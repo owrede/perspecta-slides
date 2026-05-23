@@ -33,6 +33,7 @@ export class PresentationView extends ItemView {
   private onStartPresentation: ((file: TFile, slideIndex: number) => void) | null = null;
   private onStartPresenterView: ((file: TFile) => Promise<void>) | null = null;
   private onExportHTML: ((file: TFile) => Promise<void>) | null = null;
+  private onExportPDF: ((file: TFile) => Promise<void>) | null = null;
   private fontWeightsCache: Map<string, number[]> = new Map();
   private excalidrawSvgCache: Map<string, ExcalidrawCacheEntry> | null = null;
   private failedDecompressionFiles: Set<string> = new Set();
@@ -296,6 +297,10 @@ export class PresentationView extends ItemView {
 
   setOnExportHTML(callback: (file: TFile) => Promise<void>) {
     this.onExportHTML = callback;
+  }
+
+  setOnExportPDF(callback: (file: TFile) => Promise<void>) {
+    this.onExportPDF = callback;
   }
 
   private setupLiveUpdates(sourceFile: TFile) {
@@ -1407,9 +1412,13 @@ More content here...`,
     });
 
     menu.addItem((item) => {
-      item.setTitle('Print / PDF');
+      item.setTitle('Export as PDF');
       item.setIcon('printer');
-      item.onClick(() => window.print());
+      item.onClick(() => {
+        if (this.onExportPDF && this.file) {
+          void this.onExportPDF(this.file);
+        }
+      });
     });
 
     menu.addSeparator();

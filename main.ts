@@ -31,6 +31,7 @@ import { ThemeLoader } from './src/themes/ThemeLoader';
 import { getBuiltInThemeNames } from './src/themes/builtin';
 import { DebugService, setDebugService } from './src/utils/DebugService';
 import { ExportService } from './src/utils/ExportService';
+import { PdfExportService } from './src/utils/PdfExportService';
 import { ExcalidrawRenderer } from './src/utils/ExcalidrawRenderer';
 import { getObsidianColorScheme } from './src/utils/ColorScheme';
 
@@ -43,6 +44,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
   themeLoader: ThemeLoader | null = null;
   debugService: DebugService = new DebugService();
   exportService: ExportService | null = null;
+  pdfExportService: PdfExportService | null = null;
   excalidrawRenderer: ExcalidrawRenderer | null = null;
   private settingsTab: PerspectaSlidesSettingTab | null = null;
   private presentationWindow: PresentationWindow | null = null;
@@ -689,6 +691,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
     );
     this.exportService.setExcalidrawRenderer(this.excalidrawRenderer);
 
+    // Initialize PDF export service (uses Electron printToPDF)
+    this.pdfExportService = new PdfExportService(this.app, this.presentationImagePathResolver);
+    this.pdfExportService.setExcalidrawRenderer(this.excalidrawRenderer);
+
     // Initialize theme loader with built-in themes first
     this.themeLoader = new ThemeLoader(this.app, this.settings.customThemesFolder);
     await this.themeLoader.loadThemes();
@@ -1298,6 +1304,28 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
   }
 
+  private async exportPresentationPDF(file: TFile) {
+    try {
+      const content = await this.app.vault.read(file);
+      const presentation = this.parser.parse(content);
+      const themeName = presentation.frontmatter.theme || this.settings.defaultTheme;
+      const theme = this.getThemeByName(themeName);
+      const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
+
+      if (!this.pdfExportService) {
+        new Notice('PDF export service not initialized');
+        return;
+      }
+
+      await this.pdfExportService.export(presentation, theme || null, file, customFontCSS);
+    } catch (error) {
+      console.error('PDF export failed:', error);
+      new Notice(
+        `Failed to export PDF: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
   private async convertToPresentation(file: TFile) {
     try {
       const content = await this.app.vault.read(file);
@@ -1897,6 +1925,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
       // Wire up HTML export callback
       view.setOnExportHTML(async (f) => {
         await this.exportPresentation(f);
+      });
+      // Wire up PDF export callback
+      view.setOnExportPDF(async (f) => {
+        await this.exportPresentationPDF(f);
       });
       // Preserve current slide position (without triggering callback)
       view.goToSlide(currentSlideIndex, false);

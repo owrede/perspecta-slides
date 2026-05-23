@@ -11,6 +11,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.4',
+    date: '2026-05-23',
+    changes: [
+      'Fix: PDF export produces a real PDF of the deck instead of a blank A4 page. Each slide becomes its own landscape page sized to the deck aspect ratio (16:9 → 13.33″×7.5″). The previous "Print / PDF" item printed the Obsidian shell and dropped slide content.',
+      'The menu item "Print / PDF" is now "Export as PDF" — it writes the PDF directly next to the source `.md`, no print dialog.',
+    ],
+  },
+  {
     version: '0.3.3',
     date: '2026-05-19',
     changes: [

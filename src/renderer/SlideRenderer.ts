@@ -3179,61 +3179,29 @@ ${this.getSlideCSS()}
   }
 
   /**
-   * Generate CSS rules to override theme heading colors when custom title/body text is set
-   * This ensures that inspector color changes take precedence over theme-defined heading colors
+   * Heading colors are resolved purely through the CSS-variable fallback
+   * chain on the base rules in the slide template:
    *
-   * Priority order:
-   * 1. Explicit heading color from frontmatter (lightH1Color, darkH1Color, etc.)
-   * 2. General title/body text color from frontmatter (lightTitleText, darkTitleText, etc.)
-   * 3. Theme heading color (--light-h1-color, --dark-h1-color, etc.)
-   * 4. Theme general color (--light-title-text, --dark-title-text, etc.)
+   *   .slide.light h2 { color: var(--light-h2-color, var(--light-title-text)); }
+   *
+   * The chain is: frontmatter override -> theme per-level preset -> Title color.
+   * - A frontmatter override (lightH2Color, ...) sets --light-h2-color in
+   *   generateCSSVariables, so it wins.
+   * - Otherwise the theme's per-level color (--light-h2-color from the theme
+   *   CSS) applies.
+   * - If neither defines the level, the var() falls back to --light-title-text
+   *   (which a frontmatter Title color also updates), so every undefined level
+   *   inherits the Title color.
+   *
+   * This function used to emit `!important` rules forcing headings to the
+   * Title/Body color whenever those were set, which stomped a theme's
+   * per-level heading colors and made "no custom color" still paint a color.
+   * It now emits nothing; the variable chain is the single source of truth.
+   * The empty `<style id="perspecta-heading-overrides">` block is retained so
+   * the live-patch path has a stable element to target.
    */
-  private generateHeadingColorOverrides(frontmatter: PresentationFrontmatter): string {
-    const rules: string[] = [];
-
-    // Light mode heading color overrides
-    if (frontmatter.lightTitleText) {
-      // Only override h1/h2 if not explicitly set in frontmatter
-      if (!frontmatter.lightH1Color?.length) {
-        rules.push(`.slide.light h1 { color: ${frontmatter.lightTitleText} !important; }`);
-      }
-      if (!frontmatter.lightH2Color?.length) {
-        rules.push(`.slide.light h2 { color: ${frontmatter.lightTitleText} !important; }`);
-      }
-    }
-
-    if (frontmatter.lightBodyText) {
-      // Only override h3/h4 if not explicitly set in frontmatter
-      if (!frontmatter.lightH3Color?.length) {
-        rules.push(`.slide.light h3 { color: ${frontmatter.lightBodyText} !important; }`);
-      }
-      if (!frontmatter.lightH4Color?.length) {
-        rules.push(`.slide.light h4 { color: ${frontmatter.lightBodyText} !important; }`);
-      }
-    }
-
-    // Dark mode heading color overrides
-    if (frontmatter.darkTitleText) {
-      // Only override h1/h2 if not explicitly set in frontmatter
-      if (!frontmatter.darkH1Color?.length) {
-        rules.push(`.slide.dark h1 { color: ${frontmatter.darkTitleText} !important; }`);
-      }
-      if (!frontmatter.darkH2Color?.length) {
-        rules.push(`.slide.dark h2 { color: ${frontmatter.darkTitleText} !important; }`);
-      }
-    }
-
-    if (frontmatter.darkBodyText) {
-      // Only override h3/h4 if not explicitly set in frontmatter
-      if (!frontmatter.darkH3Color?.length) {
-        rules.push(`.slide.dark h3 { color: ${frontmatter.darkBodyText} !important; }`);
-      }
-      if (!frontmatter.darkH4Color?.length) {
-        rules.push(`.slide.dark h4 { color: ${frontmatter.darkBodyText} !important; }`);
-      }
-    }
-
-    return rules.length > 0 ? rules.join('\n') : '';
+  private generateHeadingColorOverrides(_frontmatter: PresentationFrontmatter): string {
+    return '';
   }
 
   private generateCSSVariables(frontmatter: PresentationFrontmatter): string {

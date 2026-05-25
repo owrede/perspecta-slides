@@ -2109,61 +2109,104 @@ export class InspectorPanelView extends ItemView {
         ? themePreset?.LightTitleTextColor || '#000000'
         : themePreset?.DarkTitleTextColor || '#ffffff';
 
+    // Theme-defined per-level heading colors (from theme.json), if any.
+    // These are the colors the renderer applies when no frontmatter
+    // override exists, so the pane must surface them too.
+    const themeText =
+      mode === 'light'
+        ? theme?.themeJsonData?.presets?.light?.text
+        : theme?.themeJsonData?.presets?.dark?.text;
+
     const headingConfigs = [
       {
         level: 1,
         label: 'Headline #',
         lightKey: 'lightH1Color' as const,
         darkKey: 'darkH1Color' as const,
+        themeColor: themeText?.h1,
       },
       {
         level: 2,
         label: 'Headline ##',
         lightKey: 'lightH2Color' as const,
         darkKey: 'darkH2Color' as const,
+        themeColor: themeText?.h2,
       },
       {
         level: 3,
         label: 'Headline ###',
         lightKey: 'lightH3Color' as const,
         darkKey: 'darkH3Color' as const,
+        themeColor: themeText?.h3,
       },
       {
         level: 4,
         label: 'Headline ####',
         lightKey: 'lightH4Color' as const,
         darkKey: 'darkH4Color' as const,
+        themeColor: themeText?.h4,
       },
     ];
 
-    // Find which headings have custom colors set
-    const customHeadings = headingConfigs.filter((config) => {
+    // A level is "shown" when either the deck (frontmatter) overrides it
+    // OR the theme defines a per-level color for it. The effective color
+    // resolves: frontmatter override -> theme preset -> Title color.
+    const hasOverride = (config: (typeof headingConfigs)[number]) => {
       const key = mode === 'light' ? config.lightKey : config.darkKey;
       const value = fm[key];
-      return value && value.length > 0;
-    });
+      return !!(value && value.length > 0);
+    };
+    // A theme per-level color only counts when it differs from the Title
+    // color — a theme that sets a heading to the Title color contributes
+    // nothing the title doesn't already provide, so it isn't a distinct row.
+    // This mirrors the CSS generation in themes/index.ts.
+    const hasThemeColor = (config: (typeof headingConfigs)[number]) =>
+      !!(
+        config.themeColor &&
+        config.themeColor.length > 0 &&
+        config.themeColor[0] !== defaultTitleColor
+      );
 
-    // Show custom heading colors
+    const customHeadings = headingConfigs.filter(
+      (config) => hasOverride(config) || hasThemeColor(config)
+    );
+
+    // Show heading color rows (override and/or theme-defined levels)
     for (const config of customHeadings) {
       const key = mode === 'light' ? config.lightKey : config.darkKey;
-      const value = fm[key]?.[0] || defaultTitleColor;
+      const overridden = hasOverride(config);
+      const themed = hasThemeColor(config);
+      // Effective color shown in the picker: frontmatter override first,
+      // then the theme's per-level color, then the Title color.
+      const value =
+        fm[key]?.[0] || config.themeColor?.[0] || defaultTitleColor;
 
       const row = container.createDiv({ cls: 'heading-color-row' });
-      row.createEl('span', { text: config.label, cls: 'color-label' });
+      const source = overridden ? '' : themed ? ' (theme)' : '';
+      row.createEl('span', { text: config.label + source, cls: 'color-label' });
 
       const pickerWrapper = row.createDiv({ cls: 'color-picker-wrapper' });
-      new Setting(pickerWrapper)
-        .addColorPicker((picker) =>
-          picker.setValue(value).onChange((newValue) => {
-            const update: Partial<PresentationFrontmatter> = {};
-            (update as any)[key] = [newValue];
-            this.updateFrontmatter(update);
-          })
-        )
-        .addExtraButton((btn) =>
+      const setting = new Setting(pickerWrapper).addColorPicker((picker) =>
+        picker.setValue(value).onChange((newValue) => {
+          const update: Partial<PresentationFrontmatter> = {};
+          (update as any)[key] = [newValue];
+          this.updateFrontmatter(update);
+          this.renderHeadingColors(container, mode);
+        })
+      );
+
+      // Reset clears the deck override. When the theme defines a color the
+      // level falls back to it; otherwise it falls back to the Title color.
+      // The reset is only meaningful when an override exists.
+      if (overridden) {
+        setting.addExtraButton((btn) =>
           btn
-            .setIcon('x')
-            .setTooltip('Remove custom color (use Title color)')
+            .setIcon('rotate-ccw')
+            .setTooltip(
+              themed
+                ? 'Reset to theme color'
+                : 'Remove custom color (use Title color)'
+            )
             .onClick(() => {
               const update: Partial<PresentationFrontmatter> = {};
               (update as any)[key] = undefined;
@@ -2171,14 +2214,28 @@ export class InspectorPanelView extends ItemView {
               this.renderHeadingColors(container, mode);
             })
         );
+      } else {
+        // Theme-only color: offer to remove it entirely (override with Title
+        // color) so the deck can opt out of a theme's per-level heading color.
+        setting.addExtraButton((btn) =>
+          btn
+            .setIcon('x')
+            .setTooltip('Override with Title color')
+            .onClick(() => {
+              const update: Partial<PresentationFrontmatter> = {};
+              (update as any)[key] = [defaultTitleColor];
+              this.updateFrontmatter(update);
+              this.renderHeadingColors(container, mode);
+            })
+        );
+      }
     }
 
-    // Show "Add heading color" dropdown for remaining headings
-    const availableHeadings = headingConfigs.filter((config) => {
-      const key = mode === 'light' ? config.lightKey : config.darkKey;
-      const value = fm[key];
-      return !value || value.length === 0;
-    });
+    // Show "Add heading color" dropdown for levels with neither an override
+    // nor a theme-defined color (they currently inherit the Title color).
+    const availableHeadings = headingConfigs.filter(
+      (config) => !hasOverride(config) && !hasThemeColor(config)
+    );
 
     if (availableHeadings.length > 0) {
       const addRow = container.createDiv({ cls: 'add-heading-color-row' });

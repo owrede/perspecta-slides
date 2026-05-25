@@ -311,11 +311,13 @@ export class ExportService {
       return 'inherit';
     };
 
-    // Build light mode heading colors
+    // Build light mode heading colors. All levels default to the Title color
+    // (matching the live preview chain: override -> theme preset -> Title);
+    // the theme's per-level colors override that default when present.
     let lightH1 = preset.LightTitleTextColor;
     let lightH2 = preset.LightTitleTextColor;
-    let lightH3 = preset.LightBodyTextColor;
-    let lightH4 = preset.LightBodyTextColor;
+    let lightH3 = preset.LightTitleTextColor;
+    let lightH4 = preset.LightTitleTextColor;
     if (themeJson?.presets.light.text) {
       lightH1 = colorToCss(themeJson.presets.light.text.h1);
       lightH2 = colorToCss(themeJson.presets.light.text.h2);
@@ -323,11 +325,11 @@ export class ExportService {
       lightH4 = colorToCss(themeJson.presets.light.text.h4);
     }
 
-    // Build dark mode heading colors
+    // Build dark mode heading colors (same Title-color default).
     let darkH1 = preset.DarkTitleTextColor;
     let darkH2 = preset.DarkTitleTextColor;
-    let darkH3 = preset.DarkBodyTextColor;
-    let darkH4 = preset.DarkBodyTextColor;
+    let darkH3 = preset.DarkTitleTextColor;
+    let darkH4 = preset.DarkTitleTextColor;
     if (themeJson?.presets.dark.text) {
       darkH1 = colorToCss(themeJson.presets.dark.text.h1);
       darkH2 = colorToCss(themeJson.presets.dark.text.h2);
@@ -520,13 +522,13 @@ export class ExportService {
         color: var(--dark-h2-color, var(--dark-title-text, #fff)) !important;
       }
       html.dark h3 {
-        color: var(--dark-h3-color, var(--dark-body-text, #fff)) !important;
+        color: var(--dark-h3-color, var(--dark-title-text, #fff)) !important;
       }
       html.dark h4 {
-        color: var(--dark-h4-color, var(--dark-body-text, #fff)) !important;
+        color: var(--dark-h4-color, var(--dark-title-text, #fff)) !important;
       }
       html.dark h5 {
-        color: var(--dark-h4-color, var(--dark-body-text, #fff)) !important;
+        color: var(--dark-h4-color, var(--dark-title-text, #fff)) !important;
       }
       html.dark h6 {
         color: var(--dark-body-text, #fff) !important;
@@ -672,13 +674,13 @@ export class ExportService {
         color: var(--light-h2-color, var(--light-title-text, #000)) !important;
       }
       html.light h3 {
-        color: var(--light-h3-color, var(--light-body-text, #000)) !important;
+        color: var(--light-h3-color, var(--light-title-text, #000)) !important;
       }
       html.light h4 {
-        color: var(--light-h4-color, var(--light-body-text, #000)) !important;
+        color: var(--light-h4-color, var(--light-title-text, #000)) !important;
       }
       html.light h5 {
-        color: var(--light-h4-color, var(--light-body-text, #000)) !important;
+        color: var(--light-h4-color, var(--light-title-text, #000)) !important;
       }
       html.light h6 {
         color: var(--light-body-text, #000) !important;
@@ -806,9 +808,9 @@ export class ExportService {
       }
       html.light .slide.dark h1 { color: var(--dark-h1-color, var(--dark-title-text, #fff)) !important; }
       html.light .slide.dark h2 { color: var(--dark-h2-color, var(--dark-title-text, #fff)) !important; }
-      html.light .slide.dark h3 { color: var(--dark-h3-color, var(--dark-body-text, #fff)) !important; }
-      html.light .slide.dark h4 { color: var(--dark-h4-color, var(--dark-body-text, #fff)) !important; }
-      html.light .slide.dark h5 { color: var(--dark-h4-color, var(--dark-body-text, #fff)) !important; }
+      html.light .slide.dark h3 { color: var(--dark-h3-color, var(--dark-title-text, #fff)) !important; }
+      html.light .slide.dark h4 { color: var(--dark-h4-color, var(--dark-title-text, #fff)) !important; }
+      html.light .slide.dark h5 { color: var(--dark-h4-color, var(--dark-title-text, #fff)) !important; }
       html.light .slide.dark h6 { color: var(--dark-body-text, #fff) !important; }
       html.light .slide.dark a { color: var(--dark-link-color, #4a9eff) !important; }
       html.light .slide.dark blockquote { border-color: var(--dark-blockquote-border, #666) !important; color: var(--dark-body-text, #fff) !important; }
@@ -832,9 +834,9 @@ export class ExportService {
       }
       html.dark .slide.light h1 { color: var(--light-h1-color, var(--light-title-text, #000)) !important; }
       html.dark .slide.light h2 { color: var(--light-h2-color, var(--light-title-text, #000)) !important; }
-      html.dark .slide.light h3 { color: var(--light-h3-color, var(--light-body-text, #000)) !important; }
-      html.dark .slide.light h4 { color: var(--light-h4-color, var(--light-body-text, #000)) !important; }
-      html.dark .slide.light h5 { color: var(--light-h4-color, var(--light-body-text, #000)) !important; }
+      html.dark .slide.light h3 { color: var(--light-h3-color, var(--light-title-text, #000)) !important; }
+      html.dark .slide.light h4 { color: var(--light-h4-color, var(--light-title-text, #000)) !important; }
+      html.dark .slide.light h5 { color: var(--light-h4-color, var(--light-title-text, #000)) !important; }
       html.dark .slide.light h6 { color: var(--light-body-text, #000) !important; }
       html.dark .slide.light a { color: var(--light-link-color, #0066cc) !important; }
       html.dark .slide.light blockquote { border-color: var(--light-blockquote-border, #ccc) !important; color: var(--light-body-text, #000) !important; }
@@ -1022,15 +1024,16 @@ export class ExportService {
       return 'inherit';
     };
 
-    // Build heading colors
+    // Build heading colors. Default all levels to the Title color (matching
+    // the live preview chain); theme per-level colors override when present.
     let lightH1 = preset.LightTitleTextColor;
     let lightH2 = preset.LightTitleTextColor;
-    let lightH3 = preset.LightBodyTextColor;
-    let lightH4 = preset.LightBodyTextColor;
+    let lightH3 = preset.LightTitleTextColor;
+    let lightH4 = preset.LightTitleTextColor;
     let darkH1 = preset.DarkTitleTextColor;
     let darkH2 = preset.DarkTitleTextColor;
-    let darkH3 = preset.DarkBodyTextColor;
-    let darkH4 = preset.DarkBodyTextColor;
+    let darkH3 = preset.DarkTitleTextColor;
+    let darkH4 = preset.DarkTitleTextColor;
 
     if (themeJson?.presets.light.text) {
       lightH1 = colorToCss(themeJson.presets.light.text.h1);
@@ -1950,15 +1953,16 @@ export class ExportService {
       return 'inherit';
     };
 
-    // Build heading colors
+    // Build heading colors. Default all levels to the Title color (matching
+    // the live preview chain); theme per-level colors override when present.
     let lightH1 = preset?.LightTitleTextColor || '#000';
     let lightH2 = preset?.LightTitleTextColor || '#000';
-    let lightH3 = preset?.LightBodyTextColor || '#333';
-    let lightH4 = preset?.LightBodyTextColor || '#333';
+    let lightH3 = preset?.LightTitleTextColor || '#000';
+    let lightH4 = preset?.LightTitleTextColor || '#000';
     let darkH1 = preset?.DarkTitleTextColor || '#fff';
     let darkH2 = preset?.DarkTitleTextColor || '#fff';
-    let darkH3 = preset?.DarkBodyTextColor || '#ddd';
-    let darkH4 = preset?.DarkBodyTextColor || '#ddd';
+    let darkH3 = preset?.DarkTitleTextColor || '#fff';
+    let darkH4 = preset?.DarkTitleTextColor || '#fff';
 
     if (themeJson?.presets.light.text) {
       lightH1 = colorToCss(themeJson.presets.light.text.h1);
@@ -2247,8 +2251,8 @@ export class ExportService {
     .test-h2 { font-size: 24px; font-weight: bold; color: var(--dark-h2-color, var(--dark-title-text, #fff)); }
     html.light .test-h2 { color: var(--light-h2-color, var(--light-title-text, #000)); }
 
-    .test-h3 { font-size: 20px; font-weight: bold; color: var(--dark-h3-color, var(--dark-body-text, #fff)); }
-    html.light .test-h3 { color: var(--light-h3-color, var(--light-body-text, #000)); }
+    .test-h3 { font-size: 20px; font-weight: bold; color: var(--dark-h3-color, var(--dark-title-text, #fff)); }
+    html.light .test-h3 { color: var(--light-h3-color, var(--light-title-text, #000)); }
 
     .test-a { color: var(--dark-link-color, #4a9eff); text-decoration: underline; }
     html.light .test-a { color: var(--light-link-color, #0066cc); }

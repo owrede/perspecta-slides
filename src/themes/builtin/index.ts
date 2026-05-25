@@ -29,10 +29,12 @@ const defaultThemeJson = {
   presets: {
     light: {
       text: {
+        // Headings follow the Title color (h1) by default — no per-level
+        // overrides in the built-in Default theme.
         h1: ['#000000'],
-        h2: ['#918a83'],
-        h3: ['#333333'],
-        h4: ['#333333'],
+        h2: ['#000000'],
+        h3: ['#000000'],
+        h4: ['#000000'],
         body: '#333333',
         header: '#666666',
         footer: '#666666',
@@ -75,10 +77,11 @@ const defaultThemeJson = {
     },
     dark: {
       text: {
+        // Headings follow the Title color (h1) by default.
         h1: ['#ffffff'],
         h2: ['#ffffff'],
-        h3: ['#e0e0e0'],
-        h4: ['#e0e0e0'],
+        h3: ['#ffffff'],
+        h4: ['#ffffff'],
         body: '#e0e0e0',
         header: '#999999',
         footer: '#999999',

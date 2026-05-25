@@ -2,6 +2,16 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.5.1] - 2026-05-25
+
+### Fixed
+- **Heading colors honored the pane's promise** — the Typography/Theme "Heading Colors" section claimed "Headlines use the Title color by default" while themes silently painted headings their own per-level colors (e.g. a taupe `##` or a green `###`). Heading color now resolves through a single chain — frontmatter override → theme per-level color → Title color — so an undefined level always inherits the Title color. Removed an `!important` override that forced `###`/`####` to the Body color and stomped theme colors.
+- **Theme heading colors are now visible and editable** — when a theme defines a per-level heading color that differs from the Title color, it appears in the "Heading Colors" section as a "(theme)" row, pre-filled and editable, instead of being hidden behind "nothing defined". A theme color equal to the Title color produces no row (nothing to surface).
+- **Built-in Default theme follows the Title color** — the Default theme no longer ships per-level heading colors (previously taupe `##`, gray `###`/`####`); all heading levels use the Title color out of the box.
+
+### Changed
+- HTML export heading colors now match the live preview: all levels default to the Title color, with theme per-level colors applied on top.
+
 ## [0.5.0] - 2026-05-25
 
 ### Added

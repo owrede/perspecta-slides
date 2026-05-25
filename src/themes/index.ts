@@ -41,10 +41,10 @@ export function generateDefaultCSS(): string {
   --light-body-text: #333333;
   --light-title-text: #000000;
   --light-background: #ffffff;
-  --light-h1-color: #000000;
-  --light-h2-color: #000000;
-  --light-h3-color: #333333;
-  --light-h4-color: #333333;
+  /* Per-level heading colors are intentionally NOT set here. With no theme
+     loaded, headings inherit --light-title-text via the var() fallback on
+     the base .slide h1..h4 rules. A theme or a frontmatter override is the
+     only thing that sets --light-h{1..4}-color. */
   --light-header-text: #666666;
   --light-footer-text: #666666;
   --light-bg-cover: #f0f0f0;
@@ -63,10 +63,8 @@ export function generateDefaultCSS(): string {
   --dark-body-text: #e0e0e0;
   --dark-title-text: #ffffff;
   --dark-background: #1a1a1a;
-  --dark-h1-color: #ffffff;
-  --dark-h2-color: #ffffff;
-  --dark-h3-color: #e0e0e0;
-  --dark-h4-color: #e0e0e0;
+  /* See light-mode note above: per-level heading colors inherit
+     --dark-title-text unless a theme or frontmatter override sets them. */
   --dark-header-text: #999999;
   --dark-footer-text: #999999;
   --dark-bg-cover: #0d0d0d;
@@ -161,22 +159,40 @@ export function generateThemeCSS(
     const light = themeJson.presets.light;
     const dark = themeJson.presets.dark;
 
-    // Per-heading colors (light mode)
+    // Per-heading colors. A level only gets its own --*-h{N}-color variable
+    // when the theme defines a color that *differs from the Title color*
+    // (the title is text.h1). When a level matches the title, we emit nothing
+    // so the base rule's var() fallback inherits --*-title-text. This keeps
+    // "headings follow the Title color" as the honest default and avoids
+    // surfacing redundant per-level colors in the inspector.
+    const lightTitle = colorOrGradient(light.text.h1);
+    const headingVar = (name: string, value: string, title: string) =>
+      value && value !== title ? `\n  ${name}: ${value};` : '';
     cssVars += `
-  --light-h1-color: ${colorOrGradient(light.text.h1)};
-  --light-h2-color: ${colorOrGradient(light.text.h2)};
-  --light-h3-color: ${colorOrGradient(light.text.h3)};
-  --light-h4-color: ${colorOrGradient(light.text.h4)};
+  --light-h1-color: ${lightTitle};${headingVar(
+    '--light-h2-color',
+    colorOrGradient(light.text.h2),
+    lightTitle
+  )}${headingVar('--light-h3-color', colorOrGradient(light.text.h3), lightTitle)}${headingVar(
+    '--light-h4-color',
+    colorOrGradient(light.text.h4),
+    lightTitle
+  )}
   --light-header-text: ${light.text.header};
   --light-footer-text: ${light.text.footer};
 `;
 
-    // Per-heading colors (dark mode)
+    const darkTitle = colorOrGradient(dark.text.h1);
     cssVars += `
-  --dark-h1-color: ${colorOrGradient(dark.text.h1)};
-  --dark-h2-color: ${colorOrGradient(dark.text.h2)};
-  --dark-h3-color: ${colorOrGradient(dark.text.h3)};
-  --dark-h4-color: ${colorOrGradient(dark.text.h4)};
+  --dark-h1-color: ${darkTitle};${headingVar(
+    '--dark-h2-color',
+    colorOrGradient(dark.text.h2),
+    darkTitle
+  )}${headingVar('--dark-h3-color', colorOrGradient(dark.text.h3), darkTitle)}${headingVar(
+    '--dark-h4-color',
+    colorOrGradient(dark.text.h4),
+    darkTitle
+  )}
   --dark-header-text: ${dark.text.header};
   --dark-footer-text: ${dark.text.footer};
 `;

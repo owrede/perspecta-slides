@@ -2,6 +2,22 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.5.0] - 2026-05-25
+
+### Added
+- **Bundled Inter font for the Default theme** — Inter ships with the plugin (Regular, Italic, Medium, SemiBold, Bold) instead of borrowing the host system's font stack, so the Default theme renders the same on every machine. The font is namespaced (`Inter [perspecta:Default]`) and managed through the same Phase-2 mechanism as custom-theme fonts.
+
+### Changed
+- **Flicker-free live design updates** — changing typography, spacing, or theme colors in the inspector now patches the CSS variables inside the live slide iframes in place instead of reloading them. The preview, thumbnail navigator, and the external presentation window all update without the blank-and-repaint flash. Changes that alter slide structure or the light/dark mode still do a full rebuild.
+- **Hardened presentation window** — the external presentation window now runs with `nodeIntegration: false` and `contextIsolation: true` behind a contextBridge preload. The previous 500 ms callback-injection polling and `require('electron')` in injected HTML are gone; the renderer talks to the host over a channel-restricted bridge.
+
+### Fixed
+- **Double redraw on design changes** — adjusting a slider (e.g. font size) redrew the preview and every thumbnail twice. Render suppression is now order-independent, so the self-write that follows a live patch no longer triggers a second redraw.
+- **Stale build loaded by Obsidian** — the build now copies artifacts into the dev vault's plugin directory after every build, so a reload always picks up the fresh code (the build output directory and the vault plugin directory were separate locations).
+
+### Internal
+- `main.ts` split from ~3645 to ~2290 lines by extracting focused modules (slide serialization, image-path resolution, Excalidraw coordination, IPC listener management, cursor tracking, slide mutation, deck font resolution).
+
 ## [0.4.0] - 2026-05-24
 
 ### Added

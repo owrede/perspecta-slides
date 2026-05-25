@@ -1,20 +1,17 @@
-import type { TFile } from 'obsidian';
-import { Notice } from 'obsidian';
+import { type TFile, Notice, Platform } from 'obsidian';
 import { getDebugService } from '../utils/DebugService';
 import type { Presentation, Theme, PresentationFrontmatter } from '../types';
-import type { ImagePathResolver } from '../renderer/SlideRenderer';
-import { SlideRenderer } from '../renderer/SlideRenderer';
-import type { PresentationCache } from '../utils/SlideHasher';
-import type { ExcalidrawCacheEntry } from '../utils/ExcalidrawRenderer';
-import { getObsidianColorScheme } from '../utils/ColorScheme';
+import { type ImagePathResolver, SlideRenderer } from '../renderer/SlideRenderer';
 import {
+  type PresentationCache,
   buildPresentationCache,
   diffPresentations,
   requiresFullRender,
 } from '../utils/SlideHasher';
+import type { ExcalidrawCacheEntry } from '../utils/ExcalidrawRenderer';
+import { getObsidianColorScheme } from '../utils/ColorScheme';
 
 // Access Electron from the global require in Obsidian's context
-import { Platform } from 'obsidian';
 declare const require: NodeRequire;
 
 /**
@@ -411,9 +408,6 @@ export class PresentationWindow {
         )
         .join('')}
     </div>
-    <div class="slide-counter" id="slideCounter">
-      <span id="currentSlide">${startSlide + 1}</span> / <span id="totalSlides">${presentation.slides.filter((s) => !s.hidden).length}</span>
-    </div>
   </div>
   <script>
     ${this.getPresentationWindowScript(presentation.slides.length, startSlide)}
@@ -499,17 +493,6 @@ export class PresentationWindow {
         background: transparent;
       }
       
-      .slide-counter {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        background: rgba(0, 0, 0, 0.6);
-        color: white;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-size: 14px;
-        z-index: 100;
-      }
     `;
   }
 
@@ -538,9 +521,6 @@ export class PresentationWindow {
         });
         
         window.currentSlide = index;
-        // Calculate visible slide number (count non-hidden slides up to current)
-        const visibleNumber = window.visibleSlideIndices.indexOf(index) + 1;
-        document.getElementById('currentSlide').textContent = visibleNumber > 0 ? visibleNumber : (index + 1);
       }
       
       // Show/hide drag zone based on mouse position and activity
@@ -592,7 +572,6 @@ export class PresentationWindow {
       
       window.updateSlideCount = function(newTotal) {
         window.totalSlides = newTotal;
-        document.getElementById('totalSlides').textContent = newTotal;
         if (window.currentSlide >= newTotal) {
           showSlide(newTotal - 1);
         }
@@ -686,6 +665,55 @@ export class PresentationWindow {
         background: transparent !important;
       }
     `;
+  }
+
+  /**
+   * Apply a CSS-only frontmatter change (font sizes/scales, spacing,
+   * margins, colors, font families) to every slide iframe in the external
+   * window WITHOUT a full reload. Patches the frontmatter-derived
+   * `<style>` blocks (by id) inside each iframe's document via a single
+   * executeJavaScript call, so the change repaints in place with no
+   * flicker — the same technique used for the in-app preview/thumbnails.
+   *
+   * Returns false if the window isn't ready or the patch script fails, so
+   * the caller can fall back to updateContent (full render).
+   */
+  async patchLiveStyles(presentation: Presentation, theme: Theme | null): Promise<boolean> {
+    if (!this.win || this.win.isDestroyed()) {
+      return false;
+    }
+    try {
+      Object.assign(this.presentation?.frontmatter ?? {}, presentation.frontmatter);
+      const renderer = this.createRenderer(presentation, theme);
+      const styleUpdate = renderer.generateLiveStyleUpdate(presentation.frontmatter);
+      // Keep the cache in sync so a later real content diff is computed
+      // against the patched state, not the pre-patch state.
+      this.presentationCache = buildPresentationCache(presentation);
+      this.currentTheme = theme;
+
+      const payload = JSON.stringify(styleUpdate);
+      // For each slide iframe, set the textContent of each <style id=...>.
+      // Runs inside the window; touches only style nodes, no DOM rebuild.
+      const script = `
+        (function() {
+          var updates = ${payload};
+          var frames = document.querySelectorAll('.slide-frame iframe');
+          for (var i = 0; i < frames.length; i++) {
+            var doc = frames[i].contentDocument;
+            if (!doc) { continue; }
+            for (var id in updates) {
+              var el = doc.getElementById(id);
+              if (el) { el.textContent = updates[id]; }
+            }
+          }
+          return true;
+        })();
+      `;
+      const ok = await this.win.webContents.executeJavaScript(script);
+      return ok === true;
+    } catch {
+      return false;
+    }
   }
 
   async updateContent(presentation: Presentation, theme: Theme | null): Promise<void> {

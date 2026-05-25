@@ -1,20 +1,11 @@
-import type { TFile } from 'obsidian';
-import { Notice } from 'obsidian';
+import { type TFile, Notice, Platform } from 'obsidian';
 import { getDebugService } from '../utils/DebugService';
 import type { Presentation, Theme, Slide } from '../types';
-import { PresentationFrontmatter } from '../types';
-import type { ImagePathResolver } from '../renderer/SlideRenderer';
-import { SlideRenderer } from '../renderer/SlideRenderer';
-import type { PresentationCache } from '../utils/SlideHasher';
+import { type ImagePathResolver, SlideRenderer } from '../renderer/SlideRenderer';
+import { type PresentationCache, buildPresentationCache } from '../utils/SlideHasher';
 import { getObsidianColorScheme } from '../utils/ColorScheme';
-import {
-  buildPresentationCache,
-  diffPresentations,
-  requiresFullRender,
-} from '../utils/SlideHasher';
 
 // Access Electron from the global require in Obsidian's context
-import { Platform } from 'obsidian';
 declare const require: NodeRequire;
 
 /**
@@ -42,7 +33,16 @@ export class PresenterWindow {
     | null = null;
   private onOpenPresentationWindow: (() => void) | null = null;
   private windowBounds: { x: number; y: number; width: number; height: number } | null = null;
-  private ipcMainRef: any = null; // Cache ipcMain reference
+  private preloadPath: string | null = null;
+
+  /**
+   * Absolute path to the bundled preload.js. When set, the window runs
+   * with nodeIntegration:false + contextIsolation:true and the preload
+   * exposes `window.perspectaPresenter` as the only IPC surface.
+   */
+  setPreloadPath(path: string): void {
+    this.preloadPath = path;
+  }
 
   public getPresentation(): Presentation | null {
     return this.presentation;
@@ -103,165 +103,6 @@ export class PresenterWindow {
     });
   }
 
-  private injectCallbacksIntoWindow(): void {
-    const debug = getDebugService();
-    debug.log('presentation-window', '[PresenterWindow.injectCallbacksIntoWindow] CALLED');
-
-    if (!this.win || this.win.isDestroyed()) {
-      debug.warn(
-        'presentation-window',
-        '[PresenterWindow] Cannot inject callbacks: window is destroyed'
-      );
-      return;
-    }
-
-    debug.log(
-      'presentation-window',
-      '[PresenterWindow] Setting up callback handlers via direct invocation'
-    );
-
-    try {
-      // Define handlers that will be called from the presenter window
-      const slideChangedHandler = (index: number) => {
-        debug.log('presentation-window', `[PresenterWindow] Slide changed to ${index}`);
-        if (this.onSlideChanged) {
-          this.onSlideChanged(index);
-        }
-      };
-
-      const openPresentationHandler = () => {
-        debug.log('presentation-window', '[PresenterWindow] Open presentation requested');
-        if (this.onOpenPresentationWindow) {
-          this.onOpenPresentationWindow();
-        }
-      };
-
-      // Inject callback definitions into presenter window
-      // These will be called by the presenter window's slide navigation code
-      this.win.webContents.executeJavaScript(`
-        (function() {
-          window.__presenterCallbacks.onSlideChanged = function(index) {
-            // Store the value so we can detect it changed
-            window.__lastSlideChange = {index: index, timestamp: Date.now()};
-          };
-          window.__presenterCallbacks.onOpenPresentation = function() {
-            window.__lastOpenPresentation = {timestamp: Date.now()};
-          };
-        })();
-      `);
-
-      // Set up a watcher that calls our handlers when values change in the presenter window
-      // We'll use setInterval to periodically check
-      let pollCount = 0;
-      const checkInterval = setInterval(async () => {
-        if (this.win && !this.win.isDestroyed()) {
-          try {
-            const result = await this.win.webContents.executeJavaScript(`
-              (function() {
-                const lastChange = window.__lastSlideChange;
-                const lastOpen = window.__lastOpenPresentation;
-                return {lastChange, lastOpen, hasCallbacks: !!window.__presenterCallbacks};
-              })();
-            `);
-
-            pollCount++;
-            if (pollCount % 10 === 0) {
-              debug.log('presentation-window', `[Poll] Result: ${JSON.stringify(result)}`);
-            }
-
-            if (
-              result?.lastChange &&
-              result.lastChange.timestamp > ((this as any).__lastCheckTime || 0)
-            ) {
-              (this as any).__lastCheckTime = result.lastChange.timestamp;
-              debug.log(
-                'presentation-window',
-                `[Poll] Detected slide change to ${result.lastChange.index}`
-              );
-              slideChangedHandler(result.lastChange.index);
-            }
-            if (
-              result?.lastOpen &&
-              result.lastOpen.timestamp > ((this as any).__lastCheckOpenTime || 0)
-            ) {
-              (this as any).__lastCheckOpenTime = result.lastOpen.timestamp;
-              debug.log('presentation-window', `[Poll] Detected open presentation request`);
-              openPresentationHandler();
-            }
-          } catch (e: any) {
-            debug.warn('presentation-window', `[Poll] Check failed: ${e}`);
-            clearInterval(checkInterval);
-          }
-        } else {
-          clearInterval(checkInterval);
-        }
-      }, 500);
-
-      // Clean up interval when window closes
-      this.win.once('closed', () => {
-        clearInterval(checkInterval);
-      });
-
-      debug.log('presentation-window', '[PresenterWindow] Callback monitoring started');
-    } catch (e) {
-      debug.error('presentation-window', `Failed to inject callbacks: ${e}`);
-    }
-  }
-
-  private setupIPCHandlers(ipcMain: any, debug: any): void {
-    if (!ipcMain) {
-      debug.error(
-        'presentation-window',
-        '[PresenterWindow] Cannot setup IPC: ipcMain is null/undefined'
-      );
-      return;
-    }
-
-    this.ipcMainRef = ipcMain;
-    debug.log('presentation-window', '[PresenterWindow] Setting up IPC handlers');
-
-    try {
-      // Clean up any existing listeners
-      ipcMain.removeAllListeners('presenter:slide-changed');
-      ipcMain.removeAllListeners('presenter:open-presentation');
-    } catch (e) {
-      debug.warn('presentation-window', `Failed to remove existing listeners: ${e}`);
-    }
-
-    // Listen for slide changes from the presenter window UI
-    ipcMain.on('presenter:slide-changed', (event: any, slideIndex: number) => {
-      debug.log(
-        'presentation-window',
-        `[PresenterWindow] IPC: slide-changed received with index ${slideIndex}`
-      );
-      if (this.onSlideChanged) {
-        debug.log('presentation-window', `[PresenterWindow] Invoking onSlideChanged callback`);
-        this.onSlideChanged(slideIndex);
-      } else {
-        debug.warn('presentation-window', '[PresenterWindow] onSlideChanged callback not set');
-      }
-    });
-
-    // Listen for request to open presentation window
-    ipcMain.on('presenter:open-presentation', (event: any) => {
-      debug.log('presentation-window', '[PresenterWindow] IPC: open-presentation received');
-      if (this.onOpenPresentationWindow) {
-        debug.log(
-          'presentation-window',
-          '[PresenterWindow] Invoking onOpenPresentationWindow callback'
-        );
-        this.onOpenPresentationWindow();
-      } else {
-        debug.warn(
-          'presentation-window',
-          '[PresenterWindow] onOpenPresentationWindow callback not set'
-        );
-      }
-    });
-
-    debug.log('presentation-window', '[PresenterWindow] IPC handlers setup complete');
-  }
-
   private createRenderer(presentation: Presentation, theme: Theme | null): SlideRenderer {
     const renderer = new SlideRenderer(
       presentation,
@@ -317,7 +158,6 @@ export class PresenterWindow {
     }
 
     const { BrowserWindow, screen } = remote;
-    const { ipcMain } = electron;
     const displays = screen.getAllDisplays();
     const primaryDisplay = screen.getPrimaryDisplay();
 
@@ -361,9 +201,15 @@ export class PresenterWindow {
         hasShadow: true,
         backgroundColor: '#1a1a1a',
         webPreferences: {
-          nodeIntegration: true,
-          contextIsolation: false,
+          // Secure defaults: the renderer has no Node access and runs in
+          // an isolated world. Presenter→plugin IPC goes exclusively
+          // through the preload-exposed `window.perspectaPresenter`
+          // bridge (channel-restricted). webSecurity stays disabled only
+          // so file:// images resolve in the local window.
+          nodeIntegration: false,
+          contextIsolation: true,
           webSecurity: false,
+          ...(this.preloadPath ? { preload: this.preloadPath } : {}),
         },
         show: false,
       });
@@ -381,18 +227,6 @@ export class PresenterWindow {
     const html = this.generatePresenterHTML(presentation, renderer, theme);
     await this.loadHTMLContent(html);
 
-    // After HTML is loaded, inject the callbacks into the presenter window
-    debug.log('presentation-window', '[PresenterWindow] Injecting callbacks into presenter window');
-    try {
-      await this.win.webContents.executeJavaScript(`
-         (function() {
-           window.__presenterCallbacks = window.__presenterCallbacks || {};
-         })();
-       `);
-    } catch (e) {
-      debug.warn('presentation-window', `Failed to inject callback object: ${e}`);
-    }
-
     try {
       debug.log('presentation-window', '[PresenterWindow] About to register ready-to-show handler');
 
@@ -402,13 +236,6 @@ export class PresenterWindow {
         if (this.win && !this.win.isDestroyed()) {
           this.win.show();
           this.win.focus();
-
-          // After window is shown, inject the actual callbacks
-          debug.log(
-            'presentation-window',
-            '[PresenterWindow] Window shown, calling injectCallbacksIntoWindow()'
-          );
-          this.injectCallbacksIntoWindow();
         }
       };
 
@@ -457,13 +284,6 @@ export class PresenterWindow {
         debug.log('presentation-window', 'Fallback: showing window after timeout');
         this.win.show();
         this.win.focus();
-
-        // Inject callbacks after window is shown via fallback
-        debug.log(
-          'presentation-window',
-          '[PresenterWindow] Fallback: calling injectCallbacksIntoWindow()'
-        );
-        this.injectCallbacksIntoWindow();
       }
     }, 1000);
 
@@ -513,28 +333,11 @@ export class PresenterWindow {
       throw error;
     }
 
-    try {
-      debug.log('presentation-window', `[PresenterWindow] ipcMain available: ${!!ipcMain}`);
-
-      if (ipcMain) {
-        debug.log(
-          'presentation-window',
-          '[PresenterWindow] Setting up IPC handlers from presenter window'
-        );
-        this.setupIPCHandlers(ipcMain, debug);
-      } else {
-        // ipcMain is not available in renderer/plugin process
-        // The presenter window will send messages via ipcRenderer.send()
-        // and the main Obsidian process will receive them via ipcMain.on()
-        // (handlers set up in main.ts onload)
-        debug.log(
-          'presentation-window',
-          '[PresenterWindow] ipcMain not available - using ipcRenderer to send messages to main process'
-        );
-      }
-    } catch (error) {
-      debug.error('presentation-window', `[PresenterWindow] Error during IPC setup: ${error}`);
-    }
+    // Presenter→plugin IPC is owned solely by the plugin's
+    // IpcListenerManager (registered in onload). The presenter renderer
+    // emits on the `presenter:*` channels via the preload bridge; the
+    // window itself registers no ipcMain handlers, so there's no
+    // competing owner calling removeAllListeners.
   }
 
   private async loadHTMLContent(html: string): Promise<void> {
@@ -635,33 +438,26 @@ export class PresenterWindow {
            window.timerInterval = null;
            window.timerSeconds = 0;
            window.currentSlideIndex = 0;
-           
-           // Global object to hold callbacks injected by the Obsidian process
-           window.__presenterCallbacks = {
-             onSlideChanged: null,
-             onOpenPresentation: null
-           };
-           
-           // Store for slide changes to be picked up by the main process
-           window.__lastSlideChange = null;
-           window.__lastOpenPresentation = null;
 
-           // Get ipcRenderer from electron with node integration
-           let ipcRenderer = null;
-           try {
-             const electron = require('electron');
-             ipcRenderer = electron.ipcRenderer;
-           } catch (e) {
-             // ipcRenderer not available
+           // IPC to the plugin goes through the preload-exposed bridge
+           // (window.perspectaPresenter). No Node access in this renderer.
+           function notifySlideChanged(index) {
+             try {
+               if (window.perspectaPresenter) {
+                 window.perspectaPresenter.notifySlideChanged(index);
+               }
+             } catch (e) {
+               // Bridge unavailable — presenter still works standalone.
+             }
            }
 
-           function sendIPC(channel, args) {
-             if (ipcRenderer) {
-               try {
-                 ipcRenderer.send(channel, args);
-               } catch (e) {
-                 // Failed to send IPC
+           function requestOpenPresentation() {
+             try {
+               if (window.perspectaPresenter) {
+                 window.perspectaPresenter.requestOpenPresentation();
                }
+             } catch (e) {
+               // Bridge unavailable.
              }
            }
 
@@ -695,18 +491,9 @@ export class PresenterWindow {
              }
              
              window.currentSlideIndex = index;
-             
-             // Notify parent window via polling flag
-             window.__lastSlideChange = {index: index, timestamp: Date.now()};
-             
-             // Also try the callback if it's injected
-             if (window.__presenterCallbacks && window.__presenterCallbacks.onSlideChanged) {
-               try {
-                 window.__presenterCallbacks.onSlideChanged(index);
-               } catch (e) {
-                 // Silently fail
-               }
-             }
+
+             // Notify the plugin via the preload bridge.
+             notifySlideChanged(index);
            }
 
           document.getElementById('timerPlayBtn').addEventListener('click', () => {
@@ -715,17 +502,8 @@ export class PresenterWindow {
             
             if (!window.timerInterval) {
               // Request to open presentation window if not open
-              window.__lastOpenPresentation = {timestamp: Date.now()};
-              
-              // Also try the callback if it's injected
-              if (window.__presenterCallbacks && window.__presenterCallbacks.onOpenPresentation) {
-                try {
-                  window.__presenterCallbacks.onOpenPresentation();
-                } catch (e) {
-                  // Silently fail
-                }
-              }
-              
+              requestOpenPresentation();
+
               // Start the timer
               window.timerInterval = setInterval(() => {
                 window.timerSeconds++;
@@ -1423,16 +1201,9 @@ export class PresenterWindow {
 
   close(): void {
     if (this.win && !this.win.isDestroyed()) {
-      // Clean up IPC handlers if we have the reference
-      if (this.ipcMainRef) {
-        try {
-          this.ipcMainRef.removeAllListeners('presenter:slide-changed');
-          this.ipcMainRef.removeAllListeners('presenter:open-presentation');
-          this.ipcMainRef = null;
-        } catch (e) {
-          // Ignore errors during cleanup
-        }
-      }
+      // IPC listeners are owned by the plugin's IpcListenerManager and
+      // disposed on plugin unload — the window must NOT removeAllListeners
+      // here (that previously also tore down the plugin's own handlers).
       this.win.close();
       this.win = null;
     }

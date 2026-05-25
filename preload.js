@@ -28,13 +28,13 @@ contextBridge.exposeInMainWorld("nativeWindow", {
     ipcRenderer.send("presentation-window-drag-stop");
   }
 });
-contextBridge.exposeInMainWorld("electron", {
-  ipcRenderer: {
-    send: (channel, args) => {
-      ipcRenderer.send(channel, args);
-    },
-    on: (channel, func) => {
-      ipcRenderer.on(channel, (event, ...args) => func(...args));
-    }
+contextBridge.exposeInMainWorld("perspectaPresenter", {
+  /** Tell the plugin the active slide changed in the presenter UI. */
+  notifySlideChanged: (slideIndex) => {
+    ipcRenderer.send("presenter:slide-changed", slideIndex);
+  },
+  /** Ask the plugin to open the fullscreen presentation window. */
+  requestOpenPresentation: () => {
+    ipcRenderer.send("presenter:open-presentation");
   }
 });

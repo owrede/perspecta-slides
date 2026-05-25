@@ -1,11 +1,18 @@
-import type { App } from 'obsidian';
-import { Notice, TFile, TFolder, FileSystemAdapter, Modal, Setting } from 'obsidian';
+import {
+  type App,
+  Notice,
+  TFile,
+  TFolder,
+  FileSystemAdapter,
+  Modal,
+  Setting,
+} from 'obsidian';
 import type { Presentation, Theme } from '../types';
-import type { ImagePathResolver } from '../renderer/SlideRenderer';
-import { SlideRenderer } from '../renderer/SlideRenderer';
+import { type ImagePathResolver, SlideRenderer } from '../renderer/SlideRenderer';
 import type { FontManager } from './FontManager';
 import type { ExcalidrawRenderer } from './ExcalidrawRenderer';
 import { getObsidianColorScheme } from './ColorScheme';
+import { vaultPathBasename, vaultPathDirname } from './VaultPath';
 
 /**
  * Confirmation modal for overwriting export folder
@@ -929,15 +936,15 @@ export class ExportService {
       try {
         const data = await this.app.vault.readBinary(img.file);
 
-        // Extract filename from export path
-        const filename = img.exportPath.split('/').pop() || img.file.name;
+        // Extract filename from export path (helper normalises any backslashes)
+        const filename = vaultPathBasename(img.exportPath) || img.file.name;
 
         // Get the export folder name from the last created folder
         // For now, we'll write relative to the vault root with a convention
         const fullPath = `${basePath}/${img.exportPath}`;
 
         // Create images folder if needed
-        const imagesDir = fullPath.split('/').slice(0, -1).join('/');
+        const imagesDir = vaultPathDirname(fullPath);
         try {
           await (this.app.vault.adapter as any).mkdir(imagesDir);
         } catch (e) {

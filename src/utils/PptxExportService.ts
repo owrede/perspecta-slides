@@ -1,5 +1,4 @@
-import type { App, TFile } from 'obsidian';
-import { Notice } from 'obsidian';
+import { type App, type TFile, Notice } from 'obsidian';
 import PptxGenJS from 'pptxgenjs';
 import type {
   Presentation,
@@ -387,7 +386,7 @@ export class PptxExportService {
     const endY = container.y + container.h;
 
     for (const el of elements) {
-      if (cursorY >= endY) break;
+      if (cursorY >= endY) {break;}
       const h = Math.min(this.estimateBodyHeight(el), endY - cursorY);
       const box: LayoutSlot = { x: container.x, y: cursorY, w: container.w, h };
       this.renderBodyElement(pptxSlide, el, box, themeConfig, palette, false, imageCache);
@@ -516,7 +515,7 @@ export class PptxExportService {
     palette: PptxPalette
   ): void {
     const items = this.parseListItems(el.content);
-    if (items.length === 0) return;
+    if (items.length === 0) {return;}
 
     const isOrdered = items[0].ordered;
     // PptxGenJS expects TextProps[]: each entry is one paragraph (one line/
@@ -700,7 +699,7 @@ export class PptxExportService {
     imageCache: ImageCache,
     palette: PptxPalette
   ): void {
-    if (images.length === 0) return;
+    if (images.length === 0) {return;}
 
     const margin = 0.4;
     const gap = 0.15;
@@ -738,11 +737,11 @@ export class PptxExportService {
     imageCache: ImageCache
   ): ResolvedImage | null {
     const bg = slide.metadata.background;
-    if (!bg) return null;
+    if (!bg) {return null;}
     // Filter out color literals (we don't want #fff or "rgb(...)" to be
     // treated as an image filename).
-    if (/^#[0-9a-fA-F]{3,8}$/.test(bg.trim())) return null;
-    if (/^(rgb|rgba|hsl|hsla)\(/i.test(bg.trim())) return null;
+    if (/^#[0-9a-fA-F]{3,8}$/.test(bg.trim())) {return null;}
+    if (/^(rgb|rgba|hsl|hsla)\(/i.test(bg.trim())) {return null;}
     if (/^[a-z]+$/i.test(bg.trim()) && !/\.(png|jpe?g|gif|webp|svg)$/i.test(bg)) {
       // Bare color name like "white" or "transparent".
       return null;
@@ -765,7 +764,7 @@ export class PptxExportService {
   ): Promise<ImageCache> {
     const srcs = new Set<string>();
     for (const slide of presentation.slides) {
-      if (slide.metadata.background) srcs.add(slide.metadata.background);
+      if (slide.metadata.background) {srcs.add(slide.metadata.background);}
       for (const el of slide.elements) {
         if (el.type === 'image' && el.imageData?.src) {
           srcs.add(el.imageData.src);
@@ -790,7 +789,7 @@ export class PptxExportService {
     // Strip Excalidraw-ref suffixes like "#^group=foo" — PPTX export skips
     // those for now (they need SVG conversion that lives elsewhere).
     const cleaned = src.split('#')[0];
-    if (!cleaned) return null;
+    if (!cleaned) {return null;}
 
     // Skip remote URLs — PptxGenJS supports them as `path:`, but embedding is
     // simpler and more deterministic. If you need a network image, that's a
@@ -868,7 +867,7 @@ export class PptxExportService {
   // ──────────────────────────────────────────────────────────────────────────
 
   private stripInlineMd(text: string): string {
-    if (!text) return '';
+    if (!text) {return '';}
     // Remove **bold**, *italic*, `code`, [link](url) wrappers; keep the inner
     // text. Order matters: bold before italic so ** doesn't get eaten as two *.
     return text
@@ -950,9 +949,9 @@ export class PptxExportService {
         const gap = 0.3;
         const innerW = page.width - 2 * margin;
         let split: [number, number];
-        if (layout === '2-columns-1+2') split = [1 / 3, 2 / 3];
-        else if (layout === '2-columns-2+1') split = [2 / 3, 1 / 3];
-        else split = [0.5, 0.5];
+        if (layout === '2-columns-1+2') {split = [1 / 3, 2 / 3];}
+        else if (layout === '2-columns-2+1') {split = [2 / 3, 1 / 3];}
+        else {split = [0.5, 0.5];}
 
         const col1W = innerW * split[0] - gap / 2;
         const col2W = innerW * split[1] - gap / 2;
@@ -1161,10 +1160,10 @@ export class PptxExportService {
   }
 
   private extractBackgroundColorLiteral(bg: string | undefined): string | null {
-    if (!bg) return null;
+    if (!bg) {return null;}
     const trimmed = bg.trim();
     const hex = this.toHex6(trimmed);
-    if (hex) return hex;
+    if (hex) {return hex;}
     return null;
   }
 
@@ -1185,13 +1184,13 @@ export class PptxExportService {
   ): string | null {
     const fm = presentation.frontmatter;
     const use = fm.useDynamicBackground;
-    if (!use || use === 'none') return null;
+    if (!use || use === 'none') {return null;}
 
     const mode = slide.metadata.mode || fm.mode || 'light';
     const effectiveMode: 'light' | 'dark' =
       mode === 'system' ? 'light' : (mode as 'light' | 'dark');
 
-    if (use !== 'both' && use !== effectiveMode) return null;
+    if (use !== 'both' && use !== effectiveMode) {return null;}
 
     let colors: string[] | undefined =
       effectiveMode === 'light' ? fm.lightDynamicBackground : fm.darkDynamicBackground;
@@ -1231,7 +1230,7 @@ export class PptxExportService {
       let visibleCountInSection = 0;
       for (let i = sectionStart; i <= sectionEnd && i < slides.length; i++) {
         if (!slides[i].hidden) {
-          if (i <= slide.index) visibleIndexInSection++;
+          if (i <= slide.index) {visibleIndexInSection++;}
           visibleCountInSection++;
         }
       }
@@ -1250,17 +1249,17 @@ export class PptxExportService {
   }
 
   private interpolateGradient(colors: string[], position: number): string | null {
-    if (colors.length === 0) return null;
-    if (colors.length === 1) return this.toHex6(colors[0]);
+    if (colors.length === 0) {return null;}
+    if (colors.length === 1) {return this.toHex6(colors[0]);}
     const clamped = Math.max(0, Math.min(1, position));
     const segment = clamped * (colors.length - 1);
     const index = Math.floor(segment);
     const t = segment - index;
-    if (index >= colors.length - 1) return this.toHex6(colors[colors.length - 1]);
+    if (index >= colors.length - 1) {return this.toHex6(colors[colors.length - 1]);}
 
     const a = this.parseHexRgb(colors[index]);
     const b = this.parseHexRgb(colors[index + 1]);
-    if (!a || !b) return null;
+    if (!a || !b) {return null;}
     const r = Math.round(a.r + (b.r - a.r) * t);
     const g = Math.round(a.g + (b.g - a.g) * t);
     const bl = Math.round(a.b + (b.b - a.b) * t);
@@ -1308,7 +1307,7 @@ export class PptxExportService {
     // Per-slide mode wins, then deck-level mode (frontmatter), then default light.
     const mode =
       slide.metadata.mode || presentation.frontmatter.mode || 'light';
-    if (mode === 'dark') return themeConfig.dark;
+    if (mode === 'dark') {return themeConfig.dark;}
     return themeConfig.light;
   }
 
@@ -1357,9 +1356,9 @@ export class PptxExportService {
 
   private collectTypefaces(themeConfig: PptxThemeConfig): string[] {
     const set = new Set<string>();
-    if (themeConfig.titleFont) set.add(themeConfig.titleFont);
-    if (themeConfig.bodyFont) set.add(themeConfig.bodyFont);
-    if (themeConfig.monoFont) set.add(themeConfig.monoFont);
+    if (themeConfig.titleFont) {set.add(themeConfig.titleFont);}
+    if (themeConfig.bodyFont) {set.add(themeConfig.bodyFont);}
+    if (themeConfig.monoFont) {set.add(themeConfig.monoFont);}
     // Filter out system fonts that aren't worth embedding (and likely aren't
     // in the font cache anyway).
     const systemFonts = new Set([
@@ -1468,7 +1467,7 @@ export class PptxExportService {
   private muteColor(hex: string | null): string | null {
     // Blend body color halfway toward gray so kicker / muted text has a soft
     // tint without a separate theme variable.
-    if (!hex || hex.length !== 6) return null;
+    if (!hex || hex.length !== 6) {return null;}
     const r = parseInt(hex.substring(0, 2), 16);
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);
@@ -1479,16 +1478,16 @@ export class PptxExportService {
   }
 
   private cleanFontName(font?: string): string | null {
-    if (!font) return null;
+    if (!font) {return null;}
     const first = font.split(',')[0]?.trim().replace(/^['"]|['"]$/g, '');
     return first || null;
   }
 
   private toHex6(color?: string): string | null {
-    if (!color) return null;
+    if (!color) {return null;}
     const trimmed = color.trim();
     const longHex = trimmed.match(/^#([0-9a-fA-F]{6})$/);
-    if (longHex) return longHex[1].toUpperCase();
+    if (longHex) {return longHex[1].toUpperCase();}
     const shortHex = trimmed.match(/^#([0-9a-fA-F]{3})$/);
     if (shortHex) {
       const [r, g, b] = shortHex[1].split('');
@@ -1506,7 +1505,7 @@ export class PptxExportService {
   }
 
   private toArrayBuffer(data: ArrayBuffer | Uint8Array | string | Blob): ArrayBuffer {
-    if (data instanceof ArrayBuffer) return data;
+    if (data instanceof ArrayBuffer) {return data;}
     if (data instanceof Uint8Array) {
       return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
     }

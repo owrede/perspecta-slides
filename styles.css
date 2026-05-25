@@ -475,6 +475,18 @@
   color: var(--text-muted);
 }
 
+/* Weight-fallback indicator. Shown when the deck requests a weight the
+   active font does not provide and the renderer picked a substitute.
+   See InspectorPanel.renderWeightDropdown. */
+.perspecta-inspector .weight-setting.perspecta-weight-fallback {
+  border-left: 2px solid var(--text-warning, #d97706);
+  background-color: var(--background-modifier-warning, rgba(217, 119, 6, 0.08));
+}
+.perspecta-inspector .weight-setting.perspecta-weight-fallback .setting-item-description {
+  color: var(--text-warning, #d97706);
+  font-size: 11px;
+}
+
 .perspecta-inspector .format-buttons {
   display: flex;
   flex-wrap: wrap;

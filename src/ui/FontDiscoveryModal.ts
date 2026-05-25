@@ -1,5 +1,4 @@
-import type { App } from 'obsidian';
-import { Modal, Setting } from 'obsidian';
+import { type App, Modal } from 'obsidian';
 
 /**
  * Modal for selecting font weights and styles during discovery

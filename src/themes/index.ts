@@ -1,7 +1,6 @@
-import type { Theme } from '../types';
-import { DEFAULT_SEMANTIC_COLORS } from '../types';
-import { DEFAULT_SEMANTIC_COLORS_LIGHT, DEFAULT_SEMANTIC_COLORS_DARK } from './ThemeSchema';
+import { type Theme, DEFAULT_SEMANTIC_COLORS } from '../types';
 import { getBuiltInTheme, getBuiltInThemeNames } from './builtin';
+import { composeFontStack, extractFamilyName, namespaceThemeFont } from '../utils/FontFamily';
 
 export { ThemeLoader } from './ThemeLoader';
 
@@ -101,11 +100,35 @@ export function generateThemeCSS(
   // Get theme.json data for advanced features
   const themeJson = theme.themeJsonData;
 
-  // Basic CSS variables from preset
+  // Basic CSS variables from preset. Preset values are canonical family
+  // names (post Phase 1a); composeFontStack handles quoting and the system
+  // fallback exactly the same way SlideRenderer.generateCSSVariables does,
+  // so both layers produce identical CSS regardless of which one wins.
+  const themeTitleFamily =
+    extractFamilyName(preset.TitleFont) ?? extractFamilyName(theme.template.TitleFont);
+  const themeBodyFamily =
+    extractFamilyName(preset.BodyFont) ?? extractFamilyName(theme.template.BodyFont);
+
+  // Phase-2: if the theme bundles a font with this family name, prefer the
+  // namespaced render family. Same lookup logic as SlideRenderer and
+  // DeckFontResolver so all three emit identical CSS.
+  const themeName = theme.template.Name || 'theme';
+  const bundledFamilies = new Map<string, string>();
+  if (theme.themeJsonData?.bundledFonts) {
+    for (const b of theme.themeJsonData.bundledFonts) {
+      bundledFamilies.set(b.family.toLowerCase(), b.family);
+    }
+  }
+  const renderFor = (family: string | undefined): string | undefined => {
+    if (!family) {return undefined;}
+    const bundled = bundledFamilies.get(family.toLowerCase());
+    return bundled ? namespaceThemeFont(bundled, themeName) : undefined;
+  };
+
   let cssVars = `
 :root {
-  --title-font: ${preset.TitleFont || theme.template.TitleFont}, sans-serif;
-  --body-font: ${preset.BodyFont || theme.template.BodyFont}, sans-serif;
+  --title-font: ${composeFontStack(themeTitleFamily, renderFor(themeTitleFamily))};
+  --body-font: ${composeFontStack(themeBodyFamily, renderFor(themeBodyFamily))};
   --dark-body-text: ${preset.DarkBodyTextColor};
   --light-body-text: ${preset.LightBodyTextColor};
   --dark-title-text: ${preset.DarkTitleTextColor};

@@ -175,7 +175,7 @@ export class ExcalidrawRenderer {
       await leaf.detach();
 
       // Restore focus to the original leaf if it still exists
-      if (previousActiveLeaf && previousActiveLeaf.view) {
+      if (previousActiveLeaf?.view) {
         app.workspace.setActiveLeaf(previousActiveLeaf, { focus: true });
       }
     } catch (e) {
@@ -481,7 +481,7 @@ export class ExcalidrawRenderer {
 
     // Find all elements that intersect with this bounding box
     const areaElements = elements.filter(el => {
-      if (el === refElement) return true; // Always include reference element
+      if (el === refElement) {return true;} // Always include reference element
       
       const elBounds = {
         x1: el.x,

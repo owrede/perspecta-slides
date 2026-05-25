@@ -31,14 +31,17 @@ contextBridge.exposeInMainWorld('nativeWindow', {
   },
 });
 
-// Expose electron IPC for presenter window
-contextBridge.exposeInMainWorld('electron', {
-  ipcRenderer: {
-    send: (channel: string, args: any) => {
-      ipcRenderer.send(channel, args);
-    },
-    on: (channel: string, func: any) => {
-      ipcRenderer.on(channel, (event: any, ...args: any[]) => func(...args));
-    },
+// Presenter-window bridge. Channel-restricted on purpose: the renderer
+// can only emit the two presenter intents, not arbitrary IPC. This is
+// the secure replacement for the old `require('electron').ipcRenderer`
+// path that needed nodeIntegration:true in the renderer.
+contextBridge.exposeInMainWorld('perspectaPresenter', {
+  /** Tell the plugin the active slide changed in the presenter UI. */
+  notifySlideChanged: (slideIndex: number) => {
+    ipcRenderer.send('presenter:slide-changed', slideIndex);
+  },
+  /** Ask the plugin to open the fullscreen presentation window. */
+  requestOpenPresentation: () => {
+    ipcRenderer.send('presenter:open-presentation');
   },
 });

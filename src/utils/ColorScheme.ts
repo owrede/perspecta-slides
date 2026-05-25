@@ -7,7 +7,7 @@
  * should always follow Obsidian, not the OS.
  */
 export function getObsidianColorScheme(): 'light' | 'dark' {
-  if (typeof document === 'undefined' || !document.body) {
+  if (!document?.body) {
     return 'light';
   }
   return document.body.classList.contains('theme-dark') ? 'dark' : 'light';

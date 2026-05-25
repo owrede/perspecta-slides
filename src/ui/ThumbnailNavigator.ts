@@ -1,8 +1,6 @@
-import type { WorkspaceLeaf, TFile } from 'obsidian';
-import { ItemView } from 'obsidian';
-import type { Presentation, Slide, Theme } from '../types';
-import type { ImagePathResolver } from '../renderer/SlideRenderer';
-import { SlideRenderer } from '../renderer/SlideRenderer';
+import { type WorkspaceLeaf, type TFile, ItemView } from 'obsidian';
+import type { Presentation, Slide, Theme, PresentationFrontmatter } from '../types';
+import { type ImagePathResolver, SlideRenderer } from '../renderer/SlideRenderer';
 import type { ExcalidrawCacheEntry } from '../utils/ExcalidrawRenderer';
 import { getObsidianColorScheme } from '../utils/ColorScheme';
 
@@ -251,6 +249,43 @@ export class ThumbnailNavigatorView extends ItemView {
       numberBadge.textContent = visibleNumber;
     }
 
+    return true;
+  }
+
+  /**
+   * Apply a CSS-only frontmatter change (font size/scale, spacing,
+   * margins, colors) to every thumbnail without reloading any iframe.
+   * Patches the frontmatter-derived `<style>` blocks inside each iframe's
+   * live document, so the change repaints in place with no flicker.
+   *
+   * Returns false if any iframe isn't ready yet (no contentDocument);
+   * callers should fall back to a full `updateSlides` in that case.
+   */
+  patchLiveStyles(frontmatter: PresentationFrontmatter): boolean {
+    if (!this.presentation) {
+      return false;
+    }
+    Object.assign(this.presentation.frontmatter, frontmatter);
+    const renderer = this.createRenderer();
+    const styleUpdate = renderer.generateLiveStyleUpdate(this.presentation.frontmatter);
+
+    const iframes = this.containerEl.querySelectorAll('.thumbnail-iframe');
+    if (iframes.length === 0) {
+      return false;
+    }
+    for (const el of Array.from(iframes)) {
+      const iframe = el as HTMLIFrameElement;
+      const doc = iframe.contentDocument;
+      if (!doc) {
+        return false; // not loaded yet — caller falls back to full update
+      }
+      for (const [id, css] of Object.entries(styleUpdate)) {
+        const styleEl = doc.getElementById(id);
+        if (styleEl) {
+          styleEl.textContent = css;
+        }
+      }
+    }
     return true;
   }
 

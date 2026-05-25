@@ -1,7 +1,7 @@
 import type { App } from 'obsidian';
 import JSZip from 'jszip';
 import { decompress as woff2Decompress } from 'wawoff2';
-import { FontManager } from './FontManager';
+import type { FontManager } from './FontManager';
 import { flattenVariableFont, isVariableFont } from './VariableFontFlattener';
 
 /**
@@ -65,12 +65,12 @@ export class PptxFontEmbedder {
     majorFont?: string,
     minorFont?: string
   ): Promise<ArrayBuffer> {
-    if (typefaces.length === 0) return pptxBuffer;
+    if (typefaces.length === 0) {return pptxBuffer;}
 
     const resolved: ResolvedFont[] = [];
     for (const typeface of typefaces) {
       const font = await this.resolveFont(typeface);
-      if (font) resolved.push(font);
+      if (font) {resolved.push(font);}
     }
 
     if (resolved.length === 0) {
@@ -104,14 +104,14 @@ export class PptxFontEmbedder {
     majorFont?: string,
     minorFont?: string
   ): Promise<void> {
-    if (!majorFont && !minorFont) return;
+    if (!majorFont && !minorFont) {return;}
 
     const themeFiles = Object.keys(zip.files).filter((p) =>
       /^ppt\/theme\/theme\d+\.xml$/.test(p)
     );
     for (const path of themeFiles) {
       const xml = await zip.file(path)?.async('string');
-      if (!xml) continue;
+      if (!xml) {continue;}
       let patched = xml;
 
       if (majorFont) {
@@ -139,7 +139,7 @@ export class PptxFontEmbedder {
 
   private async resolveFont(typeface: string): Promise<ResolvedFont | null> {
     const cached = this.fontManager.getCachedFont(typeface);
-    if (!cached || !cached.files || cached.files.length === 0) {
+    if (!cached?.files || cached.files.length === 0) {
       console.log(`[PptxFontEmbedder] No cached font for "${typeface}"`);
       return null;
     }
@@ -176,18 +176,18 @@ export class PptxFontEmbedder {
       }
     }
 
-    if (variants.length === 0) return null;
+    if (variants.length === 0) {return null;}
     return { typeface, variants };
   }
 
   private sniffFormat(bytes: Uint8Array): FontFormat {
-    if (bytes.length < 4) return 'unknown';
+    if (bytes.length < 4) {return 'unknown';}
     const sig = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
     // TTF: 0x00010000, "true" (0x74727565), or "OTTO" (0x4F54544F) for OTF
-    if (sig === 0x00010000 || sig === 0x74727565) return 'ttf';
-    if (sig === 0x4f54544f) return 'otf';
-    if (sig === 0x774f4646) return 'woff';
-    if (sig === 0x774f4632) return 'woff2';
+    if (sig === 0x00010000 || sig === 0x74727565) {return 'ttf';}
+    if (sig === 0x4f54544f) {return 'otf';}
+    if (sig === 0x774f4646) {return 'woff';}
+    if (sig === 0x774f4632) {return 'woff2';}
     return 'unknown';
   }
 
@@ -284,10 +284,10 @@ export class PptxFontEmbedder {
         } else {
           // Static font fleet — pick the closest existing variant for this slot.
           const picked = this.pickVariant(font.variants, spec.weight, spec.italic);
-          if (picked) bytes = picked.ttfBuffer;
+          if (picked) {bytes = picked.ttfBuffer;}
         }
 
-        if (!bytes) continue;
+        if (!bytes) {continue;}
 
         // PowerPoint's font-embed loader expects EOT-wrapped font data, NOT
         // raw TTF. This is the actual root cause of the long-running "font
@@ -299,7 +299,7 @@ export class PptxFontEmbedder {
         // discovered this by diffing a Microsoft-produced reference PPTX.
         // Capture the raw TTF panose BEFORE wrapping (EOT's panose is at a
         // different offset so we'd have to re-extract anyway).
-        if (!firstSlotTtf) firstSlotTtf = bytes;
+        if (!firstSlotTtf) {firstSlotTtf = bytes;}
 
         // Modern PowerPoint (Office 2016+) accepts raw TTF/OTF in .fntdata.
         // We experimented with EOT-wrapping (which legacy Office 2010-2013
@@ -328,7 +328,7 @@ export class PptxFontEmbedder {
         fontFileIndex++;
       }
 
-      if (slotEntries.length === 0) continue;
+      if (slotEntries.length === 0) {continue;}
 
       // Panose comes from the original TTF (firstSlotTtf), captured above
       // before EOT wrapping moved everything to different offsets.
@@ -396,9 +396,9 @@ export class PptxFontEmbedder {
       let bestEnd = -1;
       for (const re of predecessorPatterns) {
         const match = newPresXml.match(re);
-        if (match && match.index !== undefined) {
+        if (match?.index !== undefined) {
           const end = match.index + match[0].length;
-          if (end > bestEnd) bestEnd = end;
+          if (end > bestEnd) {bestEnd = end;}
         }
       }
       if (bestEnd >= 0) {
@@ -430,9 +430,9 @@ export class PptxFontEmbedder {
   ): ResolvedFontVariant | undefined {
     // Exact match first, then nearest weight in same italic slot.
     const exact = variants.find((v) => v.weight === targetWeight && v.italic === italic);
-    if (exact) return exact;
+    if (exact) {return exact;}
     const sameStyle = variants.filter((v) => v.italic === italic);
-    if (sameStyle.length === 0) return undefined;
+    if (sameStyle.length === 0) {return undefined;}
     return sameStyle.reduce((best, v) =>
       Math.abs(v.weight - targetWeight) < Math.abs(best.weight - targetWeight) ? v : best
     );
@@ -443,7 +443,7 @@ export class PptxFontEmbedder {
     let max = 0;
     for (const m of matches) {
       const n = parseInt(m[1], 10);
-      if (n > max) max = n;
+      if (n > max) {max = n;}
     }
     return max;
   }
@@ -465,7 +465,7 @@ export class PptxFontEmbedder {
    * staying consistent here keeps Office's matcher happy.
    */
   private derivePitchFamilyAttr(panose: string | null): string {
-    if (!panose) return '';
+    if (!panose) {return '';}
     // pitchFamily 34 = variable-pitch roman; 18 = variable-pitch swiss (sans).
     // The byte at panose offset 1 (bSerifStyle) tells us — 0..10 vary widely;
     // 0/11/12 = sans, 1..10 = various serif. Default to 34.
@@ -479,7 +479,7 @@ export class PptxFontEmbedder {
  * Returns null if the font is malformed or the table is absent.
  */
 function extractPanoseHex(ttf: Uint8Array): string | null {
-  if (ttf.length < 12) return null;
+  if (ttf.length < 12) {return null;}
   const dv = new DataView(ttf.buffer, ttf.byteOffset, ttf.byteLength);
   const numTables = dv.getUint16(4);
   for (let i = 0; i < numTables; i++) {
@@ -490,10 +490,10 @@ function extractPanoseHex(ttf: Uint8Array): string | null {
       ttf[dirOff + 2],
       ttf[dirOff + 3]
     );
-    if (tag !== 'OS/2') continue;
+    if (tag !== 'OS/2') {continue;}
     const off = dv.getUint32(dirOff + 8);
     // panose lives at OS/2 offset 32, 10 bytes long.
-    if (off + 42 > ttf.length) return null;
+    if (off + 42 > ttf.length) {return null;}
     let hex = '';
     for (let j = 0; j < 10; j++) {
       hex += ttf[off + 32 + j].toString(16).padStart(2, '0').toUpperCase();

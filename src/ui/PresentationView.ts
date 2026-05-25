@@ -1,12 +1,16 @@
-import type { WorkspaceLeaf } from 'obsidian';
-import { ItemView, Menu, TFile, Notice } from 'obsidian';
-import type { Presentation, Slide, Theme, SlideElement, ContentMode } from '../types';
+import { type WorkspaceLeaf, ItemView, Menu, TFile, Notice } from 'obsidian';
+import type {
+  Presentation,
+  Slide,
+  Theme,
+  SlideElement,
+  ContentMode,
+  PresentationFrontmatter,
+} from '../types';
 import { SlideParser } from '../parser/SlideParser';
-import type { ImagePathResolver } from '../renderer/SlideRenderer';
-import { SlideRenderer } from '../renderer/SlideRenderer';
+import { type ImagePathResolver, SlideRenderer } from '../renderer/SlideRenderer';
 import { getTheme } from '../themes';
 import type { ThemeLoader } from '../themes/ThemeLoader';
-import { PresentationWindow } from './PresentationWindow';
 import { getDebugService } from '../utils/DebugService';
 import type { ExcalidrawCacheEntry } from '../utils/ExcalidrawRenderer';
 import { getObsidianColorScheme } from '../utils/ColorScheme';
@@ -510,6 +514,35 @@ export class PresentationView extends ItemView {
       return false;
     }
     return this.updateSlide(this.currentSlideIndex, currentSlide);
+  }
+
+  /**
+   * Apply a CSS-only frontmatter change to the preview iframe without a
+   * reload, by patching the frontmatter-derived `<style>` blocks in the
+   * iframe's live document. Returns false if the iframe isn't ready, so
+   * the caller can fall back to updateCurrentSlideOnly().
+   */
+  patchLiveStyles(frontmatter: PresentationFrontmatter): boolean {
+    if (!this.presentation) {
+      return false;
+    }
+    Object.assign(this.presentation.frontmatter, frontmatter);
+    const iframe = this.containerEl.querySelector(
+      '.slide-wrapper .slide-iframe'
+    ) as HTMLIFrameElement | null;
+    const doc = iframe?.contentDocument;
+    if (!doc) {
+      return false;
+    }
+    const renderer = this.createRenderer(this.theme || undefined);
+    const styleUpdate = renderer.generateLiveStyleUpdate(this.presentation.frontmatter);
+    for (const [id, css] of Object.entries(styleUpdate)) {
+      const styleEl = doc.getElementById(id);
+      if (styleEl) {
+        styleEl.textContent = css;
+      }
+    }
+    return true;
   }
 
   private render() {

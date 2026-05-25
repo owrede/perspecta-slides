@@ -1,9 +1,16 @@
-import type { App } from 'obsidian';
-import { TFile, TFolder, requestUrl } from 'obsidian';
+import { type App, TFile, TFolder, requestUrl } from 'obsidian';
 import { getDebugService } from './DebugService';
+import { inspectSfnt } from './SfntInspector';
+import { vaultPathJoin } from './VaultPath';
 
 /**
- * Cached font metadata
+ * Cached font metadata.
+ *
+ * Fields added in Phase 1b are optional so legacy caches keep loading.
+ * `isVariable` is the authoritative signal for variable-font handling
+ * downstream — the generator no longer derives it heuristically.
+ * Run "Rebuild font cache" from Settings to populate these on existing
+ * installs.
  */
 export interface CachedFont {
   name: string; // Font family name (e.g., "Barlow")
@@ -13,6 +20,23 @@ export interface CachedFont {
   styles: string[]; // Available styles (e.g., ["normal", "italic"])
   files: CachedFontFile[];
   cachedAt: number; // Timestamp when cached
+
+  /** True if this is a variable font (one file covers a weight range). */
+  isVariable?: boolean;
+  /** Weight range for variable fonts: [min, max]. Undefined for static fonts. */
+  weightRange?: [number, number];
+  /**
+   * Variation axes (variable fonts only). At minimum `wght` is captured;
+   * other axes (slnt, opsz, …) are stored for future use.
+   */
+  variationAxes?: VariationAxis[];
+}
+
+export interface VariationAxis {
+  tag: string; // e.g. "wght", "slnt", "opsz"
+  min: number;
+  max: number;
+  default: number;
 }
 
 export interface CachedFontFile {
@@ -20,6 +44,10 @@ export interface CachedFontFile {
   style: string;
   localPath: string; // Path in vault (e.g., "perspecta-fonts/Barlow-normal.woff2")
   format: string; // Font format (e.g., "woff2")
+  /** File size in bytes — for UX (cache size display) and integrity. */
+  bytes?: number;
+  /** SHA-256 hash of the file content — for integrity verification. */
+  sha256?: string;
 }
 
 /**
@@ -50,6 +78,13 @@ export class FontManager {
   private saveCallback: (cache: FontCache) => Promise<void>;
   private debugMode: boolean = false;
   private fontCacheFolder: string;
+  /**
+   * Monotonic revision counter. Incremented on every cache mutation
+   * (add / remove / rebuild). Consumers (DeckFontResolver) read this as
+   * part of their memoization key so they automatically invalidate when
+   * the cache contents change.
+   */
+  private cacheRevision: number = 0;
 
   constructor(
     app: App,
@@ -62,6 +97,24 @@ export class FontManager {
     this.saveCallback = saveCallback;
     // Remove trailing slash to avoid double slashes when concatenating paths
     this.fontCacheFolder = (fontCacheFolder || DEFAULT_FONT_CACHE_FOLDER).replace(/\/$/, '');
+  }
+
+  /**
+   * Current cache revision. Increments on every mutation.
+   * Used by DeckFontResolver as a memoization key.
+   */
+  getCacheRevision(): number {
+    return this.cacheRevision;
+  }
+
+  /**
+   * Bump the revision. Called internally on every cache mutation; exposed
+   * so external callers that bypass this class (e.g. settings tab raw
+   * cache rewrites) can declare "fonts changed" without us having to spy
+   * on them.
+   */
+  bumpCacheRevision(): void {
+    this.cacheRevision++;
   }
 
   /**
@@ -248,6 +301,7 @@ export class FontManager {
    */
   reloadCache(cacheData: FontCache | null): void {
     this.cache = cacheData || { fonts: {} };
+    this.cacheRevision++;
   }
 
   /**
@@ -416,7 +470,7 @@ export class FontManager {
       await this.ensureCacheFolder();
 
       // Clean up existing font folder if it exists (to avoid conflicts with partial downloads)
-      const fontFolderPath = `${this.fontCacheFolder}/${fontName.replace(/\s+/g, '-')}`.replace(/\\/g, '/');
+      const fontFolderPath = vaultPathJoin(this.fontCacheFolder, fontName.replace(/\s+/g, '-'));
       const existingFolder = this.app.vault.getAbstractFileByPath(fontFolderPath);
       if (existingFolder instanceof TFolder) {
         debug.log(
@@ -504,6 +558,7 @@ export class FontManager {
         allWeights: parsedWeights,
         allStyles,
         fileMap,
+        weightsByUrl,
       } = await this.parseCssAndDownloadFonts(cssText, fontName);
 
       if (fontFiles.length === 0) {
@@ -534,10 +589,21 @@ export class FontManager {
       const downloadedWeights = weightsToDownload.sort((a, b) => a - b);
       const downloadedStyles = [...new Set(deduplicatedFiles.map((f) => f.style))].sort();
 
+      // Variable-font classification: any URL that backed multiple weights
+      // in the source CSS is a variable font. This is the authoritative
+      // signal — no heuristics needed downstream.
+      const isVariable = Array.from(weightsByUrl.values()).some((w) => w.size > 1);
+      const weightRange: [number, number] | undefined = isVariable
+        ? [Math.min(...downloadedWeights), Math.max(...downloadedWeights)]
+        : undefined;
+
       debug.log(
         'font-handling',
-        `[font-caching] Downloaded: weights=[${downloadedWeights}], styles=[${downloadedStyles}], files=${finalFontFiles.length}`
+        `[font-caching] Downloaded: weights=[${downloadedWeights}], styles=[${downloadedStyles}], files=${finalFontFiles.length}, isVariable=${isVariable}${weightRange ? ` (${weightRange[0]}-${weightRange[1]})` : ''}`
       );
+
+      // Enrich file records with bytes + sha256 for integrity tracking.
+      await this.enrichFileMetadata(deduplicatedFiles);
 
       // Store in cache
       const cachedFont: CachedFont = {
@@ -548,9 +614,15 @@ export class FontManager {
         styles: downloadedStyles,
         files: deduplicatedFiles,
         cachedAt: Date.now(),
+        isVariable,
+        weightRange,
+        variationAxes: isVariable
+          ? [{ tag: 'wght', min: weightRange![0], max: weightRange![1], default: 400 }]
+          : undefined,
       };
 
       this.cache.fonts[fontName] = cachedFont;
+      this.cacheRevision++;
       await this.saveCallback(this.cache);
 
       debug.log(
@@ -668,7 +740,7 @@ export class FontManager {
 
       // Ensure cache folder exists and create font-specific subfolder
       await this.ensureCacheFolder();
-      const fontFolderPath = `${this.fontCacheFolder}/${fontName.replace(/\s+/g, '-')}`.replace(/\\/g, '/');
+      const fontFolderPath = vaultPathJoin(this.fontCacheFolder, fontName.replace(/\s+/g, '-'));
       await this.ensureFontFolder(fontFolderPath);
 
       for (const file of fontFilesInFolder) {
@@ -691,7 +763,7 @@ export class FontManager {
         // Copy file to font-specific subfolder
         const format = file.extension.toLowerCase();
         const destFileName = `${fontName.replace(/\s+/g, '-')}-${weight}-${style}.${format}`;
-        const destPath = `${fontFolderPath}/${destFileName}`;
+        const destPath = vaultPathJoin(fontFolderPath, destFileName);
 
         // Check if destination exists
         const existing = this.app.vault.getAbstractFileByPath(destPath);
@@ -739,6 +811,11 @@ export class FontManager {
         }
       }
 
+      // Enrich file records with bytes + sha256, and classify variable-ness
+      // by sniffing the SFNT `fvar` table where possible.
+      await this.enrichFileMetadata(fontFiles);
+      const classification = await this.classifyLocalFiles(fontFiles, weights);
+
       // Create cached font entry
       const cachedFont: CachedFont = {
         name: fontName,
@@ -748,10 +825,17 @@ export class FontManager {
         styles: [...new Set(styles)],
         files: fontFiles,
         cachedAt: Date.now(),
+        isVariable: classification.isVariable,
+        weightRange: classification.weightRange,
+        variationAxes: classification.axes,
       };
 
       this.cache.fonts[fontName] = cachedFont;
-      debug.log('font-handling', `[font-local] Added font to cache: ${fontName}`);
+      this.cacheRevision++;
+      debug.log(
+        'font-handling',
+        `[font-local] Added font to cache: ${fontName} (isVariable=${classification.isVariable}${classification.weightRange ? ` ${classification.weightRange[0]}-${classification.weightRange[1]}` : ''})`
+      );
       await this.saveCallback(this.cache);
 
       this.log('Successfully cached local font:', fontName, 'with', fontFiles.length, 'files');
@@ -790,6 +874,12 @@ export class FontManager {
     allWeights: number[];
     allStyles: string[];
     fileMap: Map<string, { localPath: string; format: string }>;
+    /**
+     * Set of weights declared per source URL. A URL that appears with >1
+     * weight is a variable font — this is the authoritative signal we use
+     * to set CachedFont.isVariable downstream, replacing the old heuristic.
+     */
+    weightsByUrl: Map<string, Set<number>>;
   }> {
     const debug = getDebugService();
     const fontFiles: CachedFontFile[] = [];
@@ -797,9 +887,10 @@ export class FontManager {
     const fileMap = new Map<string, { localPath: string; format: string }>(); // URL -> {localPath, format} mapping
     const allWeights: number[] = [];
     const allStyles: string[] = [];
+    const weightsByUrl = new Map<string, Set<number>>();
 
     // Create font-specific subfolder
-    const fontFolderPath = `${this.fontCacheFolder}/${fontName.replace(/\s+/g, '-')}`.replace(/\\/g, '/');
+    const fontFolderPath = vaultPathJoin(this.fontCacheFolder, fontName.replace(/\s+/g, '-'));
     await this.ensureFontFolder(fontFolderPath);
 
     debug.log('font-handling', `[font-parsing] Parsing CSS for ${fontName}...`);
@@ -841,6 +932,12 @@ export class FontManager {
       }
 
       const fontUrl = srcMatch[1].replace(/['"]/g, '');
+      // Track which weights each URL covers. Multiple weights per URL means
+      // the file is a variable font — used downstream to set
+      // CachedFont.isVariable without heuristics.
+      if (!weightsByUrl.has(fontUrl)) {weightsByUrl.set(fontUrl, new Set());}
+      weightsByUrl.get(fontUrl)!.add(weight);
+
       // Map format names to file extensions
       const formatMap: Record<string, string> = {
         woff2: 'woff2',
@@ -877,8 +974,7 @@ export class FontManager {
       // For font file naming, don't include weight since variable fonts support all weights
       // Static fonts will have a single weight entry anyway
       const fileName = `${fontName.replace(/\s+/g, '-')}-${style}.${format}`;
-      // Normalize path separators: always use forward slashes for vault paths (cross-platform)
-      const localPath = `${fontFolderPath}/${fileName}`.replace(/\\/g, '/');
+      const localPath = vaultPathJoin(fontFolderPath, fileName);
       downloadedUrls.set(fontUrl, localPath);
       fileMap.set(fontUrl, { localPath, format });
 
@@ -948,7 +1044,208 @@ export class FontManager {
     );
     debug.log('font-handling', `[font-download] Cached ${fontFiles.length} font files`);
 
-    return { fontFiles, allWeights, allStyles, fileMap };
+    return { fontFiles, allWeights, allStyles, fileMap, weightsByUrl };
+  }
+
+  /**
+   * Populate `bytes` and `sha256` on each file record by reading the file
+   * from the vault. Idempotent — re-running on already-enriched records is
+   * cheap (the read is necessary anyway). Failures are logged and the file
+   * left without metadata rather than aborting the cache write.
+   */
+  private async enrichFileMetadata(files: CachedFontFile[]): Promise<void> {
+    const debug = getDebugService();
+    const seenPaths = new Map<string, { bytes: number; sha256: string }>();
+
+    for (const file of files) {
+      const normalized = file.localPath.replace(/\/+/g, '/');
+      const cached = seenPaths.get(normalized);
+      if (cached) {
+        file.bytes = cached.bytes;
+        file.sha256 = cached.sha256;
+        continue;
+      }
+
+      const tfile = this.app.vault.getAbstractFileByPath(normalized);
+      if (!(tfile instanceof TFile)) {continue;}
+
+      try {
+        const data = await this.app.vault.readBinary(tfile);
+        file.bytes = data.byteLength;
+        file.sha256 = await this.sha256Hex(data);
+        seenPaths.set(normalized, { bytes: file.bytes, sha256: file.sha256 });
+      } catch (e) {
+        debug.warn(
+          'font-handling',
+          `[font-meta] Failed to enrich metadata for ${normalized}: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+    }
+  }
+
+  /**
+   * Classify a locally-ingested font as variable or static by sniffing the
+   * SFNT `fvar` table on the first parseable file. Returns the resolved
+   * weight range when available, otherwise falls back to the observed
+   * weights array.
+   *
+   * For WOFF2 (compressed wrapper) the SFNT inspector returns `null`. In
+   * that case we fall back to a conservative filename hint: filenames
+   * containing `VF`, `Variable`, or `-VAR-` are treated as variable.
+   */
+  private async classifyLocalFiles(
+    files: CachedFontFile[],
+    discoveredWeights: number[]
+  ): Promise<{
+    isVariable: boolean;
+    weightRange?: [number, number];
+    axes?: VariationAxis[];
+  }> {
+    const debug = getDebugService();
+
+    for (const file of files) {
+      const ext = file.format.toLowerCase();
+      if (ext !== 'ttf' && ext !== 'otf') {continue;}
+
+      const normalized = file.localPath.replace(/\/+/g, '/');
+      const tfile = this.app.vault.getAbstractFileByPath(normalized);
+      if (!(tfile instanceof TFile)) {continue;}
+
+      try {
+        const data = await this.app.vault.readBinary(tfile);
+        const inspection = inspectSfnt(data);
+        if (inspection?.isVariable) {
+          return {
+            isVariable: true,
+            weightRange: inspection.weightRange ?? undefined,
+            axes: inspection.axes,
+          };
+        }
+      } catch (e) {
+        debug.warn(
+          'font-handling',
+          `[font-meta] SFNT inspection failed for ${normalized}: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+    }
+
+    // WOFF2 fallback: filename hint only. Conservative — we'd rather miss a
+    // variable font (and emit per-weight static rules) than wrongly declare
+    // a range that doesn't exist.
+    const looksLikeVariable = files.some((f) =>
+      /\b(VF|Variable|VAR)\b/i.test(f.localPath)
+    );
+    if (looksLikeVariable && discoveredWeights.length > 1) {
+      const sorted = [...discoveredWeights].sort((a, b) => a - b);
+      const range: [number, number] = [sorted[0], sorted[sorted.length - 1]];
+      return {
+        isVariable: true,
+        weightRange: range,
+        axes: [{ tag: 'wght', min: range[0], max: range[1], default: 400 }],
+      };
+    }
+
+    return { isVariable: false };
+  }
+
+  /**
+   * Recompute classification + integrity metadata for every cached font.
+   * Used by the "Rebuild font cache" Settings action so existing installs
+   * benefit from Phase 1b without re-downloading anything.
+   *
+   * Returns the number of fonts that were updated.
+   */
+  async recomputeAllFontMetadata(): Promise<number> {
+    const debug = getDebugService();
+    let updated = 0;
+
+    for (const font of Object.values(this.cache.fonts)) {
+      try {
+        await this.enrichFileMetadata(font.files);
+
+        // Variable-font detection from three independent signals. Any one
+        // is sufficient — every signal that fails for a true variable font
+        // would otherwise leave that font wrongly classified as static and
+        // produce single-weight @font-face rules.
+        //
+        //   (A) SFNT `fvar` table present (works for TTF / OTF; not for
+        //       WOFF2 which is compressed).
+        //   (B) The same (localPath, style) appears with multiple weights
+        //       — explicit multi-weight registration for one file.
+        //   (C) The cache lists more weights than there are (weight,style)
+        //       pairs in files. A genuine static font ships one file per
+        //       weight × style; if there are more weights than file pairs,
+        //       the only way they can all be served is from a variable
+        //       file. This catches the Google-Fonts case where one woff2
+        //       backs 9 weights × 2 styles but every file carries the same
+        //       nominal weight (typically 100).
+        const sfntClassification = await this.classifyLocalFiles(
+          font.files,
+          font.weights ?? []
+        );
+
+        const filePathToWeights = new Map<string, Set<number>>();
+        for (const f of font.files) {
+          const key = `${f.localPath}|${f.style}`;
+          if (!filePathToWeights.has(key)) {filePathToWeights.set(key, new Set());}
+          filePathToWeights.get(key)!.add(f.weight);
+        }
+        const multiWeightPerFile = Array.from(filePathToWeights.values()).some(
+          (s) => s.size > 1
+        );
+
+        const uniqueWeightStylePairs = new Set(font.files.map((f) => `${f.weight}|${f.style}`))
+          .size;
+        const declaredMoreThanFilePairs =
+          (font.weights?.length ?? 0) > uniqueWeightStylePairs && uniqueWeightStylePairs > 0;
+
+        const isVariable =
+          sfntClassification.isVariable || multiWeightPerFile || declaredMoreThanFilePairs;
+
+        let weightRange = sfntClassification.weightRange;
+        let axes = sfntClassification.axes;
+
+        // For Google variable fonts: every file may carry a single nominal
+        // weight (commonly 100). Fall back to the cache's `weights` list to
+        // recover the intended range.
+        if (isVariable && !weightRange && font.weights && font.weights.length > 1) {
+          const sorted = [...font.weights].sort((a, b) => a - b);
+          weightRange = [sorted[0], sorted[sorted.length - 1]];
+          axes = axes ?? [
+            { tag: 'wght', min: weightRange[0], max: weightRange[1], default: 400 },
+          ];
+        }
+
+        font.isVariable = isVariable;
+        font.weightRange = weightRange;
+        font.variationAxes = axes;
+        updated++;
+      } catch (e) {
+        debug.warn(
+          'font-handling',
+          `[font-meta] Failed to recompute metadata for "${font.name}": ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+    }
+
+    this.cacheRevision++;
+    await this.saveCallback(this.cache);
+    debug.log('font-handling', `[font-meta] Recomputed metadata for ${updated} fonts`);
+    return updated;
+  }
+
+  /**
+   * Compute a hex SHA-256 of an ArrayBuffer. Uses the WebCrypto API which
+   * is available in Electron renderer contexts (Obsidian plugin runtime).
+   */
+  private async sha256Hex(data: ArrayBuffer): Promise<string> {
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const bytes = new Uint8Array(hashBuffer);
+    let out = '';
+    for (let i = 0; i < bytes.length; i++) {
+      out += bytes[i].toString(16).padStart(2, '0');
+    }
+    return out;
   }
 
   /**
@@ -995,10 +1292,59 @@ export class FontManager {
   }
 
   /**
-   * Generate @font-face CSS with data URLs for export (self-contained)
-   * For variable fonts, generates a single @font-face with weight range
+   * Resolve whether a cached font is variable. Prefers the explicit
+   * `isVariable` flag (Phase 1b ingest classification). Falls back to a
+   * structural check for legacy caches: if the cache lists more weights
+   * than there are unique (weight, style) pairs in files, the only way
+   * those weights can be served is from a variable-font file.
+   */
+  private resolveIsVariable(font: CachedFont): boolean {
+    if (typeof font.isVariable === 'boolean') {return font.isVariable;}
+
+    // Legacy fallback. Two structural signals:
+    //   (a) the same (localPath, style) appears with multiple weights
+    //   (b) declared weights > unique (weight,style) pairs in files
+    const filePathWeightMap = new Map<string, Set<number>>();
+    for (const file of font.files) {
+      const key = `${file.localPath}|${file.style}`;
+      if (!filePathWeightMap.has(key)) {filePathWeightMap.set(key, new Set());}
+      filePathWeightMap.get(key)!.add(file.weight);
+    }
+    const sharedFile = Array.from(filePathWeightMap.values()).some((w) => w.size > 1);
+    const uniquePairs = new Set(font.files.map((f) => `${f.weight}|${f.style}`)).size;
+    const declaredMoreThanFiles = (font.weights?.length ?? 0) > uniquePairs;
+    return sharedFile || declaredMoreThanFiles;
+  }
+
+  /**
+   * Resolve the [min, max] weight range for a variable font. Prefers the
+   * explicit `weightRange` field; falls back to min/max of the declared
+   * weights array.
+   */
+  private resolveWeightRange(font: CachedFont): [number, number] | undefined {
+    if (font.weightRange) {return font.weightRange;}
+    if (!font.weights || font.weights.length === 0) {return undefined;}
+    const sorted = [...font.weights].sort((a, b) => a - b);
+    return [sorted[0], sorted[sorted.length - 1]];
+  }
+
+  /**
+   * Generate @font-face CSS with data URLs for export (self-contained).
+   * For variable fonts, generates a single @font-face per (file,style) with
+   * the full weight range. For static fonts, generates one rule per
+   * requested weight/style combination.
+   *
+   * The variable-font signal is read directly from the cache record
+   * (CachedFont.isVariable, populated at ingest time in Phase 1b). Legacy
+   * caches that pre-date Phase 1b are detected by a single fallback rule:
+   * "the cache lists more weights than there are (weight,style) pairs in
+   * files" — a structural signal that fires only when the on-disk state
+   * cannot be reconciled without assuming a variable font. Users on legacy
+   * caches should run Settings → Rebuild font cache to get the explicit
+   * metadata.
+   *
    * @param fontName Font name to generate CSS for
-   * @param usedWeights Optional array of weights to include. If not specified, includes all weights.
+   * @param usedWeights Optional array of weights to include. If not specified, all are included.
    */
   async generateFontFaceCSSForExport(fontName: string, usedWeights?: number[]): Promise<string> {
     const debug = getDebugService();
@@ -1009,53 +1355,33 @@ export class FontManager {
       return '';
     }
 
-    // Filter files to only include used weights (if specified)
-    // For variable fonts, include ALL weights since one file covers the range
+    const isVariableFont = this.resolveIsVariable(font);
+    const variableRange = this.resolveWeightRange(font);
+
+    // Decide which file records to materialize as @font-face rules.
+    // Variable fonts: every file covers the full range, so include all
+    // (style, file) combinations. Static fonts: filter to requested
+    // weights with a graceful all-weights fallback.
     let filesToInclude = font.files;
-    if (usedWeights && usedWeights.length > 0) {
+    if (usedWeights && usedWeights.length > 0 && !isVariableFont) {
+      const filtered = font.files.filter((f) => usedWeights.includes(f.weight));
+      filesToInclude = filtered.length > 0 ? filtered : font.files;
+      if (filtered.length === 0) {
+        debug.warn(
+          'font-handling',
+          `No files match requested weights [${usedWeights.join(', ')}] for "${fontName}"; falling back to all cached weights`
+        );
+      } else {
+        debug.log(
+          'font-handling',
+          `[font-css] "${fontName}" static — filtered to ${filtered.length}/${font.files.length} files for weights [${usedWeights.join(', ')}]`
+        );
+      }
+    } else if (isVariableFont) {
       debug.log(
         'font-handling',
-        `Cache has ${font.files.length} files with weights: ${font.files.map((f) => `${f.weight}/${f.style}`).join(', ')}`
+        `[font-css] "${fontName}" variable — emitting full range ${variableRange ? variableRange.join('-') : '(unknown)'}`
       );
-      
-      // Detect if this is a variable font: same file path appears with multiple different weights
-      const filePathWeightMap = new Map<string, Set<number>>();
-      for (const file of font.files) {
-        const key = `${file.localPath}|${file.style}`;
-        if (!filePathWeightMap.has(key)) {
-          filePathWeightMap.set(key, new Set());
-        }
-        filePathWeightMap.get(key)!.add(file.weight);
-      }
-      
-      // A variable font has the same file path with MULTIPLE different weights
-      const isVariableFont = Array.from(filePathWeightMap.values()).some((weights) => weights.size > 1);
-      
-      if (isVariableFont) {
-        // For variable fonts: include ALL weights from cache, not just requested ones
-        // This ensures the @font-face declares the full weight range
-        debug.log(
-          'font-handling',
-          `Detected variable font. Using all cached weights instead of filtering to [${usedWeights.join(', ')}]`
-        );
-        filesToInclude = font.files;
-      } else {
-        // For static fonts: filter to only requested weights
-        filesToInclude = font.files.filter((f) => usedWeights.includes(f.weight));
-        debug.log(
-          'font-handling',
-          `Filtering to used weights [${usedWeights.join(', ')}]: ${filesToInclude.length} of ${font.files.length} files`
-        );
-        
-        // Fallback: if no files match the requested weights, use all files
-        if (filesToInclude.length === 0) {
-          debug.warn(
-            'font-handling',
-            `No files match requested weights [${usedWeights.join(', ')}], using all cached files`
-          );
-          filesToInclude = font.files;
-        }
-      }
     }
 
     debug.log(
@@ -1109,19 +1435,14 @@ export class FontManager {
       group.maxWeight = Math.max(group.maxWeight, file.weight);
     }
 
-    // For variable fonts with cached weights, use the actual weights from cache (not just file weights)
-    // This ensures @font-face declares the full range (e.g., "font-weight: 100 900") even if only 1 file
-    // BUT only do this for actual variable fonts (multiple DIFFERENT weights pointing to the same file)
-    for (const group of fileGroups.values()) {
-      // Only expand weight range if this is a true variable font:
-      // - Multiple files in the group with DIFFERENT weights (not just duplicates)
-      // For non-variable fonts (separate file per weight, or duplicate entries), keep single weight
-      const uniqueWeightsInGroup = new Set(group.files.map((f) => f.weight));
-      const isVariableFont = uniqueWeightsInGroup.size > 1;
-
-      if (isVariableFont && font.weights && font.weights.length > 0) {
-        group.minWeight = Math.min(...font.weights);
-        group.maxWeight = Math.max(...font.weights);
+    // Variable fonts: stamp the canonical weight range from the cache record
+    // onto every file group so the emitted @font-face advertises the full
+    // range (e.g. "font-weight: 100 900") instead of the single nominal
+    // weight each file happens to carry.
+    if (isVariableFont && variableRange) {
+      for (const group of fileGroups.values()) {
+        group.minWeight = variableRange[0];
+        group.maxWeight = variableRange[1];
       }
     }
 
@@ -1170,9 +1491,9 @@ export class FontManager {
         const mimeType = mimeTypes[firstFile.format] || 'font/woff2';
         const formatString = formatStrings[firstFile.format] || firstFile.format;
 
-        // For variable fonts (multiple DIFFERENT weights per file), use weight range; otherwise use single weight
-        const uniqueWeightsInGroup = new Set(group.files.map((f) => f.weight));
-        const isVariableFont = uniqueWeightsInGroup.size > 1;
+        // Use the outer-scope variable font flag determined from cache metadata
+        // (file-group inspection alone misses the case where every file is tagged
+        // with the same weight but the cache lists a range — common for Google Fonts).
         const fontWeightDecl = isVariableFont
           ? `font-weight: ${group.minWeight} ${group.maxWeight};`
           : `font-weight: ${firstFile.weight};`;
@@ -1290,6 +1611,7 @@ export class FontManager {
     }
 
     font.displayName = displayName;
+    this.cacheRevision++;
     await this.saveCallback(this.cache);
   }
 
@@ -1339,6 +1661,7 @@ export class FontManager {
 
     // Remove from cache
     delete this.cache.fonts[fontName];
+    this.cacheRevision++;
     await this.saveCallback(this.cache);
     debug.log('font-handling', `[font-cleanup] Removed "${fontName}" from cache`);
   }

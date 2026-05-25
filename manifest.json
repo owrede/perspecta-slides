@@ -6,5 +6,5 @@
 	"description": "Create beautiful presentations from Markdown with thumbnail navigator, visual inspector, themes, and HTML export.",
 	"author": "owrede",
 	"authorUrl": "https://github.com/owrede",
-	"isDesktopOnly": false
+	"isDesktopOnly": true
 }

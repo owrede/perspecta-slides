@@ -1,8 +1,6 @@
-import type { App, TFile } from 'obsidian';
-import { Notice, Platform } from 'obsidian';
+import { type App, type TFile, Notice, Platform } from 'obsidian';
 import type { Presentation, Theme } from '../types';
-import type { ImagePathResolver } from '../renderer/SlideRenderer';
-import { SlideRenderer } from '../renderer/SlideRenderer';
+import { type ImagePathResolver, SlideRenderer } from '../renderer/SlideRenderer';
 import type { ExcalidrawRenderer } from './ExcalidrawRenderer';
 import { getObsidianColorScheme } from './ColorScheme';
 
@@ -51,6 +49,9 @@ export class PdfExportService {
         renderer.setExcalidrawSvgCache(this.excalidrawRenderer.getSvgCache());
         renderer.setFailedDecompressionFiles(this.excalidrawRenderer.getFailedDecompressionFiles());
       }
+      // Freeze animated shaders to t=0 so each PDF page captures a deterministic
+      // single frame. Slides with explicit `shaderTime` in metadata override this.
+      renderer.setDefaultShaderTime(0);
 
       const pageSize = this.resolvePageSize(presentation.frontmatter.aspectRatio);
       const printHTML = this.generatePrintHTML(presentation, renderer, pageSize);

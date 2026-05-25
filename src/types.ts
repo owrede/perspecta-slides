@@ -186,6 +186,17 @@ export interface SlideMetadata {
   background?: string;
   backgroundOpacity?: number;
   backgroundFilter?: 'darken' | 'lighten' | 'blur' | 'none';
+  /**
+   * Animated background shader (built-in name or custom .frag).
+   * Mounted behind slide content; uses the slide's palette as uColor0..3.
+   * Built-in names: gradient, noise, grid, aurora.
+   */
+  shader?: string;
+  /**
+   * Freeze the shader at this time (seconds). Used by PDF export to capture
+   * a single frame; can also be set per-slide to pin a specific moment.
+   */
+  shaderTime?: number;
   mode?: 'light' | 'dark' | 'system';
   hideOverlay?: boolean;
   transition?: string;

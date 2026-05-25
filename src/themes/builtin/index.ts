@@ -6,7 +6,7 @@
  */
 
 import type { Theme, ThemeTemplate, ThemePreset } from '../../types';
-import { DEFAULT_SEMANTIC_COLORS_LIGHT, DEFAULT_SEMANTIC_COLORS_DARK } from '../ThemeSchema';
+import { BUILTIN_INTER_FAMILY, BUILTIN_INTER_WEIGHTS } from './InterFontFace';
 
 /**
  * Default Theme - A clean, professional theme with Inter font and dynamic gradient backgrounds
@@ -196,8 +196,9 @@ function createDefaultTheme(): Theme {
 
   const lightPreset: ThemePreset = {
     Name: 'Light',
-    TitleFont: json.fonts.title.css,
-    BodyFont: json.fonts.body.css,
+    // Canonical family names only — CSS stacks are composed at render time.
+    TitleFont: json.fonts.title.name,
+    BodyFont: json.fonts.body.name,
     Appearance: 'light',
     
     // Text colors
@@ -242,6 +243,23 @@ function createDefaultTheme(): Theme {
     isBuiltIn: true,
     themeJsonData: {
       presets: json.presets,
+      // Declare Inter as a bundled font so the render-family namespace
+      // logic in SlideRenderer / generateThemeCSS / DeckFontResolver
+      // treats it like any custom-theme bundled font. The actual
+      // @font-face bytes are emitted by ThemeLoader.generateThemeFontCSS
+      // via InterFontFace (built-in special case). File paths are
+      // synthetic — built-ins don't read from the vault.
+      bundledFonts: [
+        {
+          family: BUILTIN_INTER_FAMILY,
+          files: BUILTIN_INTER_WEIGHTS.map((weight) => ({
+            path: `builtin:inter-${weight}`,
+            weight,
+            style: 'normal',
+            format: 'woff2',
+          })),
+        },
+      ],
     },
   };
 }

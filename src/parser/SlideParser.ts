@@ -1,15 +1,15 @@
-import type {
-  Presentation,
-  PresentationFrontmatter,
-  Slide,
-  SlideElement,
-  SlideMetadata,
-  SlideLayout,
-  ContentMode,
-  ImageData,
-  Footnote,
+import {
+  type Presentation,
+  type PresentationFrontmatter,
+  type Slide,
+  type SlideElement,
+  type SlideMetadata,
+  type SlideLayout,
+  type ContentMode,
+  type ImageData,
+  type Footnote,
+  isValidLayout,
 } from '../types';
-import { isValidLayout } from '../types';
 import { getDebugService } from '../utils/DebugService';
 
 export class SlideParser {
@@ -598,8 +598,8 @@ export class SlideParser {
       });
 
     for (const el of slide.elements) {
-      if (typeof el.content === 'string') el.content = substitute(el.content);
-      if (typeof el.raw === 'string') el.raw = substitute(el.raw);
+      if (typeof el.content === 'string') {el.content = substitute(el.content);}
+      if (typeof el.raw === 'string') {el.raw = substitute(el.raw);}
     }
     for (let i = 0; i < slide.speakerNotes.length; i++) {
       slide.speakerNotes[i] = substitute(slide.speakerNotes[i]);
@@ -648,7 +648,7 @@ export class SlideParser {
         }
       } else {
         const closer = fenceChar.repeat(3);
-        if (trimmed.startsWith(closer)) fenceChar = null;
+        if (trimmed.startsWith(closer)) {fenceChar = null;}
         current.push(line);
         continue;
       }
@@ -693,7 +693,7 @@ export class SlideParser {
    */
   private isSpeakerNotesMarker(line: string): boolean {
     const normalized = line.trim().toLowerCase();
-    if (!normalized.endsWith(':')) return false;
+    if (!normalized.endsWith(':')) {return false;}
     // Strip the trailing colon and any whitespace before it, then collapse
     // internal whitespace and dashes to a single space so "speaker  note",
     // "speaker-note" and "speaker note" all match the same canonical form.
@@ -1248,6 +1248,21 @@ export class SlideParser {
       const modeMatch = line.match(/^mode:\s*(light|dark)$/i);
       if (modeMatch) {
         metadata.mode = modeMatch[1].toLowerCase() as 'light' | 'dark';
+        startIndex = i + 1;
+        continue;
+      }
+
+      const shaderMatch = line.match(/^shader:\s*(.+)$/i);
+      if (shaderMatch) {
+        metadata.shader = shaderMatch[1].trim();
+        startIndex = i + 1;
+        continue;
+      }
+
+      const shaderTimeMatch = line.match(/^(shader-time|shaderTime):\s*([\d.]+)$/i);
+      if (shaderTimeMatch) {
+        const v = parseFloat(shaderTimeMatch[2]);
+        if (Number.isFinite(v)) {metadata.shaderTime = v;}
         startIndex = i + 1;
         continue;
       }

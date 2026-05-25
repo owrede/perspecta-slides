@@ -1,10 +1,17 @@
-import type { App } from 'obsidian';
-import { TFolder, TFile } from 'obsidian';
+import { type App, TFolder, TFile } from 'obsidian';
 import type { Theme, ThemeTemplate, ThemePreset, ThemePresetsFile } from '../types';
-import { DEFAULT_SEMANTIC_COLORS } from '../types';
-import type { ThemeJsonFile } from './ThemeSchema';
-import { DEFAULT_SEMANTIC_COLORS_LIGHT, DEFAULT_SEMANTIC_COLORS_DARK } from './ThemeSchema';
-import { builtInThemes, getBuiltInTheme, getBuiltInThemeNames } from './builtin';
+import {
+  type ThemeJsonFile,
+  DEFAULT_SEMANTIC_COLORS_LIGHT,
+  DEFAULT_SEMANTIC_COLORS_DARK,
+} from './ThemeSchema';
+import { builtInThemes } from './builtin';
+import { composeFontStack, extractFamilyName, namespaceThemeFont } from '../utils/FontFamily';
+import { vaultPathJoin } from '../utils/VaultPath';
+import {
+  BUILTIN_DEFAULT_THEME_NAME,
+  generateBuiltinInterFontCSS,
+} from './builtin/InterFontFace';
 
 export class ThemeLoader {
   private app: App;
@@ -53,6 +60,16 @@ export class ThemeLoader {
           if (theme) {
             const themeName = theme.template.Name.toLowerCase();
             console.log('[ThemeLoader] Loaded custom theme:', themeName);
+            // Validate bundled-font manifest. Issues are logged but the theme
+            // still loads — partial functionality is better than a hard fail
+            // for a typo in one file entry. Authors get a visible warning.
+            const issues = this.validateThemeFonts(theme);
+            if (issues.length > 0) {
+              console.warn(
+                `[ThemeLoader] Theme "${theme.template.Name}" has ${issues.length} font manifest issue(s):`
+              );
+              for (const issue of issues) {console.warn(`  • ${issue}`);}
+            }
             this.themes.set(themeName, theme);
           }
         } catch (e) {
@@ -231,8 +248,10 @@ export class ThemeLoader {
 
     return {
       Name: mode === 'light' ? 'Light' : 'Dark',
-      TitleFont: json.fonts.title.css,
-      BodyFont: json.fonts.body.css,
+      // Canonical family names only — CSS stacks are composed at render time
+      // by ThemeLoader.generateCSSVariables / SlideRenderer.generateCSSVariables.
+      TitleFont: json.fonts.title.name,
+      BodyFont: json.fonts.body.name,
       Appearance: mode,
 
       // Text colors
@@ -310,7 +329,10 @@ export class ThemeLoader {
   }
 
   getCustomThemes(): Theme[] {
-    return Array.from(this.themes.values());
+    // `this.themes` also holds the built-in themes (loaded first in
+    // loadThemes); filter them out so callers — notably save-theme
+    // conflict handling — see only vault-resident custom themes.
+    return Array.from(this.themes.values()).filter((t) => !t.isBuiltIn);
   }
 
   setCustomThemesFolder(folder: string): void {
@@ -327,9 +349,15 @@ export class ThemeLoader {
       return '';
     }
 
+    // Preset / template font fields are canonical family names (post Phase 1a).
+    // Legacy theme JSON may still ship a CSS stack — extractFamilyName tolerates
+    // either form. composeFontStack builds the final CSS value exactly once.
+    const titleFamily = extractFamilyName(preset.TitleFont) ?? extractFamilyName(theme.template.TitleFont);
+    const bodyFamily = extractFamilyName(preset.BodyFont) ?? extractFamilyName(theme.template.BodyFont);
+
     const vars: string[] = [
-      `--title-font: ${preset.TitleFont || theme.template.TitleFont};`,
-      `--body-font: ${preset.BodyFont || theme.template.BodyFont};`,
+      `--title-font: ${composeFontStack(titleFamily)};`,
+      `--body-font: ${composeFontStack(bodyFamily)};`,
       `--dark-body-text: ${preset.DarkBodyTextColor};`,
       `--light-body-text: ${preset.LightBodyTextColor};`,
       `--dark-title-text: ${preset.DarkTitleTextColor};`,
@@ -374,10 +402,15 @@ export class ThemeLoader {
    */
   async generateThemeFontCSS(theme: Theme): Promise<string> {
     if (theme.isBuiltIn) {
+      // The built-in Default theme bundles Inter (see InterFontFace).
+      // Other built-ins ship no fonts and use the system stack.
+      if (theme.template.Name === BUILTIN_DEFAULT_THEME_NAME) {
+        return generateBuiltinInterFontCSS();
+      }
       return '';
     }
 
-    const fontsPath = `${theme.basePath}/fonts`;
+    const fontsPath = vaultPathJoin(theme.basePath, 'fonts');
     const fontsFolder = this.app.vault.getAbstractFileByPath(fontsPath);
 
     if (!fontsFolder || !(fontsFolder instanceof TFolder)) {
@@ -389,9 +422,14 @@ export class ThemeLoader {
     // Preferred path: explicit bundled font manifest from theme.json
     const bundledFonts = theme.themeJsonData?.bundledFonts || [];
     if (bundledFonts.length > 0) {
+      // Phase 2: namespace the emitted family name so it cannot be confused
+      // with a same-named font installed on the OS. Theme name comes from the
+      // template — see namespaceThemeFont docs for the format.
+      const themeName = theme.template.Name || 'theme';
       for (const bundled of bundledFonts) {
+        const renderFamily = namespaceThemeFont(bundled.family, themeName);
         for (const fileRef of bundled.files) {
-          const absolutePath = `${theme.basePath}/${fileRef.path}`.replace(/\/+/g, '/');
+          const absolutePath = vaultPathJoin(theme.basePath, fileRef.path);
           const file = this.app.vault.getAbstractFileByPath(absolutePath);
           if (!(file instanceof TFile)) {
             continue;
@@ -416,7 +454,7 @@ export class ThemeLoader {
 
             rules.push(`
 @font-face {
-  font-family: '${bundled.family}';
+  font-family: '${renderFamily}';
   font-style: ${fileRef.style || 'normal'};
   font-weight: ${fileRef.weight || 400};
   font-display: swap;
@@ -431,22 +469,23 @@ export class ThemeLoader {
     }
 
     // Backward compatibility for old theme packages without bundledFonts manifest
+    const themeName = theme.template.Name || 'theme';
     const processedFonts = new Set<string>();
     for (const file of fontsFolder.children) {
-      if (!(file instanceof TFile)) continue;
+      if (!(file instanceof TFile)) {continue;}
       const ext = file.extension.toLowerCase();
-      if (!['woff2', 'woff', 'ttf', 'otf'].includes(ext)) continue;
+      if (!['woff2', 'woff', 'ttf', 'otf'].includes(ext)) {continue;}
 
       // Legacy filenames may include family-weight-style
       const match = file.name.match(/^(.+?)-(\d+)-(normal|italic)\.(woff2|woff|ttf|otf)$/i);
-      if (!match) continue;
+      if (!match) {continue;}
 
       const fontName = match[1].replace(/-/g, ' ');
       const weight = parseInt(match[2], 10);
       const style = match[3] || 'normal';
       const format = match[4].toLowerCase();
       const key = `${fontName}-${weight}-${style}-${file.path}`;
-      if (processedFonts.has(key)) continue;
+      if (processedFonts.has(key)) {continue;}
       processedFonts.add(key);
 
       try {
@@ -461,10 +500,11 @@ export class ThemeLoader {
                 ? 'font/ttf'
                 : 'font/otf';
         const cssFormat = format === 'ttf' ? 'truetype' : format === 'otf' ? 'opentype' : format;
+        const renderFamily = namespaceThemeFont(fontName, themeName);
 
         rules.push(`
 @font-face {
-  font-family: '${fontName}';
+  font-family: '${renderFamily}';
   font-style: ${style};
   font-weight: ${weight};
   font-display: swap;
@@ -476,6 +516,70 @@ export class ThemeLoader {
     }
 
     return rules.join('\n');
+  }
+
+  /**
+   * Validate a theme's bundled-font manifest. For each declared file:
+   *   • does the file exist at the declared path?
+   *   • does the declared `format` match the actual extension?
+   *   • is `weight` a plausible number (100..1000)?
+   *   • is `style` either "normal" or "italic"?
+   *
+   * Returns a list of human-readable issues. Empty list = healthy theme.
+   * Built-in themes return [] (they have no on-disk bundled fonts).
+   */
+  validateThemeFonts(theme: Theme): string[] {
+    const issues: string[] = [];
+    if (theme.isBuiltIn) {return issues;}
+
+    const bundledFonts = theme.themeJsonData?.bundledFonts || [];
+    if (bundledFonts.length === 0) {return issues;}
+
+    const allowedFormats = new Set(['woff2', 'woff', 'ttf', 'otf']);
+    const allowedStyles = new Set(['normal', 'italic']);
+
+    for (const bundled of bundledFonts) {
+      if (!bundled.family || bundled.family.trim().length === 0) {
+        issues.push('A bundled font entry is missing its `family` name.');
+        continue;
+      }
+      if (!Array.isArray(bundled.files) || bundled.files.length === 0) {
+        issues.push(`Family "${bundled.family}" declares no font files.`);
+        continue;
+      }
+      for (const fileRef of bundled.files) {
+        const absolutePath = vaultPathJoin(theme.basePath, fileRef.path);
+        const file = this.app.vault.getAbstractFileByPath(absolutePath);
+        if (!(file instanceof TFile)) {
+          issues.push(`"${bundled.family}": file not found at "${fileRef.path}".`);
+          continue;
+        }
+        const ext = file.extension.toLowerCase();
+        const declaredFormat = (fileRef.format || '').toLowerCase();
+        if (!allowedFormats.has(ext)) {
+          issues.push(`"${bundled.family}/${fileRef.path}": unsupported file extension "${ext}".`);
+        }
+        if (declaredFormat && declaredFormat !== ext) {
+          issues.push(
+            `"${bundled.family}/${fileRef.path}": declared format "${declaredFormat}" does not match file extension ".${ext}".`
+          );
+        }
+        if (
+          fileRef.weight !== undefined &&
+          (typeof fileRef.weight !== 'number' || fileRef.weight < 100 || fileRef.weight > 1000)
+        ) {
+          issues.push(
+            `"${bundled.family}/${fileRef.path}": weight ${fileRef.weight} is outside the valid range 100..1000.`
+          );
+        }
+        if (fileRef.style && !allowedStyles.has(fileRef.style.toLowerCase())) {
+          issues.push(
+            `"${bundled.family}/${fileRef.path}": style "${fileRef.style}" must be "normal" or "italic".`
+          );
+        }
+      }
+    }
+    return issues;
   }
 
   /**

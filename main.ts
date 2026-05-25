@@ -1,16 +1,22 @@
-import type { WorkspaceLeaf } from 'obsidian';
-import { App, Plugin, MarkdownView, Notice, addIcon, FileSystemAdapter, TFile } from 'obsidian';
+import {
+  type WorkspaceLeaf,
+  Plugin,
+  MarkdownView,
+  Notice,
+  addIcon,
+  FileSystemAdapter,
+  TFile,
+} from 'obsidian';
 
-import type {
-  PerspecaSlidesSettings,
-  Presentation,
-  Theme,
-  PresentationFrontmatter,
+import {
+  type PerspecaSlidesSettings,
+  type Presentation,
+  type Theme,
+  type PresentationFrontmatter,
+  DEFAULT_SETTINGS,
 } from './src/types';
-import { DEFAULT_SETTINGS } from './src/types';
 import { SlideParser } from './src/parser/SlideParser';
 import type { ImagePathResolver } from './src/renderer/SlideRenderer';
-import { SlideRenderer } from './src/renderer/SlideRenderer';
 import type { getTheme } from './src/themes';
 import { ThumbnailNavigatorView, THUMBNAIL_VIEW_TYPE } from './src/ui/ThumbnailNavigator';
 import { InspectorPanelView, INSPECTOR_VIEW_TYPE } from './src/ui/InspectorPanel';
@@ -18,14 +24,14 @@ import { PresentationView, PRESENTATION_VIEW_TYPE } from './src/ui/PresentationV
 import { PerspectaSlidesSettingTab, CreateDemoModal } from './src/ui/SettingsTab';
 import { PresentationWindow } from './src/ui/PresentationWindow';
 import { PresenterWindow } from './src/ui/PresenterWindow';
-import type { PresentationCache, SlideDiff } from './src/utils/SlideHasher';
 import {
+  type PresentationCache,
+  type SlideDiff,
   buildPresentationCache,
   diffPresentations,
   requiresFullRender,
 } from './src/utils/SlideHasher';
-import type { FontCache } from './src/utils/FontManager';
-import { FontManager } from './src/utils/FontManager';
+import { type FontCache, FontManager } from './src/utils/FontManager';
 import { ThemeExporter, SaveThemeModal } from './src/utils/ThemeExporter';
 import { ThemeLoader } from './src/themes/ThemeLoader';
 import { getBuiltInThemeNames } from './src/themes/builtin';
@@ -33,21 +39,40 @@ import { DebugService, setDebugService } from './src/utils/DebugService';
 import { ExportService } from './src/utils/ExportService';
 import { PdfExportService } from './src/utils/PdfExportService';
 import { PptxExportService } from './src/utils/PptxExportService';
-import { ExcalidrawRenderer } from './src/utils/ExcalidrawRenderer';
-import { getObsidianColorScheme } from './src/utils/ColorScheme';
+import { ExcalidrawCoordinator } from './src/utils/ExcalidrawCoordinator';
+import { DeckFontResolver } from './src/utils/DeckFontResolver';
+import { IpcListenerManager } from './src/utils/IpcListenerManager';
+import { CursorTracker } from './src/utils/CursorTracker';
+import { SlideMutationService } from './src/utils/SlideMutationService';
+import {
+  getSlideIndexAtLine,
+  getLineNumberForSlide,
+} from './src/utils/SlideChunkSerializer';
+import { createImagePathResolver } from './src/utils/ImagePathResolverFactory';
 
 const SLIDES_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`;
 
 export default class PerspectaSlidesPlugin extends Plugin {
   settings: PerspecaSlidesSettings = DEFAULT_SETTINGS;
   parser: SlideParser = new SlideParser();
+  private _slideMutations: SlideMutationService | null = null;
+  private get slideMutations(): SlideMutationService {
+    // Lazily constructed: `app` is available throughout the plugin
+    // lifetime, but field initialisers run before the Obsidian Plugin
+    // base wires it, so we can't build the service at field-init time.
+    if (!this._slideMutations) {
+      this._slideMutations = new SlideMutationService(this.app, this.parser);
+    }
+    return this._slideMutations;
+  }
   fontManager: FontManager | null = null;
   themeLoader: ThemeLoader | null = null;
+  fontResolver: DeckFontResolver | null = null;
   debugService: DebugService = new DebugService();
   exportService: ExportService | null = null;
   pdfExportService: PdfExportService | null = null;
   pptxExportService: PptxExportService | null = null;
-  excalidrawRenderer: ExcalidrawRenderer | null = null;
+  excalidrawCoordinator: ExcalidrawCoordinator | null = null;
   private settingsTab: PerspectaSlidesSettingTab | null = null;
   private presentationWindow: PresentationWindow | null = null;
   private presenterWindow: PresenterWindow | null = null;
@@ -57,610 +82,85 @@ export default class PerspectaSlidesPlugin extends Plugin {
   private currentTheme: Theme | null = null;
   private lastUsedSlideDocument: TFile | null = null;
   private rerenderDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private excalidrawConversionsInProgress: Set<string> = new Set(); // Track files being converted
-
   /**
-   * Log Excalidraw-related debug messages
+   * Set when we persist an inspector-driven frontmatter/metadata change to
+   * disk after we've ALREADY applied the same change to the sidebar DOM via
+   * a live update. The subsequent `editor-change` event (fired because the
+   * file is open in an editor and vault.process synced it) would otherwise
+   * redraw the same slides a second time — the source of the double redraw
+   * and the visible flicker. We swallow exactly one such event. A timeout
+   * clears the flag in case the edit isn't reflected through the editor
+   * (e.g. file not open in the active editor), so we never wrongly swallow
+   * a later genuine user edit.
    */
-  private logExcalidraw(message: string, data?: any): void {
-    this.debugService.log('excalidraw', message, data);
-  }
-
-  private warnExcalidraw(message: string, data?: any): void {
-    this.debugService.warn('excalidraw', message, data);
-  }
-
-  private errorExcalidraw(message: string, data?: any): void {
-    this.debugService.error('excalidraw', message, data);
-  }
-
+  private suppressNextEditorChangeRefresh = false;
+  private suppressEditorChangeTimer: ReturnType<typeof setTimeout> | null = null;
   /**
-   * Excalidraw reference types supported:
-   * - group=ID: Shows all elements sharing the same group
-   * - area=ID: Cropped view around element's bounding box
-   * - frame=ID: Shows contents of a frame (frame border may be visible)
-   * - clippedframe=ID: Like frame but clips elements at frame edges with zero padding
+   * Build the dependency bag for image-path resolvers. Recomputed on
+   * each resolver instantiation; `app` is available throughout the
+   * plugin lifetime, `excalidrawCoordinator` is null until `onload`
+   * finishes initialisation (resolvers handle that gracefully).
    */
-  private extractExcalidrawReference(path: string): { 
-    filePath: string; 
-    refType: 'group' | 'area' | 'frame' | 'clippedframe' | null;
-    refId: string | null;
-  } {
-    // Match any of the reference types: group=, area=, frame=, clippedframe=
-    const refMatch = path.match(/#\^(group|area|frame|clippedframe)=([^#&|]+)/);
-    if (refMatch) {
-      const filePath = path.split('#')[0];
-      return { 
-        filePath, 
-        refType: refMatch[1] as 'group' | 'area' | 'frame' | 'clippedframe',
-        refId: refMatch[2] 
-      };
-    }
-    return { filePath: path.split('#')[0], refType: null, refId: null };
+  private resolverDeps() {
+    return {
+      app: this.app,
+      excalidraw: this.excalidrawCoordinator,
+    };
   }
 
   /**
-  * Convert absolute file path to file:// URL
-  * Handles platform differences (Windows vs Unix)
-  */
-  private convertToFileUrl(filePath: string): string {
-   // Normalize path separators to forward slashes
-   const normalized = filePath.replace(/\\/g, '/');
-   
-   // On Windows, add leading slash for drive letter (C: -> /C:)
-   const urlPath = process.platform === 'win32' && normalized[1] === ':' 
-     ? `/${normalized}` 
-     : normalized;
-   
-   // Encode URI and handle hash characters
-   return `file://${encodeURI(urlPath).replace(/#/g, '%23')}`;
+   * Absolute filesystem path to the bundled preload.js, used as the
+   * Electron `webPreferences.preload` for the presenter window so it can
+   * run with nodeIntegration disabled and contextIsolation enabled.
+   * Returns null on non-filesystem vaults (mobile) where external windows
+   * aren't supported anyway.
+   */
+  private resolvePreloadPath(): string | null {
+    const adapter = this.app.vault.adapter;
+    if (!(adapter instanceof FileSystemAdapter)) {
+      return null;
+    }
+    const base = adapter.getBasePath().replace(/\\/g, '/');
+    const dir = (this.manifest.dir ?? '').replace(/\\/g, '/');
+    return `${base}/${dir}/preload.js`.replace(/\/+/g, '/');
   }
 
   /**
-   * Image path resolver for Obsidian wiki-links
-   * Resolves ![[image.png]] paths to actual resource URLs
+   * In-editor image-path resolver (Inspector / Thumbnails / Presenter
+   * sidebar). Uses Obsidian's `app:` resource URLs and follows the
+   * user's focused file for wiki-link source context.
    */
-  imagePathResolver: ImagePathResolver = (path: string, isWikiLink: boolean): string => {
-    if (!isWikiLink) {
-      // Standard markdown paths - return as-is (may be URL or relative path)
-      return path;
-    }
-
-    // For wiki-links, resolve through Obsidian's system
-    try {
-      // Extract Excalidraw reference if present (group=, area=, frame=, clippedframe=)
-      const { filePath: pathWithoutRef, refType, refId } = this.extractExcalidrawReference(path);
-      
-      // Strip other block references from path (e.g., "path#^blockid" -> "path")
-      const pathWithoutBlock = pathWithoutRef.split('#')[0];
-      
-      // Decode any URL-encoded characters in the path (e.g., %20 for space)
-      const decodedPath = decodeURIComponent(pathWithoutBlock);
-
-      // Get the current file for context
-      const activeFile = this.app.workspace.getActiveFile();
-      const sourcePath = activeFile?.path || '';
-
-      // Resolve the link to a file
-      let linkedFile = this.app.metadataCache.getFirstLinkpathDest(decodedPath, sourcePath);
-
-      if (!linkedFile) {
-        // Try with original path as fallback
-        linkedFile = this.app.metadataCache.getFirstLinkpathDest(pathWithoutBlock, sourcePath);
-      }
-
-      if (linkedFile) {
-        // Check if this is an Excalidraw file (either .excalidraw or .md in Excalidraw folder)
-        const isExcalidrawFile = 
-          linkedFile.extension === 'excalidraw' || 
-          (linkedFile.extension === 'md' && 
-            (linkedFile.path.includes('Excalidraw/') || linkedFile.name.includes('.excalidraw')));
-
-        if (isExcalidrawFile) {
-          // Build cache key including reference type and ID if present
-          const cacheKey = refType && refId 
-            ? `${linkedFile.path}#^${refType}=${refId}` 
-            : linkedFile.path;
-          this.logExcalidraw(`Resolving Excalidraw drawing: ${cacheKey}`);
-
-          // Check if SVG is already cached (and not stale) or conversion is in progress
-          // Use file mtime to invalidate cache when Excalidraw file is modified
-          const fileMtime = linkedFile.stat.mtime;
-          const isCached = this.excalidrawRenderer?.hasCachedSvg(cacheKey, fileMtime);
-          const isConverting = this.excalidrawConversionsInProgress.has(cacheKey);
-
-          if (!isCached && !isConverting && this.excalidrawRenderer) {
-            this.logExcalidraw(`Starting async conversion for: ${cacheKey}`);
-            this.excalidrawConversionsInProgress.add(cacheKey);
-
-            // Start async conversion immediately (non-blocking)
-            // Once complete, trigger a re-render so the cached SVG is displayed
-            void (async () => {
-              try {
-                await this.excalidrawRenderer!.toSvgDataUrl(
-                  linkedFile, 
-                  refType ?? undefined, 
-                  refId ?? undefined
-                );
-                this.logExcalidraw(`✅ Converted to SVG: ${cacheKey}`);
-                // Trigger re-render to display the now-cached SVG
-                void this.rerenderPresentationWindow();
-              } catch (e) {
-                this.errorExcalidraw(`Failed to convert Excalidraw to SVG: ${cacheKey}`, e);
-              } finally {
-                // Remove from in-progress set
-                this.excalidrawConversionsInProgress.delete(cacheKey);
-              }
-            })();
-          } else if (isCached) {
-            this.logExcalidraw(`SVG already cached for: ${cacheKey}`);
-          } else if (isConverting) {
-            this.logExcalidraw(`Conversion already in progress for: ${cacheKey}`);
-          }
-
-          // For any reference type, skip PNG/SVG export lookup and use native rendering
-          if (refType && refId) {
-            this.logExcalidraw(`${refType} reference detected, using native rendering: ${cacheKey}`);
-            return `excalidraw://${cacheKey}`;
-          }
-
-          // Fallback: For Excalidraw .md files, look for PNG/SVG exports
-          const basePath = linkedFile.path.replace(/\.md$/, '');
-
-          // Try .png first (export without extension suffix)
-          let pngPath = basePath + '.png';
-          let exportFile = this.app.vault.getAbstractFileByPath(pngPath);
-          if (exportFile instanceof TFile) {
-            const resourcePath = this.app.vault.getResourcePath(exportFile);
-            this.logExcalidraw(`✅ Found PNG export: ${pngPath}`);
-            return resourcePath;
-          }
-
-          // Try .svg
-          let svgPath = basePath + '.svg';
-          exportFile = this.app.vault.getAbstractFileByPath(svgPath);
-          if (exportFile instanceof TFile) {
-            const resourcePath = this.app.vault.getResourcePath(exportFile);
-            this.logExcalidraw(`✅ Found SVG export: ${svgPath}`);
-            return resourcePath;
-          }
-
-          // For .excalidraw files, also try with .excalidraw suffix
-          if (linkedFile.extension === 'excalidraw') {
-            pngPath = linkedFile.path + '.png';
-            exportFile = this.app.vault.getAbstractFileByPath(pngPath);
-            if (exportFile instanceof TFile) {
-              const resourcePath = this.app.vault.getResourcePath(exportFile);
-              this.logExcalidraw(`✅ Found PNG export: ${pngPath}`);
-              return resourcePath;
-            }
-
-            svgPath = linkedFile.path + '.svg';
-            exportFile = this.app.vault.getAbstractFileByPath(svgPath);
-            if (exportFile instanceof TFile) {
-              const resourcePath = this.app.vault.getResourcePath(exportFile);
-              this.logExcalidraw(`✅ Found SVG export: ${svgPath}`);
-              return resourcePath;
-            }
-          }
-
-          // No export found - use Excalidraw renderer fallback
-          this.logExcalidraw(
-            `ℹ️ No Excalidraw export found for: ${linkedFile.path}\n` +
-            `Returning placeholder for async conversion.`
-          );
-
-          // Return placeholder URL
-          return `excalidraw://${linkedFile.path}`;
-        }
-
-        // For non-Excalidraw files, get the resource path directly
-        return this.app.vault.getResourcePath(linkedFile);
-      } else {
-        console.warn(`[Perspecta] Could not resolve wiki-link: ${path}`);
-      }
-    } catch (e) {
-      console.warn('[Perspecta] Failed to resolve image path:', path, e);
-    }
-
-    // Fallback - return original path
-    return path;
-  };
+  imagePathResolver: ImagePathResolver = (path, isWikiLink) =>
+    createImagePathResolver(this.resolverDeps(), {
+      urlMode: 'app',
+      sourcePath: { kind: 'active-file' },
+    })(path, isWikiLink);
 
   /**
-   * Image path resolver for presentation window (external Electron window)
-   * Returns file:// URLs instead of app:// URLs since the presentation window
-   * doesn't have access to Obsidian's custom protocol handler
+   * External-window image-path resolver. Uses `file://` URLs because
+   * the Electron presentation window doesn't have Obsidian's `app:`
+   * protocol handler. Source context is the active file (e.g. when
+   * resolving from the inspector before a deck is pinned).
    */
-  presentationImagePathResolver: ImagePathResolver = (
-    path: string,
-    _isWikiLink: boolean
-  ): string => {
-    // Handle URLs - pass through as-is
-    if (path.startsWith('http://') || path.startsWith('https://')) {
-      return path;
-    }
-
-    // Handle absolute paths - pass through as-is
-    if (path.startsWith('file://') || path.startsWith('/')) {
-      return path;
-    }
-
-    // For wiki-links and plain filenames, resolve to file:// URL
-    try {
-      // Extract Excalidraw reference if present (group=, area=, frame=, clippedframe=)
-      const { filePath: pathWithoutRef, refType, refId } = this.extractExcalidrawReference(path);
-      
-      // Strip other block references from path (e.g., "path#^blockid" -> "path")
-      const pathWithoutBlock = pathWithoutRef.split('#')[0];
-      
-      // Decode any URL-encoded characters in the path (e.g., %20 for space)
-      const decodedPath = decodeURIComponent(pathWithoutBlock);
-
-      // Get the current file for context
-      const activeFile = this.app.workspace.getActiveFile();
-      const sourcePath = activeFile?.path || '';
-
-      // Resolve the link to a file (try decoded first, then original)
-      let linkedFile = this.app.metadataCache.getFirstLinkpathDest(decodedPath, sourcePath);
-      if (!linkedFile) {
-        linkedFile = this.app.metadataCache.getFirstLinkpathDest(pathWithoutBlock, sourcePath);
-      }
-
-      if (linkedFile) {
-        // Check if this is an Excalidraw file (either .excalidraw or .md in Excalidraw folder)
-        const isExcalidrawFile = 
-          linkedFile.extension === 'excalidraw' || 
-          (linkedFile.extension === 'md' && 
-            (linkedFile.path.includes('Excalidraw/') || linkedFile.name.includes('.excalidraw')));
-
-        if (isExcalidrawFile) {
-          // Build cache key including reference type and ID if present
-          const cacheKey = refType && refId 
-            ? `${linkedFile.path}#^${refType}=${refId}` 
-            : linkedFile.path;
-
-          // For any reference type, skip PNG/SVG export lookup and use native rendering
-          if (refType && refId) {
-            this.logExcalidraw(`${refType} reference detected, using native rendering: ${cacheKey}`);
-            
-            // Check if SVG is already cached or conversion is in progress
-            const fileMtime = linkedFile.stat.mtime;
-            const isCached = this.excalidrawRenderer?.hasCachedSvg(cacheKey, fileMtime);
-            const isConverting = this.excalidrawConversionsInProgress.has(cacheKey);
-
-            if (!isCached && !isConverting && this.excalidrawRenderer) {
-              this.logExcalidraw(`Starting async conversion for: ${cacheKey}`);
-              this.excalidrawConversionsInProgress.add(cacheKey);
-
-              void (async () => {
-                try {
-                  await this.excalidrawRenderer!.toSvgDataUrl(
-                    linkedFile as TFile, 
-                    refType, 
-                    refId
-                  );
-                  this.logExcalidraw(`✅ Converted to SVG: ${cacheKey}`);
-                  void this.rerenderPresentationWindow();
-                } catch (e) {
-                  this.errorExcalidraw(`Failed to convert Excalidraw to SVG: ${cacheKey}`, e);
-                } finally {
-                  this.excalidrawConversionsInProgress.delete(cacheKey);
-                }
-              })();
-            }
-
-            return `excalidraw://${cacheKey}`;
-          }
-
-          // For Excalidraw .md files without reference, look for PNG/SVG exports
-          const basePath = linkedFile.path.replace(/\.md$/, '');
-          let exportFile: TFile | null = null;
-
-          // Try .png first
-          let pngPath = basePath + '.png';
-          let file = this.app.vault.getAbstractFileByPath(pngPath);
-          if (file instanceof TFile) {
-            exportFile = file;
-          }
-
-          // Try .svg
-          if (!exportFile) {
-            const svgPath = basePath + '.svg';
-            file = this.app.vault.getAbstractFileByPath(svgPath);
-            if (file instanceof TFile) {
-              exportFile = file;
-            }
-          }
-
-          // For .excalidraw files, also try with suffix
-          if (!exportFile && linkedFile.extension === 'excalidraw') {
-            pngPath = linkedFile.path + '.png';
-            file = this.app.vault.getAbstractFileByPath(pngPath);
-            if (file instanceof TFile) {
-              exportFile = file;
-            }
-
-            if (!exportFile) {
-              const svgPath = linkedFile.path + '.svg';
-              file = this.app.vault.getAbstractFileByPath(svgPath);
-              if (file instanceof TFile) {
-                exportFile = file;
-              }
-            }
-          }
-
-          // If export found, use it
-           if (exportFile) {
-              const adapter = this.app.vault.adapter;
-              if (adapter instanceof FileSystemAdapter) {
-                const basePath = adapter.getBasePath();
-                const fullPath = require('path').join(basePath, exportFile.path);
-                // Convert to file:// URL with platform-specific handling
-                const fileUrl = this.convertToFileUrl(fullPath);
-                return fileUrl;
-              }
-            }
-
-           // No export found - use native Excalidraw rendering via async conversion
-           this.logExcalidraw(
-             `ℹ️ No Excalidraw export found for: ${linkedFile.path}\n` +
-             `Returning placeholder for async conversion.`
-           );
-
-           // Check if SVG is already cached or conversion is in progress
-           const fileMtime = linkedFile.stat.mtime;
-           const isCached = this.excalidrawRenderer?.hasCachedSvg(cacheKey, fileMtime);
-           const isConverting = this.excalidrawConversionsInProgress.has(cacheKey);
-
-           if (!isCached && !isConverting && this.excalidrawRenderer) {
-             this.logExcalidraw(`Starting async conversion for: ${cacheKey}`);
-             this.excalidrawConversionsInProgress.add(cacheKey);
-
-             // Start async conversion immediately (non-blocking)
-             void (async () => {
-               try {
-                 await this.excalidrawRenderer!.toSvgDataUrl(
-                   linkedFile, 
-                   refType ?? undefined, 
-                   refId ?? undefined
-                 );
-                 this.logExcalidraw(`✅ Converted to SVG: ${cacheKey}`);
-                 // Trigger re-render to display the now-cached SVG
-                 void this.rerenderPresentationWindow();
-               } catch (e) {
-                 this.errorExcalidraw(`Failed to convert Excalidraw to SVG: ${cacheKey}`, e);
-               } finally {
-                 // Remove from in-progress set
-                 this.excalidrawConversionsInProgress.delete(cacheKey);
-               }
-             })();
-             } else if (isCached) {
-             this.logExcalidraw(`SVG already cached for: ${cacheKey}`);
-             } else if (isConverting) {
-             this.logExcalidraw(`Conversion already in progress for: ${cacheKey}`);
-             }
-
-             // Return placeholder URL
-             return `excalidraw://${cacheKey}`;
-        } else {
-          // For non-Excalidraw files
-          const adapter = this.app.vault.adapter;
-          if (adapter instanceof FileSystemAdapter) {
-            const basePath = adapter.getBasePath();
-            const fullPath = require('path').join(basePath, linkedFile.path);
-            // Convert to file:// URL with platform-specific handling
-            const fileUrl = this.convertToFileUrl(fullPath);
-            return fileUrl;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[Perspecta] Failed to resolve image path for presentation:', path, e);
-    }
-
-    // Fallback - return original path
-    return path;
-  };
+  presentationImagePathResolver: ImagePathResolver = (path, isWikiLink) =>
+    createImagePathResolver(this.resolverDeps(), {
+      urlMode: 'file',
+      sourcePath: { kind: 'active-file' },
+    })(path, isWikiLink);
 
   /**
-   * Create a context-aware image path resolver for presentations
-   * Uses the provided source file path for resolving wiki-links to images
+   * External-window resolver pinned to a specific source deck file.
+   * Used after the presentation window opens — the active file may have
+   * shifted (e.g. the user clicked into another note), but link
+   * resolution must stay anchored to the deck's vault location.
    */
   private createPresentationImageResolver(sourcePath: string): ImagePathResolver {
-    return (path: string, isWikiLink: boolean): string => {
-      // Handle URLs - pass through as-is
-      if (path.startsWith('http://') || path.startsWith('https://')) {
-        return path;
-      }
+    return createImagePathResolver(this.resolverDeps(), {
+      urlMode: 'file',
+      sourcePath: { kind: 'explicit', path: sourcePath },
+    });
+  }
 
-      // Handle absolute paths - pass through as-is
-      if (path.startsWith('file://') || path.startsWith('/')) {
-        return path;
-      }
-
-      // For wiki-links and plain filenames, resolve to file:// URL using the source file context
-      try {
-        // Extract Excalidraw reference if present (group=, area=, frame=, clippedframe=)
-        const { filePath: pathWithoutRef, refType, refId } = this.extractExcalidrawReference(path);
-        
-        // Strip other block references from path (e.g., "path#^blockid" -> "path")
-        const pathWithoutBlock = pathWithoutRef.split('#')[0];
-        
-        // Decode any URL-encoded characters in the path (e.g., %20 for space)
-        const decodedPath = decodeURIComponent(pathWithoutBlock);
-
-        // Resolve the link to a file using the SOURCE FILE as context, not the active file
-        // This is the key fix: use sourcePath instead of activeFile.path
-        let linkedFile = this.app.metadataCache.getFirstLinkpathDest(decodedPath, sourcePath);
-        if (!linkedFile) {
-          linkedFile = this.app.metadataCache.getFirstLinkpathDest(pathWithoutBlock, sourcePath);
-        }
-
-        if (linkedFile) {
-          // Check if this is an Excalidraw file (either .excalidraw or .md in Excalidraw folder)
-          const isExcalidrawFile = 
-            linkedFile.extension === 'excalidraw' || 
-            (linkedFile.extension === 'md' && 
-              (linkedFile.path.includes('Excalidraw/') || linkedFile.name.includes('.excalidraw')));
-
-          if (isExcalidrawFile) {
-            // Build cache key including reference type and ID if present
-            const cacheKey = refType && refId 
-              ? `${linkedFile.path}#^${refType}=${refId}` 
-              : linkedFile.path;
-
-            // For any reference type, skip PNG/SVG export lookup and use native rendering
-            if (refType && refId) {
-              this.logExcalidraw(`${refType} reference detected, using native rendering: ${cacheKey}`);
-              
-              // Check if SVG is already cached or conversion is in progress
-              const fileMtime = linkedFile.stat.mtime;
-              const isCached = this.excalidrawRenderer?.hasCachedSvg(cacheKey, fileMtime);
-              const isConverting = this.excalidrawConversionsInProgress.has(cacheKey);
-
-              if (!isCached && !isConverting && this.excalidrawRenderer) {
-                this.logExcalidraw(`Starting async conversion for: ${cacheKey}`);
-                this.excalidrawConversionsInProgress.add(cacheKey);
-
-                // Start async conversion immediately (non-blocking)
-                void (async () => {
-                  try {
-                    await this.excalidrawRenderer!.toSvgDataUrl(
-                      linkedFile, 
-                      refType ?? undefined, 
-                      refId ?? undefined
-                    );
-                    this.logExcalidraw(`✅ Converted to SVG: ${cacheKey}`);
-                    // Trigger re-render to display the now-cached SVG
-                    void this.rerenderPresentationWindow();
-                  } catch (e) {
-                    this.errorExcalidraw(`Failed to convert Excalidraw to SVG: ${cacheKey}`, e);
-                  } finally {
-                    // Remove from in-progress set
-                    this.excalidrawConversionsInProgress.delete(cacheKey);
-                  }
-                })();
-              } else if (isCached) {
-                this.logExcalidraw(`SVG already cached for: ${cacheKey}`);
-              } else if (isConverting) {
-                this.logExcalidraw(`Conversion already in progress for: ${cacheKey}`);
-              }
-
-              // Return placeholder URL
-              return `excalidraw://${cacheKey}`;
-            } else {
-              // No reference - check for PNG/SVG export
-              let exportFile: TFile | null = null;
-              const basePath = linkedFile.path.replace(/\.excalidraw$/, '');
-              
-              // Try .png
-              let pngPath = basePath + '.png';
-              let file = this.app.vault.getAbstractFileByPath(pngPath);
-              if (file instanceof TFile) {
-                exportFile = file;
-              }
-
-              // Try .svg
-              if (!exportFile) {
-                const svgPath = basePath + '.svg';
-                file = this.app.vault.getAbstractFileByPath(svgPath);
-                if (file instanceof TFile) {
-                  exportFile = file;
-                }
-              }
-
-              // For .excalidraw files, also try with suffix
-              if (!exportFile && linkedFile.extension === 'excalidraw') {
-                pngPath = linkedFile.path + '.png';
-                file = this.app.vault.getAbstractFileByPath(pngPath);
-                if (file instanceof TFile) {
-                  exportFile = file;
-                }
-
-                if (!exportFile) {
-                  const svgPath = linkedFile.path + '.svg';
-                  file = this.app.vault.getAbstractFileByPath(svgPath);
-                  if (file instanceof TFile) {
-                    exportFile = file;
-                  }
-                }
-              }
-
-              // If export found, use it
-              if (exportFile) {
-                const adapter = this.app.vault.adapter;
-                if (adapter instanceof FileSystemAdapter) {
-                  const basePath = adapter.getBasePath();
-                  const fullPath = require('path').join(basePath, exportFile.path);
-                  // Convert to file:// URL with platform-specific handling
-                  const fileUrl = this.convertToFileUrl(fullPath);
-                  return fileUrl;
-                }
-              }
-
-              // No export found - use native Excalidraw rendering via async conversion
-              this.logExcalidraw(
-                `ℹ️ No Excalidraw export found for: ${linkedFile.path}\n` +
-                `Returning placeholder for async conversion.`
-              );
-
-              // Check if SVG is already cached or conversion is in progress
-              const fileMtime = linkedFile.stat.mtime;
-              const isCached = this.excalidrawRenderer?.hasCachedSvg(cacheKey, fileMtime);
-              const isConverting = this.excalidrawConversionsInProgress.has(cacheKey);
-
-              if (!isCached && !isConverting && this.excalidrawRenderer) {
-                this.logExcalidraw(`Starting async conversion for: ${cacheKey}`);
-                this.excalidrawConversionsInProgress.add(cacheKey);
-
-                // Start async conversion immediately (non-blocking)
-                void (async () => {
-                  try {
-                    await this.excalidrawRenderer!.toSvgDataUrl(
-                      linkedFile, 
-                      refType ?? undefined, 
-                      refId ?? undefined
-                    );
-                    this.logExcalidraw(`✅ Converted to SVG: ${cacheKey}`);
-                    // Trigger re-render to display the now-cached SVG
-                    void this.rerenderPresentationWindow();
-                  } catch (e) {
-                    this.errorExcalidraw(`Failed to convert Excalidraw to SVG: ${cacheKey}`, e);
-                  } finally {
-                    // Remove from in-progress set
-                    this.excalidrawConversionsInProgress.delete(cacheKey);
-                  }
-                })();
-              } else if (isCached) {
-                this.logExcalidraw(`SVG already cached for: ${cacheKey}`);
-              } else if (isConverting) {
-                this.logExcalidraw(`Conversion already in progress for: ${cacheKey}`);
-              }
-
-              // Return placeholder URL
-              return `excalidraw://${cacheKey}`;
-            }
-          } else {
-            // For non-Excalidraw files
-            const adapter = this.app.vault.adapter;
-            if (adapter instanceof FileSystemAdapter) {
-              const basePath = adapter.getBasePath();
-              const fullPath = require('path').join(basePath, linkedFile.path);
-              // Convert to file:// URL with platform-specific handling
-              const fileUrl = this.convertToFileUrl(fullPath);
-              return fileUrl;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('[Perspecta] Failed to resolve image path for presentation:', path, e);
-      }
-
-      // Fallback - return original path
-      return path;
-    };
-  };
 
   async onload() {
     await this.loadSettings();
@@ -682,8 +182,12 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // Font handling uses the new consolidated debug topic instead of a separate setting
     // this.fontManager.setDebugMode(this.settings.debugFontHandling);
 
-    // Initialize Excalidraw renderer for native SVG conversion
-    this.excalidrawRenderer = new ExcalidrawRenderer(this.app.vault);
+    // Initialize Excalidraw coordinator (owns renderer + conversion state)
+    this.excalidrawCoordinator = new ExcalidrawCoordinator({
+      vault: this.app.vault,
+      debugService: this.debugService,
+      onSvgConverted: () => void this.rerenderPresentationWindow(),
+    });
 
     // Initialize export service with Excalidraw support
     this.exportService = new ExportService(
@@ -691,11 +195,11 @@ export default class PerspectaSlidesPlugin extends Plugin {
       this.fontManager,
       this.presentationImagePathResolver
     );
-    this.exportService.setExcalidrawRenderer(this.excalidrawRenderer);
+    this.exportService.setExcalidrawRenderer(this.excalidrawCoordinator.getRenderer());
 
     // Initialize PDF export service (uses Electron printToPDF)
     this.pdfExportService = new PdfExportService(this.app, this.presentationImagePathResolver);
-    this.pdfExportService.setExcalidrawRenderer(this.excalidrawRenderer);
+    this.pdfExportService.setExcalidrawRenderer(this.excalidrawCoordinator.getRenderer());
 
     // Initialize PPTX export service (uses PptxGenJS + font embedding)
     this.pptxExportService = new PptxExportService(this.app, this.fontManager);
@@ -704,10 +208,19 @@ export default class PerspectaSlidesPlugin extends Plugin {
     this.themeLoader = new ThemeLoader(this.app, this.settings.customThemesFolder);
     await this.themeLoader.loadThemes();
 
+    // Single resolver for "what fonts does this deck use". All consumers
+    // (renderer, exports, sidebar refresh) go through this rather than
+    // re-deriving font logic from scratch. Memoizes by theme + cache
+    // revision + role weights, so hot UI paths stay fast.
+    this.fontResolver = new DeckFontResolver(this.fontManager, this.themeLoader);
+
     // Reload custom themes when layout is ready (vault file index is complete)
     this.app.workspace.onLayoutReady(async () => {
       if (this.themeLoader) {
         await this.themeLoader.loadThemes();
+        // Themes reloaded — invalidate font resolver cache so deck CSS
+        // picks up potentially-changed theme bundled fonts.
+        this.fontResolver?.invalidateAll();
       }
 
       // Initialize restored views with theme data
@@ -734,34 +247,12 @@ export default class PerspectaSlidesPlugin extends Plugin {
       }
     });
 
-    // Try to access ipcMain from Electron for IPC handling
-    try {
-      const electron = require('electron');
-      const { ipcMain } = electron;
-
-      if (ipcMain) {
-        // Listen for slide changes from the presenter window
-        ipcMain.on('presenter:slide-changed', (event: any, slideIndex: number) => {
-          // Call the callback if presenter window is open
-          if (this.presenterWindow?.isOpen()) {
-            if (this.presenterWindow['onSlideChanged']) {
-              this.presenterWindow['onSlideChanged'](slideIndex);
-            }
-          }
-        });
-
-        // Listen for request to open presentation window
-        ipcMain.on('presenter:open-presentation', (event: any) => {
-          if (this.presenterWindow?.isOpen()) {
-            if (this.presenterWindow['onOpenPresentationWindow']) {
-              this.presenterWindow['onOpenPresentationWindow']();
-            }
-          }
-        });
-      }
-    } catch (e) {
-      // IPC setup failed silently
-    }
+    // Wire up IPC for the presenter / presentation-window dance. The
+    // listeners are tracked so they can be removed in onunload() — without
+    // that, reloading the plugin (dev workflow, settings changes) would
+    // leave dangling handlers and fire slide-change callbacks multiple
+    // times per real change. See §8.2 in FONT-HANDLING-PLAN.
+    this.registerIpcListeners();
 
     // Listen for Obsidian theme changes (light ↔ dark) and refresh all views.
     // We follow Obsidian's own theme, not the OS-level prefers-color-scheme,
@@ -994,7 +485,14 @@ export default class PerspectaSlidesPlugin extends Plugin {
         if (file) {
           // Get content directly from editor (not saved file)
           const content = editor.getValue();
-          this.debounceUpdateSidebarsWithContent(file, content);
+          // An inspector live-update already patched the sidebar DOM for
+          // this change; skip the redundant redraw that the self-write
+          // would otherwise trigger (see suppressNextEditorChangeRefresh).
+          if (this.suppressNextEditorChangeRefresh) {
+            this.clearSuppressEditorChangeRefresh();
+          } else {
+            this.debounceUpdateSidebarsWithContent(file, content);
+          }
           this.debounceUpdatePresentationWindowWithContent(file, content);
         }
       })
@@ -1012,8 +510,12 @@ export default class PerspectaSlidesPlugin extends Plugin {
       })
     );
 
-    // Handle format insertion from inspector
-    (this.app.workspace as any).on('perspecta:insert-format', (format: string) => {
+    // Handle format insertion from inspector. Wrapped in registerEvent so
+    // Obsidian detaches the listener on plugin unload (the custom event is
+    // emitted on the workspace; the returned EventRef participates in the
+    // same cleanup path as the built-in events above).
+    this.registerEvent(
+      (this.app.workspace as any).on('perspecta:insert-format', (format: string) => {
       const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
       if (activeView) {
         const editor = activeView.editor;
@@ -1045,80 +547,52 @@ export default class PerspectaSlidesPlugin extends Plugin {
         }
         editor.focus();
       }
-    });
+      })
+    );
 
     // Initial setup
     this.setupCursorTracking();
   }
 
-  private cursorTrackingCleanup: (() => void) | null = null;
-  private lastTrackedLine: number = -1;
-  private lastTrackedFile: string = '';
+  private ipcListeners: IpcListenerManager = new IpcListenerManager();
+  private cursorTracker: CursorTracker | null = null;
+
+  private registerIpcListeners(): void {
+    this.ipcListeners.register({
+      onSlideChanged: (slideIndex) => {
+        if (this.presenterWindow?.isOpen() && (this.presenterWindow as any)['onSlideChanged']) {
+          (this.presenterWindow as any)['onSlideChanged'](slideIndex);
+        }
+      },
+      onOpenPresentation: () => {
+        if (
+          this.presenterWindow?.isOpen() &&
+          (this.presenterWindow as any)['onOpenPresentationWindow']
+        ) {
+          (this.presenterWindow as any)['onOpenPresentationWindow']();
+        }
+      },
+    });
+  }
 
   private setupCursorTracking() {
-    // Clean up previous listener
-    if (this.cursorTrackingCleanup) {
-      this.cursorTrackingCleanup();
-      this.cursorTrackingCleanup = null;
+    if (!this.cursorTracker) {
+      this.cursorTracker = new CursorTracker({
+        app: this.app,
+        registerInterval: (id) => this.registerInterval(id),
+        onLineChange: (file, line) => void this.handleCursorPositionChange(file, line),
+        onAttach: () => this.updateInspectorFocus(),
+      });
     }
-
-    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!activeView) {
-      return;
-    }
-
-    const editor = activeView.editor;
-    const file = activeView.file;
-    if (!file || file.extension !== 'md') {
-      return;
-    }
-
-    // Use interval-based polling for cursor position (works with CM6)
-    const pollInterval = setInterval(() => {
-      const currentView = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (!currentView || currentView.file?.path !== file.path) {
-        return;
-      }
-
-      const cursor = currentView.editor.getCursor();
-      const currentLine = cursor.line;
-
-      // Only trigger if line changed
-      if (currentLine !== this.lastTrackedLine || file.path !== this.lastTrackedFile) {
-        this.lastTrackedLine = currentLine;
-        this.lastTrackedFile = file.path;
-        void this.handleCursorPositionChange(file, currentLine);
-      }
-    }, 150);
-
-    this.cursorTrackingCleanup = () => {
-      clearInterval(pollInterval);
-    };
-
-    // Update inspector focus immediately
-    this.updateInspectorFocus();
-
-    // Also try CodeMirror 5 approach as fallback
-    const cm = (editor as any).cm;
-    if (cm?.on) {
-      const handleCursorChange = () => {
-        const cursor = editor.getCursor();
-        if (cursor.line !== this.lastTrackedLine || file.path !== this.lastTrackedFile) {
-          this.lastTrackedLine = cursor.line;
-          this.lastTrackedFile = file.path;
-          void this.handleCursorPositionChange(file, cursor.line);
-        }
-      };
-      cm.on('cursorActivity', handleCursorChange);
-      const originalCleanup = this.cursorTrackingCleanup;
-      this.cursorTrackingCleanup = () => {
-        originalCleanup?.();
-        cm.off('cursorActivity', handleCursorChange);
-      };
-    }
+    this.cursorTracker.attach();
   }
 
   onunload() {
+    // Tear down explicit subscriptions first, before detaching views, so
+    // dangling callbacks don't fire against half-torn-down state.
+    this.cursorTracker?.detach();
+    this.ipcListeners.dispose();
+
     if (this.presentationWindow) {
       this.presentationWindow.close();
     }
@@ -1198,6 +672,10 @@ export default class PerspectaSlidesPlugin extends Plugin {
       }
 
       this.presenterWindow = new PresenterWindow();
+      const preloadPath = this.resolvePreloadPath();
+      if (preloadPath) {
+        this.presenterWindow.setPreloadPath(preloadPath);
+      }
       // Create a context-aware resolver that uses the source file path
       const contextAwareResolverForPresenter = this.createPresentationImageResolver(file.path);
       this.presenterWindow.setImagePathResolver(contextAwareResolverForPresenter);
@@ -1271,10 +749,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       this.presentationWindow.setFontWeightsCache(fontWeightsCache);
       
       // Pass Excalidraw SVG cache and failed decompression files to presentation window
-      if (this.excalidrawRenderer) {
-        this.presentationWindow.setExcalidrawSvgCache(this.excalidrawRenderer.getSvgCache());
-        this.presentationWindow.setFailedDecompressionFiles(this.excalidrawRenderer.getFailedDecompressionFiles());
-      }
+      this.excalidrawCoordinator?.attachCaches(this.presentationWindow);
 
       // Sync presentation window slide changes back to presenter window
       this.presentationWindow.setOnSlideChanged((slideIndex: number) => {
@@ -1354,36 +829,34 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
   private async convertToPresentation(file: TFile) {
     try {
-      const content = await this.app.vault.read(file);
-      let newContent = content;
       let hadFrontmatter = false;
       let hadSlides = false;
+      let changed = false;
 
-      // Check if file already has frontmatter
-      if (content.startsWith('---')) {
-        hadFrontmatter = true;
-        // Check if there are slide separators
-        const slideSeparators = content.match(/\n---\n/g);
-        hadSlides = slideSeparators !== null && slideSeparators.length > 0;
-      }
-
-      // If no frontmatter, add minimal frontmatter
-      if (!hadFrontmatter) {
-        newContent = '---\ntheme: default\n---\n\n' + content;
-      }
-
-      // If no slides found, add at least one slide separator and a blank slide
-      if (!hadSlides) {
-        // Ensure content ends with newlines, add slide separator
-        if (!newContent.endsWith('\n\n')) {
-          newContent = newContent.trimEnd() + '\n\n';
+      await this.app.vault.process(file, (content) => {
+        let newContent = content;
+        hadFrontmatter = content.startsWith('---');
+        if (hadFrontmatter) {
+          const slideSeparators = content.match(/\n---\n/g);
+          hadSlides = slideSeparators !== null && slideSeparators.length > 0;
         }
-        newContent += '---\n\n# Slide 1\n\nAdd your content here...';
-      }
 
-      // Write the modified content
-      if (newContent !== content) {
-        await this.app.vault.modify(file, newContent);
+        if (!hadFrontmatter) {
+          newContent = '---\ntheme: default\n---\n\n' + content;
+        }
+
+        if (!hadSlides) {
+          if (!newContent.endsWith('\n\n')) {
+            newContent = newContent.trimEnd() + '\n\n';
+          }
+          newContent += '---\n\n# Slide 1\n\nAdd your content here...';
+        }
+
+        changed = newContent !== content;
+        return newContent;
+      });
+
+      if (changed) {
         new Notice(
           hadFrontmatter && hadSlides
             ? 'File is ready for presentation'
@@ -1852,10 +1325,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       view.setCustomFontCSS(customFontCSS);
       view.setFontWeightsCache(fontWeightsCache);
       // Pass Excalidraw SVG cache and failed decompression files for native rendering
-      if (this.excalidrawRenderer) {
-        view.setExcalidrawSvgCache(this.excalidrawRenderer.getSvgCache());
-        view.setFailedDecompressionFiles(this.excalidrawRenderer.getFailedDecompressionFiles());
-      }
+      this.excalidrawCoordinator?.attachCaches(view);
       view.setPresentation(presentation, theme, file);
       view.setOnSlideSelect((index) => {
         void this.navigateToSlide(index, presentation, file);
@@ -1896,11 +1366,24 @@ export default class PerspectaSlidesPlugin extends Plugin {
       view.setOnSlideMetadataChange((slideIndex, metadata) => {
         void this.updateSlideMetadata(file, slideIndex, metadata);
       });
-      view.setOnPresentationChange((frontmatter, persistent) => {
+      view.setOnPresentationChange((frontmatter, persistent, _domAlreadyLive) => {
         if (persistent) {
+          // For CSS-only changes the live iframe patch (updatePreviewsLive)
+          // fully covers the visual update, and the disk write is only for
+          // persistence — so the editor-change redraw it triggers is always
+          // redundant. We don't rely on event ordering (the persistent event
+          // can arrive before OR after the live one depending on whether the
+          // slider was dragged or clicked): we apply the live patch here
+          // ourselves, then suppress the editor-change redraw. Non-CSS
+          // changes (layout/mode/content) still need the full redraw, so we
+          // only suppress for CSS-only.
+          if (this.isCssOnlyFrontmatterChange(frontmatter)) {
+            this.updatePreviewsLive(file, frontmatter);
+            this.armSuppressEditorChangeRefresh();
+          }
           void this.updatePresentationFrontmatter(file, frontmatter);
         } else {
-          void this.updatePreviewsLive(file, frontmatter);
+          this.updatePreviewsLive(file, frontmatter);
         }
       });
     }
@@ -1917,10 +1400,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       view.setCustomFontCSS(customFontCSS);
       view.setFontWeightsCache(fontWeightsCache);
       // Pass Excalidraw SVG cache and failed decompression files for native rendering
-      if (this.excalidrawRenderer) {
-        view.setExcalidrawSvgCache(this.excalidrawRenderer.getSvgCache());
-        view.setFailedDecompressionFiles(this.excalidrawRenderer.getFailedDecompressionFiles());
-      }
+      this.excalidrawCoordinator?.attachCaches(view);
       if (this.themeLoader) {
         view.setThemeLoader(this.themeLoader);
       }
@@ -2021,7 +1501,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       const content = await this.app.vault.cachedRead(markdownView.file);
       // Use the slide's original index (accounting for filtered-out empty slides)
       const slideOriginalIndex = presentation.slides[index]?.index ?? index;
-      const lineNumber = this.getLineNumberForSlide(content, slideOriginalIndex);
+      const lineNumber = getLineNumberForSlide(content, slideOriginalIndex);
       const editor = markdownView.editor;
 
       // Update lastCursorSlideIndex to prevent feedback loop
@@ -2065,7 +1545,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
 
   private async handleCursorPositionChange(file: TFile, lineNumber: number) {
     const content = await this.app.vault.cachedRead(file);
-    const slideIndex = this.getSlideIndexAtLine(content, lineNumber);
+    const slideIndex = getSlideIndexAtLine(content, lineNumber);
 
     // Only update if slide changed
     if (slideIndex === this.lastCursorSlideIndex) {
@@ -2108,389 +1588,8 @@ export default class PerspectaSlidesPlugin extends Plugin {
     }
   }
 
-  private isSlideSeparator(line: string): boolean {
-    // A slide separator is `---+` (≥3 dashes) followed by optional
-    // whitespace only. Chapter labels used to be carried inline on the
-    // separator line (`----- Foo`), but that prevented Obsidian's Live
-    // Preview from rendering the HR. Chapter labels now live in the
-    // per-slide meta block as `chapter:`. MUST stay in sync with
-    // SlideParser.splitIntoSlideRawContents and splitBodyAtSeparators.
-    return /^-{3,}\s*$/.test(line);
-  }
+  // Slide-chunk parsing/serialisation lives in SlideChunkSerializer.ts.
 
-  /**
-   * Splits a presentation body (markdown after the frontmatter block) into
-   * slide-content chunks and the literal separator lines between them, with
-   * the same semantics as `SlideParser.splitIntoSlideRawContents`:
-   *
-   *   - `---+` (≥3 dashes, only whitespace after) → plain slide separator
-   *   - `-----+ <label>` (≥5 dashes, then text) → named act separator
-   *   - Lines inside ``` / ~~~ fenced code blocks are content, not separators
-   *
-   * Result invariant: `separators.length === slideRawContents.length - 1`
-   * (one separator between each adjacent pair of slide chunks). Each
-   * `separators[i]` is the bare separator line as it appeared in the
-   * source (no surrounding newlines), so callers that re-assemble the body
-   * must add newlines around it.
-   *
-   * Use this helper in any place that previously did
-   * `bodyContent.split(/(\n---+\s*\n)/)` — that regex misses code fences,
-   * named act breaks, and any separator without surrounding blank lines.
-   */
-  private splitBodyAtSeparators(bodyContent: string): {
-    slideRawContents: string[];
-    separators: string[];
-  } {
-    const slideRawContents: string[] = [];
-    const separators: string[] = [];
-    const bodyLines = bodyContent.split('\n');
-    let currentSlideLines: string[] = [];
-    let fenceChar: '`' | '~' | null = null;
-
-    const flush = () => {
-      slideRawContents.push(currentSlideLines.join('\n'));
-      currentSlideLines = [];
-    };
-
-    for (const line of bodyLines) {
-      const trimmed = line.trim();
-      if (fenceChar === null) {
-        if (trimmed.startsWith('```')) {
-          fenceChar = '`';
-          currentSlideLines.push(line);
-          continue;
-        }
-        if (trimmed.startsWith('~~~')) {
-          fenceChar = '~';
-          currentSlideLines.push(line);
-          continue;
-        }
-      } else {
-        if (trimmed.startsWith(fenceChar.repeat(3))) fenceChar = null;
-        currentSlideLines.push(line);
-        continue;
-      }
-      if (/^-{3,}\s*$/.test(line)) {
-        flush();
-        separators.push(line);
-        continue;
-      }
-      currentSlideLines.push(line);
-    }
-    flush();
-    return { slideRawContents, separators };
-  }
-
-  /**
-   * Inverse of `splitBodyAtSeparators`: join slide-content chunks back into
-   * a single body string with separator lines between them.
-   *
-   * Spacing rules around each separator:
-   *
-   *  - **Before the separator**: always a blank line. Markdown reads
-   *    `text\n---` as a Setext H2 (the `---` underlines the preceding text)
-   *    instead of an HR, which is why Obsidian's Live Preview otherwise
-   *    drops the divider. Mandatory.
-   *
-   *  - **After the separator**: depends on what the next chunk starts with:
-   *      * If the next chunk's first non-blank line is a meta-block line
-   *        (matches `key:`), no blank line — the meta block binds tightly
-   *        to the separator.
-   *      * Otherwise (heading, paragraph, list, …) one blank line, so the
-   *        content has visual breathing room and Markdown doesn't fold the
-   *        line into the separator.
-   *
-   * Callers don't have to pre-clean their chunks: leading/trailing blank
-   * lines on chunks are trimmed here.
-   */
-  private joinSlideChunksWithSeparators(
-    chunks: string[],
-    separators: string[]
-  ): string {
-    if (chunks.length === 0) return '';
-    const trim = (s: string) => s.replace(/^\n+/, '').replace(/\n+$/, '');
-    // A meta-block line is a `key: ...` line whose key matches an ASCII
-    // identifier — same pattern parseSlideChunk uses for detection.
-    const startsWithMeta = (chunk: string) =>
-      /^[a-zA-Z][\w-]*\s*:\s*/.test(chunk);
-
-    let body = trim(chunks[0]);
-    for (let i = 1; i < chunks.length; i++) {
-      const separatorLine = separators[i - 1] || '---';
-      const nextChunk = trim(chunks[i]);
-      const afterSeparator = startsWithMeta(nextChunk) ? '\n' : '\n\n';
-      body += '\n\n' + separatorLine + afterSeparator + nextChunk;
-    }
-    return body;
-  }
-
-  /**
-   * Bring a slide-content chunk into canonical shape so that subsequent
-   * meta-block operations have an unambiguous starting point. Without this,
-   * users (or earlier code paths) leave blank lines inside or before the
-   * meta block, and the heuristic meta-block detector ends up classifying
-   * meta lines as content (or vice versa).
-   *
-   * Canonical form:
-   *
-   *     key1: value1
-   *     key2: value2
-   *     ...
-   *     <single blank line>
-   *     content line 1
-   *     content line 2
-   *     ...
-   *
-   * Concretely:
-   *
-   *  - All `key: value` lines from the run at the top of the chunk (where
-   *    "the run" allows interspersed blank lines, so misplaced spacing
-   *    isn't lost) are collected and re-emitted in semantic order:
-   *
-   *      layout, mode, background, opacity, filter, hide-overlay, chapter,
-   *      then any other keys we don't have an explicit slot for, alphabetic.
-   *
-   *  - Keys are lowercased on read; we write them back exactly as in the
-   *    semantic-order table (e.g. `hide-overlay`, not `hideOverlay`) for
-   *    consistency. Unknown keys keep their original capitalisation.
-   *
-   *  - Trailing whitespace on every line is stripped.
-   *
-   *  - Runs of two or more blank lines in the content area collapse to one.
-   *
-   *  - Leading and trailing blank lines of the entire chunk are removed.
-   *
-   *  - If the chunk has no meta block, the leading-blank-line collapse and
-   *    end-trimming still happen.
-   *
-   * Detection of meta lines stops at the first non-blank, non-meta line
-   * (e.g. a heading, list item, paragraph) — everything from that point on
-   * is content. A meta line is `^[a-zA-Z][\w-]*\s*:\s*.*$`; lines that look
-   * like metadata syntactically but aren't recognised keys are still moved
-   * into the meta block so we don't surprise the user by relegating a
-   * one-off `class: foo` to content.
-   */
-  /**
-   * Semantic order used when serialising the meta block back to text.
-   * Keys not in this list are emitted alphabetically after these.
-   */
-  private static readonly META_ORDER = [
-    'layout',
-    'mode',
-    'background',
-    'opacity',
-    'filter',
-    'hide-overlay',
-    'chapter',
-  ];
-
-  /**
-   * Aliases the user (or older versions of this plugin) might have written.
-   * Applied when reading; the output always uses the canonical form on the
-   * right-hand side.
-   */
-  private static readonly META_KEY_ALIASES: Record<string, string> = {
-    hideoverlay: 'hide-overlay',
-  };
-
-  /**
-   * Parse a slide-content chunk into a meta dictionary and a content body.
-   *
-   * Tolerates the kinds of "almost-canonical" formatting humans (and prior
-   * naïve writes) leave behind: leading blank lines, blank lines within the
-   * meta block, trailing whitespace, capitalised keys, mixed key
-   * separators. Anything before the first line that is non-blank and not a
-   * `key: value` pattern is the meta block.
-   *
-   * Returns the meta as a Record keyed by canonical lower-case (with
-   * `hide-overlay` not `hideOverlay`), and the content as a raw string (no
-   * leading/trailing blanks). Companion to `serializeSlideChunk`.
-   */
-  private parseSlideChunk(chunk: string): {
-    meta: Record<string, string>;
-    content: string;
-  } {
-    const lines = chunk.split('\n').map((l) => l.replace(/\s+$/, ''));
-    while (lines.length > 0 && lines[0] === '') lines.shift();
-    while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
-
-    const meta: Record<string, string> = {};
-    let contentStart = 0;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (line === '') continue; // blank inside meta region — tolerated
-      const m = line.match(/^([a-zA-Z][\w-]*)\s*:\s*(.*)$/);
-      if (!m) {
-        contentStart = i;
-        break;
-      }
-      const rawKey = m[1].toLowerCase();
-      const key = PerspectaSlidesPlugin.META_KEY_ALIASES[rawKey] ?? rawKey;
-      meta[key] = m[2];
-      contentStart = i + 1;
-    }
-
-    const contentLines = lines.slice(contentStart);
-    while (contentLines.length > 0 && contentLines[0] === '') contentLines.shift();
-    while (contentLines.length > 0 && contentLines[contentLines.length - 1] === '') {
-      contentLines.pop();
-    }
-    const collapsed: string[] = [];
-    let prevBlank = false;
-    for (const line of contentLines) {
-      const isBlank = line === '';
-      if (isBlank && prevBlank) continue;
-      collapsed.push(line);
-      prevBlank = isBlank;
-    }
-    return { meta, content: collapsed.join('\n') };
-  }
-
-  /**
-   * Serialise a meta dictionary + content body into canonical slide-chunk
-   * form (meta keys in semantic order, single blank line between meta and
-   * content). Companion to `parseSlideChunk`.
-   */
-  private serializeSlideChunk(meta: Record<string, string>, content: string): string {
-    const orderedKeys: string[] = [];
-    for (const k of PerspectaSlidesPlugin.META_ORDER) {
-      if (k in meta) orderedKeys.push(k);
-    }
-    const extras = Object.keys(meta).filter((k) => !PerspectaSlidesPlugin.META_ORDER.includes(k));
-    extras.sort();
-    orderedKeys.push(...extras);
-
-    const metaLines = orderedKeys
-      .filter((k) => meta[k] !== undefined && meta[k] !== '')
-      .map((k) => `${k}: ${meta[k]}`.replace(/\s+$/, ''));
-
-    if (metaLines.length === 0 && content === '') return '';
-    if (metaLines.length === 0) return content;
-    if (content === '') return metaLines.join('\n');
-    return metaLines.join('\n') + '\n\n' + content;
-  }
-
-  /**
-   * Bring a slide-content chunk into canonical shape so that subsequent
-   * meta-block operations have an unambiguous starting point: meta keys
-   * collected and sorted in semantic order, single blank line separating
-   * meta from content, runs of blank lines in content collapsed to one,
-   * trailing whitespace stripped, leading/trailing blank lines removed.
-   *
-   * Used both as a preprocessing step in every meta-mutating operation
-   * (`updateSlideMetadata`, `updateSlideHiddenState`) and standalone by the
-   * "Tidy all slides" command.
-   */
-  private tidySlideChunk(chunk: string): string {
-    const { meta, content } = this.parseSlideChunk(chunk);
-    return this.serializeSlideChunk(meta, content);
-  }
-
-  private findFrontmatterEnd(lines: string[]): number {
-    let inFrontmatter = false;
-    for (let i = 0; i < lines.length; i++) {
-      if (i === 0 && lines[i].trim() === '---') {
-        inFrontmatter = true;
-        continue;
-      }
-      if (inFrontmatter && lines[i].trim() === '---') {
-        return i + 1;
-      }
-    }
-    return 0;
-  }
-
-  private getSlideIndexAtLine(content: string, lineNumber: number): number {
-    const lines = content.split('\n');
-    const frontmatterEnd = this.findFrontmatterEnd(lines);
-
-    // If cursor is in frontmatter, return slide 0
-    if (lineNumber < frontmatterEnd) {
-      return 0;
-    }
-
-    // Count slide separators before the cursor line, ignoring those inside code blocks
-    let slideIndex = 0;
-    let inCodeBlock = false;
-
-    for (let i = frontmatterEnd; i <= lineNumber && i < lines.length; i++) {
-      const line = lines[i];
-
-      // Track code block state (``` at start of line)
-      if (line.startsWith('```')) {
-        inCodeBlock = !inCodeBlock;
-        continue;
-      }
-
-      // Only count separators outside code blocks
-      if (!inCodeBlock && this.isSlideSeparator(line)) {
-        slideIndex++;
-      }
-    }
-
-    return slideIndex;
-  }
-
-  private isSlideMetadataLine(line: string): boolean {
-    const trimmed = line.trim();
-    if (trimmed === '') {
-      return false;
-    }
-    // Match patterns like "layout: title", "mode: dark", "background: image.jpg", "opacity: 50%", "class: custom"
-    return /^(layout|mode|background|opacity|class):\s*.+$/i.test(trimmed);
-  }
-
-  private getLineNumberForSlide(content: string, slideIndex: number): number {
-    const lines = content.split('\n');
-    const frontmatterEnd = this.findFrontmatterEnd(lines);
-
-    // Helper to skip metadata block and blank lines, return first content line
-    const skipToContent = (startLine: number): number => {
-      let i = startLine;
-      // Skip blank lines first
-      while (i < lines.length && lines[i].trim() === '') {
-        i++;
-      }
-      // Skip metadata lines (layout:, mode:, etc.)
-      while (i < lines.length && this.isSlideMetadataLine(lines[i])) {
-        i++;
-      }
-      // Skip any blank lines after metadata
-      while (i < lines.length && lines[i].trim() === '') {
-        i++;
-      }
-      return i < lines.length ? i : startLine;
-    };
-
-    // Slide 0 starts right after frontmatter
-    if (slideIndex === 0) {
-      return skipToContent(frontmatterEnd);
-    }
-
-    // Find the nth slide separator, ignoring those inside code blocks
-    let separatorCount = 0;
-    let inCodeBlock = false;
-
-    for (let i = frontmatterEnd; i < lines.length; i++) {
-      const line = lines[i];
-
-      // Track code block state (``` at start of line)
-      if (line.startsWith('```')) {
-        inCodeBlock = !inCodeBlock;
-        continue;
-      }
-
-      // Only count separators outside code blocks
-      if (!inCodeBlock && this.isSlideSeparator(line)) {
-        separatorCount++;
-        if (separatorCount === slideIndex) {
-          return skipToContent(i + 1);
-        }
-      }
-    }
-
-    return frontmatterEnd;
-  }
 
   private async startPresentation(file: TFile) {
     await this.startPresentationAtSlide(file, 0);
@@ -2528,10 +1627,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       this.presentationWindow.setFontWeightsCache(fontWeightsCache);
 
       // Pass Excalidraw SVG cache and failed decompression files to presentation window
-      if (this.excalidrawRenderer) {
-        this.presentationWindow.setExcalidrawSvgCache(this.excalidrawRenderer.getSvgCache());
-        this.presentationWindow.setFailedDecompressionFiles(this.excalidrawRenderer.getFailedDecompressionFiles());
-      }
+      this.excalidrawCoordinator?.attachCaches(this.presentationWindow);
 
       // Sync presentation window slide changes back to presenter window
       this.presentationWindow.setOnSlideChanged((slideIndex: number) => {
@@ -2611,15 +1707,50 @@ export default class PerspectaSlidesPlugin extends Plugin {
   }
 
   /**
+   * Invalidate every font CSS cache and re-render every open surface.
+   * Called by Settings → Rebuild font cache so changes show up immediately
+   * in sidebars, presentation window, and presenter window without the
+   * user having to re-open anything.
+   */
+  async refreshAllForFontCacheChange(): Promise<void> {
+    this.fontResolver?.invalidateAll();
+
+    const activeFile = this.app.workspace.getActiveFile();
+    if (activeFile && activeFile.extension === 'md') {
+      await this.updateSidebars(activeFile);
+    }
+
+    if (this.presentationWindow?.isOpen()) {
+      await this.refreshPresentationWindow();
+    }
+
+    if (this.presenterWindow?.isOpen() && this.currentPresentationFile) {
+      // Presenter has no incremental update path — close + reopen to pick
+      // up the new font CSS. Cheaper than building a full updateContent
+      // pipeline for the presenter just for this case.
+      const content = await this.app.vault.read(this.currentPresentationFile);
+      const presentation = this.parser.parse(content);
+      const theme = this.getThemeByName(
+        presentation.frontmatter.theme || this.settings.defaultTheme
+      );
+      const customFontCSS = await this.getCustomFontCSS(presentation.frontmatter);
+      this.presenterWindow.setCustomFontCSS(customFontCSS);
+      this.presenterWindow.setFontWeightsCache(this.buildFontWeightsCache());
+      this.presenterWindow.close();
+      await this.presenterWindow.open(presentation, theme || null, this.currentPresentationFile, 0);
+    }
+  }
+
+  /**
     * Re-render the presentation window and editor view (used when async conversions complete)
     * Re-parses and re-renders current slides with updated cache
     */
   private async rerenderPresentationWindow() {
-    this.logExcalidraw(`rerenderPresentationWindow() called`);
+    this.excalidrawCoordinator?.log(`rerenderPresentationWindow() called`);
     
     // Debounce re-renders to avoid flickering from multiple conversions
     if (this.rerenderDebounceTimer) {
-      this.logExcalidraw(`⏱️ Re-render already pending, skipping duplicate`);
+      this.excalidrawCoordinator?.log(`⏱️ Re-render already pending, skipping duplicate`);
       return;
     }
     
@@ -2627,7 +1758,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
     // then fall back to lastUsedSlideDocument (editor view)
     const targetFile = this.currentPresentationFile || this.lastUsedSlideDocument;
     if (!targetFile) {
-      this.logExcalidraw(`❌ No presentation file currently in use`);
+      this.excalidrawCoordinator?.log(`❌ No presentation file currently in use`);
       return;
     }
 
@@ -2638,7 +1769,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
       try {
         // Try to re-render fullscreen presentation window if open
         if (this.presentationWindow?.isOpen() && this.currentPresentationFile) {
-          this.logExcalidraw(`✅ Triggering fullscreen presentation window re-render`);
+          this.excalidrawCoordinator?.log(`✅ Triggering fullscreen presentation window re-render`);
           const content = await this.app.vault.read(this.currentPresentationFile);
           await this.updatePresentationWindowWithContent(this.currentPresentationFile, content);
         }
@@ -2653,7 +1784,7 @@ export default class PerspectaSlidesPlugin extends Plugin {
           // Check if this view is showing the target file (access private file property)
           const viewFile = (view as any).file as TFile | null;
           if (viewFile?.path === targetFile.path) {
-            this.logExcalidraw(`✅ Triggering editor view re-render for: ${targetFile.path}`);
+            this.excalidrawCoordinator?.log(`✅ Triggering editor view re-render for: ${targetFile.path}`);
             // Force re-render by calling private render() method
             (view as any).render();
           }
@@ -2670,427 +1801,178 @@ export default class PerspectaSlidesPlugin extends Plugin {
           const viewPresentation = view.getPresentation();
           // Thumbnail navigator doesn't expose its file directly, so we re-render if its presentation is loaded
           if (viewPresentation) {
-            this.logExcalidraw(`✅ Triggering thumbnail navigator re-render for: ${targetFile.path}`);
+            this.excalidrawCoordinator?.log(`✅ Triggering thumbnail navigator re-render for: ${targetFile.path}`);
             // Force re-render by calling private render() method
             (view as any).render();
           }
         }
 
-        this.logExcalidraw(`✅ Re-render complete`);
+        this.excalidrawCoordinator?.log(`✅ Re-render complete`);
       } catch (e) {
-        this.errorExcalidraw(`Error during re-render:`, e);
+        this.excalidrawCoordinator?.error(`Error during re-render:`, e);
       }
     }, 100); // 100ms delay to batch conversions
   }
 
+  // ---------------------------------------------------------------------------
+  // Slide mutations. The content transforms live in SlideMutationService; these
+  // wrappers own the view reactions (navigation, notices, sidebar refresh,
+  // presentation-cache invalidation) that must stay in the plugin.
+  // ---------------------------------------------------------------------------
+
   async reorderSlides(file: TFile, fromIndex: number, toIndex: number) {
-    const content = await this.app.vault.read(file);
-    const presentation = this.parser.parse(content);
-
-    if (
-      fromIndex < 0 ||
-      fromIndex >= presentation.slides.length ||
-      toIndex < 0 ||
-      toIndex >= presentation.slides.length ||
-      fromIndex === toIndex
-    ) {
-      return;
-    }
-
-    // Prevent reordering the auto-generated footnotes slide (has footnotes but no elements)
-    const lastSlideIndex = presentation.slides.length - 1;
-    const lastSlide = presentation.slides[lastSlideIndex];
-    const isAutoGeneratedFootnotesSlide =
-      lastSlide.elements.length === 0 && lastSlide.footnotes && lastSlide.footnotes.length > 0;
-    if (
-      isAutoGeneratedFootnotesSlide &&
-      (fromIndex === lastSlideIndex || toIndex === lastSlideIndex)
-    ) {
+    const result = await this.slideMutations.reorder(file, fromIndex, toIndex);
+    if (result.status === 'footnotes-slide') {
       new Notice('Cannot reorder the auto-generated footnotes slide - it must remain at the end');
       return;
     }
-
-    // Get the raw content of each slide
-    const slideContents: string[] = [];
-    const lines = content.split('\n');
-    const currentSlideStart = 0;
-    let inFrontmatter = false;
-    let frontmatterEnd = 0;
-
-    // Find where frontmatter ends
-    for (let i = 0; i < lines.length; i++) {
-      if (i === 0 && lines[i].trim() === '---') {
-        inFrontmatter = true;
-        continue;
-      }
-      if (inFrontmatter && lines[i].trim() === '---') {
-        frontmatterEnd = i + 1;
-        break;
-      }
+    if (result.status !== 'reordered') {
+      return;
     }
-
-    // Extract frontmatter
-    const frontmatter = lines.slice(0, frontmatterEnd).join('\n');
-    const bodyContent = lines.slice(frontmatterEnd).join('\n');
-
-    // Split into slide-content chunks + separator lines with the same
-    // semantics as the parser (`splitIntoSlideRawContents`). Code-fence and
-    // labeled-act-break aware. See `splitBodyAtSeparators` for the contract.
-    const { slideRawContents, separators } = this.splitBodyAtSeparators(bodyContent);
-
-    // Reorder slides. Separators stay at their original positions — only
-    // the slide contents between them are permuted. This preserves named
-    // act breaks (`----- Chapter`) so that chapter boundaries don't shift
-    // when a regular slide is dragged across them.
-    const [movedSlide] = slideRawContents.splice(fromIndex, 1);
-    slideRawContents.splice(toIndex, 0, movedSlide);
-
-    // Reconstruct the body. Always frames separators with `\n\n` on both
-    // sides so the HR renders correctly in Obsidian's Live Preview — without
-    // a blank line above the `---`, Markdown reads `text\n---` as a Setext
-    // H2 instead of an HR.
-    const newBody = this.joinSlideChunksWithSeparators(slideRawContents, separators);
-    const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
-
-    await this.app.vault.modify(file, newContent);
     new Notice(`Moved slide ${fromIndex + 1} to position ${toIndex + 1}`);
-
-    // Navigate to the moved slide at its new position
-    const newPresentation = this.parser.parse(newContent);
-    await this.navigateToSlide(toIndex, newPresentation, file);
+    const newPresentation = this.parser.parse(result.content);
+    await this.navigateToSlide(result.toIndex, newPresentation, file);
   }
 
   async addSlideAtEnd(file: TFile) {
-    const content = await this.app.vault.read(file);
-
-    // Find the first footnote definition in the document (if any)
-    // Footnote definitions look like: [^id]: content
-    const lines = content.split('\n');
-    let firstFootnoteLineIndex = -1;
-
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].match(/^\[\^([^\]]+)\]:\s*(.*)$/)) {
-        firstFootnoteLineIndex = i;
-        break;
-      }
+    const { content } = await this.slideMutations.appendSlide(file);
+    if (!content) {
+      return;
     }
-
-    let newContent: string;
-    let newSlideIndex: number;
-
-    if (firstFootnoteLineIndex >= 0) {
-      // Found footnote definitions - insert new slide BEFORE them
-      // Count empty lines before first footnote
-      let emptyLinesBefore = 0;
-      for (let i = firstFootnoteLineIndex - 1; i >= 0; i--) {
-        if (lines[i].trim() === '') {
-          emptyLinesBefore++;
-        } else {
-          break;
-        }
-      }
-
-      // Remove existing empty lines and add exactly 5 (or more if there were already more)
-      const targetEmptyLines = Math.max(5, emptyLinesBefore);
-      const contentEndIndex = firstFootnoteLineIndex - emptyLinesBefore;
-      const beforeFootnotes = lines.slice(0, contentEndIndex).join('\n').trimEnd();
-      const footnoteDefinitions = lines.slice(firstFootnoteLineIndex).join('\n');
-
-      // Build new content with new slide and proper spacing
-      // Must insert --- separator BEFORE footnote definitions so they're not part of the new slide
-      // beforeFootnotes already ends with the last slide's --- separator, so just add the new slide content
-      const emptyLinesPadding = '\n'.repeat(targetEmptyLines);
-      newContent =
-        beforeFootnotes +
-        '\n\nlayout: default\n\n# New Slide\n\nAdd your content here...' +
-        emptyLinesPadding +
-        '\n---\n\n' +
-        footnoteDefinitions;
-
-      // Parse to get the new slide index
-      const tempPresentation = this.parser.parse(newContent);
-      newSlideIndex = tempPresentation.slides.length - 1;
-    } else {
-      // No footnote definitions, append at end as usual
-      newContent =
-        content.trimEnd() +
-        '\n\n---\n\nlayout: default\n\n# New Slide\n\nAdd your content here...\n';
-
-      // Parse to get the new slide index
-      const tempPresentation = this.parser.parse(newContent);
-      newSlideIndex = tempPresentation.slides.length - 1;
-    }
-
-    // Modify the file
-    await this.app.vault.modify(file, newContent);
-
-    // Navigate to the new slide (this handles cursor positioning, navigator selection, etc.)
-    const tempPresentation = this.parser.parse(newContent);
+    const tempPresentation = this.parser.parse(content);
+    const newSlideIndex = tempPresentation.slides.length - 1;
     await this.navigateToSlide(newSlideIndex, tempPresentation, file);
   }
 
-  /**
-   * Run `tidySlideChunk` on every slide in the file. Frontmatter is left
-   * untouched. Separator lines are preserved. Used by the
-   * "Tidy all slides" command — useful for cleaning up imported decks or
-   * a file that's been hand-edited into an inconsistent shape.
-   */
   async tidyAllSlides(file: TFile) {
-    const content = await this.app.vault.read(file);
-    const lines = content.split('\n');
-
-    // Find frontmatter end (same logic as elsewhere).
-    let inFrontmatter = false;
-    let frontmatterEnd = 0;
-    for (let i = 0; i < lines.length; i++) {
-      if (i === 0 && lines[i].trim() === '---') {
-        inFrontmatter = true;
-        continue;
-      }
-      if (inFrontmatter && lines[i].trim() === '---') {
-        frontmatterEnd = i + 1;
-        break;
-      }
-    }
-
-    const frontmatter = lines.slice(0, frontmatterEnd).join('\n');
-    const bodyContent = lines.slice(frontmatterEnd).join('\n');
-
-    const { slideRawContents, separators } = this.splitBodyAtSeparators(bodyContent);
-    const tidied = slideRawContents.map((chunk) => this.tidySlideChunk(chunk));
-
-    const newBody = this.joinSlideChunksWithSeparators(tidied, separators);
-    const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
-
-    if (newContent === content) {
+    const result = await this.slideMutations.tidyAll(file);
+    if (result.status === 'already-tidy') {
       new Notice('All slides are already tidy.');
       return;
     }
-
-    await this.app.vault.modify(file, newContent);
-    new Notice(`Tidied ${tidied.length} slide${tidied.length === 1 ? '' : 's'}.`);
-    this.updateSidebarsIncrementalWithContent(file, newContent);
+    new Notice(`Tidied ${result.count} slide${result.count === 1 ? '' : 's'}.`);
+    if (result.content) {
+      this.updateSidebarsIncrementalWithContent(file, result.content);
+    }
   }
 
   async updateSlideMetadata(file: TFile, slideIndex: number, metadata: Record<string, any>) {
-    const content = await this.app.vault.read(file);
-    const lines = content.split('\n');
-
-    // Find frontmatter end
-    let inFrontmatter = false;
-    let frontmatterEnd = 0;
-    for (let i = 0; i < lines.length; i++) {
-      if (i === 0 && lines[i].trim() === '---') {
-        inFrontmatter = true;
-        continue;
-      }
-      if (inFrontmatter && lines[i].trim() === '---') {
-        frontmatterEnd = i + 1;
-        break;
-      }
+    const { content } = await this.slideMutations.updateMetadata(file, slideIndex, metadata);
+    if (content) {
+      this.updateSidebarsIncrementalWithContent(file, content);
     }
-
-    const frontmatter = lines.slice(0, frontmatterEnd).join('\n');
-    const bodyContent = lines.slice(frontmatterEnd).join('\n');
-
-    const { slideRawContents, separators } = this.splitBodyAtSeparators(bodyContent);
-
-    if (slideIndex < 0 || slideIndex >= slideRawContents.length) {
-      return;
-    }
-
-    // Parse → mutate → serialise. Going through `parseSlideChunk` gives us
-    // a tidied meta dictionary regardless of how messy the on-disk format
-    // was (blank lines inside the meta block, unsorted keys, mixed casing,
-    // …). This is the fix for the longstanding "blank line turns meta into
-    // content" bug. Output goes through `serializeSlideChunk`, which emits
-    // keys in semantic order with exactly one blank line before content.
-    const { meta, content: slideContent } = this.parseSlideChunk(slideRawContents[slideIndex]);
-
-    for (const [key, value] of Object.entries(metadata)) {
-      const writeKey = key === 'hideOverlay' ? 'hide-overlay' : key;
-      if (value === undefined || value === null || value === '') {
-        delete meta[writeKey];
-        delete meta[key]; // remove any alias variant too
-        continue;
-      }
-      if (typeof value === 'boolean') {
-        meta[writeKey] = value ? 'true' : 'false';
-      } else if (typeof value === 'number') {
-        if (key === 'backgroundOpacity') {
-          meta['opacity'] = `${Math.round(value * 100)}%`;
-        } else {
-          meta[writeKey] = String(value);
-        }
-      } else {
-        meta[writeKey] = String(value);
-      }
-    }
-
-    slideRawContents[slideIndex] = this.serializeSlideChunk(meta, slideContent);
-
-    const newBody = this.joinSlideChunksWithSeparators(slideRawContents, separators);
-    const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
-
-    await this.app.vault.modify(file, newContent);
-    this.updateSidebarsIncrementalWithContent(file, newContent);
   }
 
   async updateSlideHiddenState(file: TFile, slideIndex: number, hidden: boolean) {
-    const content = await this.app.vault.read(file);
-    const lines = content.split('\n');
-
-    // Find frontmatter end
-    let inFrontmatter = false;
-    let frontmatterEnd = 0;
-    for (let i = 0; i < lines.length; i++) {
-      if (i === 0 && lines[i].trim() === '---') {
-        inFrontmatter = true;
-        continue;
-      }
-      if (inFrontmatter && lines[i].trim() === '---') {
-        frontmatterEnd = i + 1;
-        break;
-      }
-    }
-
-    const frontmatter = lines.slice(0, frontmatterEnd).join('\n');
-    const bodyContent = lines.slice(frontmatterEnd).join('\n');
-
-    const { slideRawContents, separators } = this.splitBodyAtSeparators(bodyContent);
-
-    if (slideIndex < 0 || slideIndex >= slideRawContents.length) {
-      return;
-    }
-
-    // Parse → mutate the `layout` value → serialise. The `(hidden)` marker
-    // is a suffix on the layout value, so we touch that single key and
-    // leave everything else (including any blank-lines-inside-meta the user
-    // may have left behind) to be tidied implicitly.
-    const { meta, content: slideContent } = this.parseSlideChunk(slideRawContents[slideIndex]);
-
-    if (hidden) {
-      const currentLayout = (meta.layout ?? '').trim();
-      if (currentLayout === '') {
-        meta.layout = '(hidden)';
-      } else if (!currentLayout.includes('(hidden)')) {
-        meta.layout = `${currentLayout} (hidden)`;
-      }
-      // else: already hidden, nothing to do
-    } else {
-      if (meta.layout !== undefined) {
-        const cleaned = meta.layout.replace(/\s*\(hidden\)\s*/, '').trim();
-        if (cleaned === '') {
-          delete meta.layout;
-        } else {
-          meta.layout = cleaned;
-        }
-      }
-    }
-
-    slideRawContents[slideIndex] = this.serializeSlideChunk(meta, slideContent);
-
-    const newBody = this.joinSlideChunksWithSeparators(slideRawContents, separators);
-    const newContent = frontmatter + (frontmatter ? '\n' : '') + newBody;
-
-    // Clear presentation cache to trigger full re-render
-    // (dynamic background colors depend on visible slide count, so we need full recalc)
+    // Clear presentation cache to trigger full re-render (dynamic background
+    // colors depend on visible slide count, so we need a full recalc).
     this.presentationCache = null;
     this.cachedFilePath = null;
-
-    await this.app.vault.modify(file, newContent);
-    // vault.modify triggers editor-change event which calls debounceUpdateSidebarsWithContent
-    // No need to call updateSidebars explicitly
+    await this.slideMutations.setHidden(file, slideIndex, hidden);
+    // vault.process triggers the editor-change event which calls
+    // debounceUpdateSidebarsWithContent — no explicit refresh needed.
   }
 
   async updatePresentationFrontmatter(file: TFile, updates: Record<string, any>) {
-    const content = await this.app.vault.read(file);
-    const lines = content.split('\n');
+    await this.slideMutations.updateFrontmatter(file, updates);
+    // vault.process triggers the editor-change event which handles updates
+    // with debouncing.
+  }
 
-    // Find frontmatter boundaries
-    let hasFrontmatter = false;
-    let frontmatterStart = -1;
-    let frontmatterEnd = -1;
-
-    for (let i = 0; i < lines.length; i++) {
-      if (i === 0 && lines[i].trim() === '---') {
-        hasFrontmatter = true;
-        frontmatterStart = 0;
-        continue;
-      }
-      if (hasFrontmatter && frontmatterStart >= 0 && lines[i].trim() === '---') {
-        frontmatterEnd = i;
-        break;
-      }
+  /**
+   * Arm the one-shot suppression of the next editor-change sidebar refresh.
+   * Call this right before persisting an inspector-driven change whose DOM
+   * effect was already applied via updatePreviewsLive. The flag auto-clears
+   * after 400ms so it can never swallow a later genuine edit if the
+   * expected editor-change never arrives.
+   */
+  private armSuppressEditorChangeRefresh() {
+    this.suppressNextEditorChangeRefresh = true;
+    if (this.suppressEditorChangeTimer) {
+      clearTimeout(this.suppressEditorChangeTimer);
     }
+    this.suppressEditorChangeTimer = setTimeout(() => {
+      this.clearSuppressEditorChangeRefresh();
+    }, 400);
+  }
 
-    // Parse existing frontmatter
-    const existingFM: Record<string, string> = {};
-    if (hasFrontmatter && frontmatterEnd > frontmatterStart) {
-      for (let i = frontmatterStart + 1; i < frontmatterEnd; i++) {
-        const line = lines[i];
-        const colonIndex = line.indexOf(':');
-        if (colonIndex > 0) {
-          const key = line.slice(0, colonIndex).trim();
-          let value = line.slice(colonIndex + 1).trim();
-          // Remove quotes
-          if (
-            (value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))
-          ) {
-            value = value.slice(1, -1);
-          }
-          existingFM[key] = value;
-        }
-      }
+  private clearSuppressEditorChangeRefresh() {
+    this.suppressNextEditorChangeRefresh = false;
+    if (this.suppressEditorChangeTimer) {
+      clearTimeout(this.suppressEditorChangeTimer);
+      this.suppressEditorChangeTimer = null;
     }
+  }
 
-    // Merge updates
-    for (const [key, value] of Object.entries(updates)) {
-      // Convert camelCase to kebab-case for YAML
-      const yamlKey = key
-        .replace(/([A-Z])/g, '-$1')
-        .toLowerCase()
-        .replace(/^-/, '');
+  /**
+   * Frontmatter keys whose effect is entirely carried by the
+   * frontmatter-derived `<style>` blocks (CSS custom properties, heading
+   * color overrides, font-scale). Changing only these can be applied to
+   * live iframes by patching CSS, with no DOM rebuild and no flicker.
+   * Keys NOT listed here (layout, mode, content, theme, aspectRatio, …)
+   * change DOM structure or body classes and need a full rebuild.
+   */
+  private static readonly CSS_ONLY_FRONTMATTER_KEYS = new Set([
+    // Typography (fonts, sizes, scales)
+    'titleFont',
+    'bodyFont',
+    'headerFont',
+    'footerFont',
+    'titleFontWeight',
+    'bodyFontWeight',
+    'headerFontWeight',
+    'footerFontWeight',
+    'titleFontSize',
+    'bodyFontSize',
+    'headerFontSize',
+    'footerFontSize',
+    'fontSizeOffset',
+    'textScale',
+    'lineHeight',
+    // Spacing & margins
+    'headlineSpacingBefore',
+    'headlineSpacingAfter',
+    'listItemSpacing',
+    'headerTop',
+    'footerBottom',
+    'titleTop',
+    'contentTop',
+    'contentLeft',
+    'contentRight',
+    'contentWidth',
+    // Theme colors (mapped to :root CSS vars + heading-color overrides in
+    // generateCSSVariables / generateHeadingColorOverrides — both part of
+    // generateLiveStyleUpdate, so they patch in place). NOTE: `mode` is NOT
+    // here — it toggles the body light/dark class, which a CSS-var patch
+    // can't change, so it must keep the full rebuild path.
+    'lightBackground',
+    'darkBackground',
+    'lightBodyText',
+    'darkBodyText',
+    'lightTitleText',
+    'darkTitleText',
+    'lightHeaderText',
+    'darkHeaderText',
+    'lightFooterText',
+    'darkFooterText',
+  ]);
 
-      if (value === undefined || value === null || value === '') {
-        delete existingFM[yamlKey];
-        delete existingFM[key];
-      } else if (typeof value === 'boolean') {
-        existingFM[yamlKey] = value ? 'true' : 'false';
-      } else if (Array.isArray(value)) {
-        // Serialize arrays as comma-separated values
-        existingFM[yamlKey] = value.join(', ');
-      } else {
-        existingFM[yamlKey] = String(value);
-      }
+  private isCssOnlyFrontmatterChange(updates: Record<string, unknown>): boolean {
+    const keys = Object.keys(updates);
+    if (keys.length === 0) {
+      return false;
     }
-
-    // Build new frontmatter
-    const fmLines = ['---'];
-    for (const [key, value] of Object.entries(existingFM)) {
-      // Quote values that need it
-      if (value.includes(':') || value.includes('#') || value.startsWith(' ')) {
-        fmLines.push(`${key}: "${value}"`);
-      } else {
-        fmLines.push(`${key}: ${value}`);
-      }
-    }
-    fmLines.push('---');
-
-    // Get body content
-    const bodyStart = hasFrontmatter ? frontmatterEnd + 1 : 0;
-    const bodyLines = lines.slice(bodyStart);
-
-    // Reconstruct document
-    const newContent = fmLines.join('\n') + '\n' + bodyLines.join('\n');
-
-    await this.app.vault.modify(file, newContent);
-    // Note: No explicit updateSidebars call needed here - the file modification
-    // triggers the editor-change event which handles the update with debouncing
+    return keys.every((k) => PerspectaSlidesPlugin.CSS_ONLY_FRONTMATTER_KEYS.has(k));
   }
 
   private updatePreviewsLive(file: TFile, updates: Record<string, any>) {
+    // CSS-only changes (font sizes/scales, spacing, margins, colors, font
+    // families) affect only the frontmatter-derived <style> blocks — these
+    // can be patched inside the live iframes without a reload (no flicker).
+    // Anything that changes DOM structure or body classes (layout, mode,
+    // content) needs a full slide rebuild.
+    const cssOnly = this.isCssOnlyFrontmatterChange(updates);
+
     // Update all views without writing to disk
     const thumbnailLeaves = this.app.workspace.getLeavesOfType(THUMBNAIL_VIEW_TYPE);
     for (const leaf of thumbnailLeaves) {
@@ -3100,6 +1982,12 @@ export default class PerspectaSlidesPlugin extends Plugin {
       }
       const presentation = view.getPresentation();
       if (presentation) {
+        // patchLiveStyles also applies the frontmatter mutation; fall back
+        // to a full rebuild if it can't patch (iframe not ready) or the
+        // change isn't CSS-only.
+        if (cssOnly && view.patchLiveStyles(updates)) {
+          continue;
+        }
         Object.assign(presentation.frontmatter, updates);
         view.updateSlides(
           Array.from({ length: presentation.slides.length }, (_, i) => i),
@@ -3116,6 +2004,9 @@ export default class PerspectaSlidesPlugin extends Plugin {
       }
       const presentation = view.getPresentation();
       if (presentation) {
+        if (cssOnly && view.patchLiveStyles(updates)) {
+          continue;
+        }
         Object.assign(presentation.frontmatter, updates);
         view.updateCurrentSlideOnly();
       }
@@ -3125,8 +2016,28 @@ export default class PerspectaSlidesPlugin extends Plugin {
       const presentation = this.presentationWindow.getPresentation();
       if (presentation) {
         Object.assign(presentation.frontmatter, updates);
-        // Trigger a re-render of the current slide in the window
-        void this.presentationWindow.updateContent(presentation, this.currentTheme || null);
+        void (async () => {
+          // CSS-only changes can be patched into the external window's slide
+          // iframes in place (no reload, no flicker), mirroring the in-app
+          // preview. Fall back to a full updateContent only when the patch
+          // can't apply or the change isn't CSS-only.
+          if (cssOnly) {
+            const patched = await this.presentationWindow!.patchLiveStyles(
+              presentation,
+              this.currentTheme || null
+            );
+            if (patched) {
+              return;
+            }
+          }
+          // Refresh the font CSS too — frontmatter font changes won't take
+          // effect in the window otherwise, because updateContent reuses the
+          // window's stored customFontCSS.
+          const css = await this.getCustomFontCSS(presentation.frontmatter);
+          this.presentationWindow!.setCustomFontCSS(css);
+          this.presentationWindow!.setFontWeightsCache(this.buildFontWeightsCache());
+          await this.presentationWindow!.updateContent(presentation, this.currentTheme || null);
+        })();
       }
     }
   }
@@ -3146,100 +2057,21 @@ export default class PerspectaSlidesPlugin extends Plugin {
   }
 
   /**
-   * Generate @font-face CSS for cached fonts used in the presentation
-   * Uses base64 data URLs for iframe compatibility
+   * Generate @font-face CSS for cached fonts used in the presentation.
+   * Delegates to DeckFontResolver, which memoizes the result by
+   * (theme, font cache revision, role families, role weights).
+   * Hot UI paths (sidebar refresh, external-window updates) get a cache
+   * hit and avoid re-reading + re-base64-encoding font binaries.
    */
   async getCustomFontCSS(frontmatter: PresentationFrontmatter): Promise<string> {
-    const cssRules: string[] = [];
-    const debug = this.debugService;
-
-    // First, check if using a custom theme with bundled fonts
+    if (!this.fontResolver) {
+      this.debugService.warn('font-handling', 'DeckFontResolver not initialized');
+      return '';
+    }
     const themeName = frontmatter.theme || this.settings.defaultTheme;
-    const theme = this.getThemeByName(themeName);
-
-    if (theme && !theme.isBuiltIn && this.themeLoader) {
-      // Load fonts from the custom theme's fonts/ folder
-      const themeFontCSS = await this.themeLoader.generateThemeFontCSS(theme);
-      if (themeFontCSS) {
-        debug.log('font-handling', `Added theme font CSS (${themeName})`);
-        cssRules.push(themeFontCSS);
-      }
-    }
-
-    // Check for any fonts from the global font cache
-    // (e.g., if frontmatter overrides the theme's fonts with other cached fonts)
-    if (this.fontManager) {
-      const fontsToCheck = [
-        frontmatter.titleFont,
-        frontmatter.bodyFont,
-        frontmatter.headerFont,
-        frontmatter.footerFont,
-      ].filter(Boolean) as string[];
-
-      debug.log('font-handling', `Checking fonts for CSS generation: ${fontsToCheck.join(', ')}`);
-
-      // Deduplicate font names and collect ALL weights for each font across all roles
-      const uniqueFonts = [...new Set(fontsToCheck)];
-
-      for (const fontName of uniqueFonts) {
-        const isCached = this.fontManager.isCached(fontName);
-        debug.log('font-handling', `Font "${fontName}" cached: ${isCached}`);
-
-        if (isCached) {
-          // Collect all used weights for this font across ALL roles it's used in
-          const usedWeights = new Set<number>();
-
-          if (fontName === frontmatter.titleFont) {
-            // Add title weight (default 700 if not specified)
-            usedWeights.add(frontmatter.titleFontWeight ?? 700);
-          }
-          if (fontName === frontmatter.bodyFont) {
-            // Add body weight (default 400 if not specified)
-            const bodyWeight = frontmatter.bodyFontWeight ?? 400;
-            usedWeights.add(bodyWeight);
-            // IMPORTANT: Always include weight 700 for body font to support <strong> and <b> tags
-            // (unless body font weight is already 700)
-            if (bodyWeight !== 700) {
-              usedWeights.add(700);
-            }
-          }
-          if (fontName === frontmatter.headerFont) {
-            // Add header weight (default 400 if not specified)
-            usedWeights.add(frontmatter.headerFontWeight ?? 400);
-          }
-          if (fontName === frontmatter.footerFont) {
-            // Add footer weight (default 400 if not specified)
-            usedWeights.add(frontmatter.footerFontWeight ?? 400);
-          }
-
-          // If no specific weight is used for this font, include all available weights
-          // (this ensures the font is available even if weight selection isn't specified)
-          const weightsToInclude = usedWeights.size > 0 ? Array.from(usedWeights) : undefined;
-
-          const css = await this.fontManager.generateFontFaceCSS(fontName, weightsToInclude);
-          if (css) {
-            debug.log(
-              'font-handling',
-              `Generated @font-face CSS for "${fontName}" (${css.length} bytes)${weightsToInclude ? ` with weights [${weightsToInclude.join(', ')}]` : ' with all available weights'}`
-            );
-            cssRules.push(css);
-          } else {
-            debug.warn('font-handling', `Failed to generate CSS for cached font "${fontName}"`);
-          }
-        } else {
-          debug.warn('font-handling', `Font "${fontName}" not found in cache`);
-        }
-      }
-    } else {
-      debug.warn('font-handling', 'FontManager not initialized');
-    }
-
-    const result = cssRules.join('\n');
-    debug.log(
-      'font-handling',
-      `Total custom font CSS: ${result.length} bytes, ${cssRules.length} rules`
-    );
-    return result;
+    const theme = this.getThemeByName(themeName) ?? null;
+    const resolved = await this.fontResolver.resolve({ frontmatter, theme });
+    return resolved.faceCSS;
   }
 
   /**

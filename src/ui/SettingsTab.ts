@@ -11,14 +11,19 @@
  * @module ui/SettingsTab
  */
 
-import type { App } from 'obsidian';
-import { PluginSettingTab, Setting, Notice, setIcon, TFolder, Modal } from 'obsidian';
+import {
+  type App,
+  PluginSettingTab,
+  Setting,
+  Notice,
+  setIcon,
+  TFolder,
+  Modal,
+} from 'obsidian';
 import type PerspectaSlidesPlugin from '../../main';
 import { renderChangelogToContainer } from '../changelog';
-import { getThemeNames } from '../themes';
 import type { ContentMode } from '../types';
-import { Theme } from '../types';
-import { FontManager, CachedFont } from '../utils/FontManager';
+import { FontManager } from '../utils/FontManager';
 import { FontDiscoveryModal } from './FontDiscoveryModal';
 
 type SettingsTabId =
@@ -449,6 +454,39 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
               this.plugin.fontManager.setFontCacheFolder(this.plugin.settings.fontCacheFolder);
             }
             await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Rebuild font cache')
+      .setDesc(
+        'Re-classify every cached font (variable-font detection, integrity checksums, ' +
+          'weight ranges). Run this once after upgrading to refresh metadata for fonts ' +
+          'cached by earlier plugin versions. Does not re-download anything.'
+      )
+      .addButton((btn) =>
+        btn
+          .setButtonText('Rebuild')
+          .setCta()
+          .onClick(async () => {
+            btn.setDisabled(true);
+            btn.setButtonText('Rebuilding…');
+            try {
+              const updated = await fontManager.recomputeAllFontMetadata();
+              // Invalidate resolver caches AND push fresh CSS to every open
+              // surface — without this, the presentation/presenter windows
+              // would keep rendering with the stale font CSS until they were
+              // closed and re-opened.
+              await this.plugin.refreshAllForFontCacheChange();
+              new Notice(`Rebuilt metadata for ${updated} font${updated === 1 ? '' : 's'}.`);
+            } catch (e) {
+              console.error('[Settings] Rebuild font cache failed:', e);
+              new Notice('Rebuild failed — see console for details.');
+            } finally {
+              btn.setDisabled(false);
+              btn.setButtonText('Rebuild');
+              this.display();
+            }
           })
       );
 

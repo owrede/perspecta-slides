@@ -6,10 +6,12 @@ import type {
   Theme,
   SlideLayout,
 } from '../types';
-import { ImageData } from '../types';
 import { generateThemeCSS, generateDefaultCSS } from '../themes';
 import { getDebugService } from '../utils/DebugService';
 import type { ExcalidrawCacheEntry } from '../utils/ExcalidrawRenderer';
+import { getBuiltinShader } from '../utils/ShaderCanvas';
+import { SHADER_RUNTIME_JS } from '../utils/ShaderRuntimeInline';
+import { composeFontStack, extractFamilyName, namespaceThemeFont } from '../utils/FontFamily';
 
 /**
  * SlideRenderer-Renders presentations to HTML
@@ -33,6 +35,8 @@ export class SlideRenderer {
   private fontWeightsCache: Map<string, number[]> = new Map(); // Cache of font name -> available weights
   private excalidrawSvgCache: Map<string, ExcalidrawCacheEntry> | null = null; // Reference to ExcalidrawRenderer's cache
   private failedDecompressionFiles: Set<string> = new Set(); // Files that couldn't be auto-decompressed
+  private currentSlideMode: 'light' | 'dark' = 'light'; // Per-slide context for shader palette resolution in nested renderers
+  private defaultShaderTime: number | null = null; // When set, shaders without an explicit time are frozen to this frame (used by PDF export)
 
   constructor(presentation: Presentation, theme?: Theme, resolveImagePath?: ImagePathResolver) {
     this.presentation = presentation;
@@ -105,6 +109,17 @@ export class SlideRenderer {
    */
   setCustomFontCSS(css: string): void {
     this.customFontCSS = css;
+  }
+
+  /**
+   * Freeze shader rendering to a fixed timestamp (seconds). Slides that set
+   * their own `shaderTime` in metadata still override this. Used by PDF
+   * export to capture a deterministic single frame instead of whatever the
+   * RAF loop happens to be on at snapshot time.
+   * Pass null to clear (live animation resumes).
+   */
+  setDefaultShaderTime(time: number | null): void {
+    this.defaultShaderTime = time;
   }
 
   /**
@@ -267,6 +282,38 @@ export class SlideRenderer {
   }
 
   /**
+   * Style IDs of the per-slide `<style>` blocks whose content is fully
+   * derived from frontmatter design properties (font sizes/scales,
+   * spacing, margins, line-height, colors). For CSS-only inspector
+   * changes these can be patched in place inside an already-loaded iframe
+   * instead of reloading the whole iframe via `srcdoc` — which is what
+   * caused the flicker (iframe reload = blank → repaint).
+   */
+  static readonly LIVE_STYLE_IDS = {
+    frontmatterVars: 'perspecta-fm-vars',
+    headingOverrides: 'perspecta-heading-overrides',
+    fontScale: 'perspecta-font-scale',
+  } as const;
+
+  /**
+   * Produce the up-to-date content for the three frontmatter-derived
+   * `<style>` blocks, keyed by their element id. Consumers write each
+   * value into the matching `<style>` element inside a live iframe
+   * document to apply a design change without a reload.
+   */
+  generateLiveStyleUpdate(frontmatter: PresentationFrontmatter): Record<string, string> {
+    const frontmatterVars = this.generateCSSVariables(frontmatter);
+    return {
+      [SlideRenderer.LIVE_STYLE_IDS.frontmatterVars]: frontmatterVars
+        ? `:root {\n${frontmatterVars}\n}`
+        : '',
+      [SlideRenderer.LIVE_STYLE_IDS.headingOverrides]:
+        this.generateHeadingColorOverrides(frontmatter),
+      [SlideRenderer.LIVE_STYLE_IDS.fontScale]: this.getFontScaleCSS(frontmatter),
+    };
+  }
+
+  /**
    * Render a slide for the presentation window
    */
   renderPresentationSlideHTML(slide: Slide, index: number): string {
@@ -304,6 +351,13 @@ export class SlideRenderer {
     // Generate override rules for theme heading colors when custom title text is set
     const headingOverrideCSS = this.generateHeadingColorOverrides(frontmatter);
 
+    const needsShader =
+      !!slide.metadata.shader ||
+      slide.elements.some(
+        (el) => el.type === 'image' && !!this.parseShaderSrc(el.imageData?.src || el.content)
+      );
+    const shaderRuntime = needsShader ? `<script>${SHADER_RUNTIME_JS}</script>` : '';
+
     return `<!DOCTYPE html>
     <html>
     <head>
@@ -311,12 +365,13 @@ export class SlideRenderer {
     <style>${this.customFontCSS}</style>
     <style>${this.getBaseStyles(context, frontmatter)}</style>
     <style>${themeCSS}</style>
-    <style>${frontmatterCSS}</style>
-    <style>${headingOverrideCSS}</style>
-    <style>${fontScaleCSS}</style>
+    <style id="perspecta-fm-vars">${frontmatterCSS}</style>
+    <style id="perspecta-heading-overrides">${headingOverrideCSS}</style>
+    <style id="perspecta-font-scale">${fontScaleCSS}</style>
     </head>
     <body class="${bodyClass}">
     ${this.renderSlide(slide, index, frontmatter, false)}
+    ${shaderRuntime}
     </body>
     </html>`;
   }
@@ -327,6 +382,8 @@ export class SlideRenderer {
   renderHTML(): string {
     const { frontmatter, slides } = this.presentation;
     const themeClasses = this.theme?.template.CssClasses || '';
+    const anyShader = this.deckUsesShaders();
+    const shaderRuntime = anyShader ? `<script>${SHADER_RUNTIME_JS}</script>` : '';
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -341,6 +398,7 @@ export class SlideRenderer {
       ${slides.map((slide, index) => this.renderSlide(slide, index, frontmatter)).join('\n')}
     </div>
   </div>
+  ${shaderRuntime}
   ${this.renderScripts()}
 </body>
 </html>`;
@@ -464,7 +522,7 @@ export class SlideRenderer {
     };
 
     const keys = keyMap[layout];
-    if (!keys) return null;
+    if (!keys) {return null;}
     
     return mode === 'light' ? keys.light : keys.dark;
   }
@@ -610,6 +668,7 @@ export class SlideRenderer {
     const effectiveMode = this.getEffectiveMode(slide, frontmatter);
     // Mode is now always 'light' or 'dark' (system is resolved)
     const modeClass = effectiveMode;
+    this.currentSlideMode = effectiveMode;
     const layout = (slide.metadata.layout || 'default') as SlideLayout;
     const containerClass = this.getContainerClass(layout);
     const customClass = '';
@@ -620,14 +679,18 @@ export class SlideRenderer {
     const hasExplicitMode = slide.metadata.mode && slide.metadata.mode !== 'system';
     const dataModeAttr = hasExplicitMode ? ` data-mode="${slide.metadata.mode}"` : '';
 
+    const isHiddenSlide = slide.hidden || false;
+
     // Handle per-slide background image from metadata
     // This sits between the background color/gradient and the overlay
     const slideBackgroundHtml = this.renderSlideBackground(slide);
+    // Animated shader background — sits BEHIND any slide background image,
+    // ABOVE the solid/gradient slide background colour. Skipped for hidden slides.
+    const slideShaderHtml = isHiddenSlide ? '' : this.renderSlideShader(slide, effectiveMode);
 
     // Compute dynamic background colors for BOTH modes (for theme toggle in exports)
     // Skip dynamic background if this layout has a specific layout background defined OR if slide is hidden
     const hasLayoutBackground = this.hasLayoutBackground(layout, effectiveMode, frontmatter);
-    const isHiddenSlide = slide.hidden || false;
     const dynamicBgColor =
       hasLayoutBackground || isHiddenSlide
         ? null
@@ -684,6 +747,7 @@ export class SlideRenderer {
 
     return `
     <section class="slide ${containerClass} ${modeClass} ${customClass} ${isActive}" data-index="${index}"${dataModeAttr}${dynamicBgAttrs}${slideInlineStyle ? ` style="${slideInlineStyle}"` : ''}>
+      ${slideShaderHtml}
       ${slideBackgroundHtml}
       ${imageBackground}
       ${overlayHtml}
@@ -789,6 +853,12 @@ export class SlideRenderer {
     if (images.length === 1) {
       const img = images[0];
       const imageData = img.imageData;
+
+      const shaderName = this.parseShaderSrc(imageData?.src || img.content);
+      if (shaderName) {
+        return this.renderShaderAsImage(shaderName);
+      }
+
       const src = this.escapeHtml(this.resolveImageSrc(img));
       const x = imageData?.x || 'center';
       const y = imageData?.y || 'center';
@@ -801,6 +871,10 @@ export class SlideRenderer {
     return images
       .map((img) => {
         const imageData = img.imageData;
+        const shaderName = this.parseShaderSrc(imageData?.src || img.content);
+        if (shaderName) {
+          return `<div class="image-slot">${this.renderShaderAsImage(shaderName)}</div>`;
+        }
         const src = this.escapeHtml(this.resolveImageSrc(img));
         const x = imageData?.x || 'center';
         const y = imageData?.y || 'center';
@@ -824,6 +898,13 @@ export class SlideRenderer {
     if (images.length === 1) {
       const img = images[0];
       const imageData = img.imageData;
+
+      // Shader-as-image-background: ![](shader:aurora) inside a full-image layout
+      const shaderName = this.parseShaderSrc(imageData?.src || img.content);
+      if (shaderName) {
+        return `<div class="slide-image-background">${this.renderShaderAsImage(shaderName)}</div>`;
+      }
+
       const src = this.escapeHtml(this.resolveImageSrc(img));
       const x = imageData?.x || 'center';
       const y = imageData?.y || 'center';
@@ -1323,6 +1404,18 @@ export class SlideRenderer {
     if (images.length === 1) {
       const img = images[0];
       const imageData = img.imageData;
+
+      // Shader-as-image: ![](shader:aurora) inside full-image-content layout
+      const shaderName = this.parseShaderSrc(imageData?.src || img.content);
+      if (shaderName) {
+        return `
+        <div class="slide-content full-image-content single-image">
+          <div class="image-slot" style="position:relative;">
+            ${this.renderShaderAsImage(shaderName)}
+          </div>
+        </div>`;
+      }
+
       const src = this.escapeHtml(this.resolveImageSrc(img));
       const alt = imageData?.alt ? this.escapeHtml(imageData.alt) : '';
 
@@ -1348,6 +1441,13 @@ export class SlideRenderer {
         ${images
           .map((img) => {
             const imageData = img.imageData;
+            const shaderName = this.parseShaderSrc(imageData?.src || img.content);
+            if (shaderName) {
+              return `
+          <div class="image-slot" style="position:relative;">
+            ${this.renderShaderAsImage(shaderName)}
+          </div>`;
+            }
             const src = this.escapeHtml(this.resolveImageSrc(img));
             const alt = imageData?.alt ? this.escapeHtml(imageData.alt) : '';
             const x = imageData?.x || 'center';
@@ -1381,6 +1481,13 @@ export class SlideRenderer {
           ${images
             .map((img) => {
               const imageData = img.imageData;
+              const shaderName = this.parseShaderSrc(imageData?.src || img.content);
+              if (shaderName) {
+                return `
+            <div class="image-slot">
+              ${this.renderShaderAsImage(shaderName)}
+            </div>`;
+              }
               const objectFit = contained ? 'contain' : (imageData?.size || 'cover');
               const x = imageData?.x || 'center';
               const y = imageData?.y || 'center';
@@ -1559,6 +1666,13 @@ export class SlideRenderer {
    */
   private renderImage(element: SlideElement): string {
     const imageData = element.imageData;
+
+    // Shader-as-image: ![](shader:aurora) renders a WebGL canvas instead of an <img>
+    const shaderName = this.parseShaderSrc(imageData?.src || element.content);
+    if (shaderName) {
+      return `<figure class="image-figure shader-figure" style="width:100%;height:100%;position:relative;">${this.renderShaderAsImage(shaderName)}</figure>`;
+    }
+
     const src = this.escapeHtml(this.resolveImageSrc(element));
     const alt = imageData?.alt ? this.escapeHtml(imageData.alt) : '';
 
@@ -1728,6 +1842,101 @@ export class SlideRenderer {
    * Render per-slide background image
    * This sits between the background color/gradient and the overlay
    */
+  /**
+   * Detect shader-as-image markers like `shader:aurora` used in `![](shader:aurora)`.
+   */
+  private parseShaderSrc(src: string | undefined): string | null {
+    if (!src) {return null;}
+    const m = src.trim().match(/^shader:([a-z0-9_-]+)$/i);
+    return m ? m[1] : null;
+  }
+
+  /**
+   * Render a shader as an image replacement (inline element).
+   * Emits a positioned shader host that fills its parent (figure or image-panel).
+   */
+  private renderShaderAsImage(shaderName: string): string {
+    const src = getBuiltinShader(shaderName);
+    if (!src) {
+      console.warn(`[SlideRenderer] Unknown shader "${shaderName}" — skipped`);
+      return '';
+    }
+    const palette = this.resolveShaderPalette(this.currentSlideMode);
+    const b64 = btoa(unescape(encodeURIComponent(src)));
+    const timeAttr =
+      this.defaultShaderTime !== null ? ` data-shader-time="${this.defaultShaderTime}"` : '';
+    return `<div class="slide-shader shader-image" data-shader-src="${b64}" data-shader-palette="${palette.join(',')}"${timeAttr} style="position:relative;width:100%;height:100%;"></div>`;
+  }
+
+  /**
+   * True if any element in the deck uses a shader (slide-level or image-replacement).
+   * Used to decide whether to inject the shader runtime script.
+   */
+  private deckUsesShaders(): boolean {
+    for (const slide of this.presentation.slides) {
+      if (slide.metadata.shader) {return true;}
+      for (const el of slide.elements) {
+        if (el.type === 'image' && this.parseShaderSrc(el.imageData?.src || el.content)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Render the shader layer for a slide. Sits between background colour/gradient
+   * and the slide background image (so a background image always wins).
+   * Returns empty string if no shader is configured.
+   */
+  private renderSlideShader(slide: Slide, mode: 'light' | 'dark'): string {
+    const name = slide.metadata.shader;
+    if (!name) {return '';}
+
+    const src = getBuiltinShader(name);
+    if (!src) {
+      console.warn(`[SlideRenderer] Unknown shader "${name}" — skipped`);
+      return '';
+    }
+
+    const palette = this.resolveShaderPalette(mode);
+    // base64 the source so attribute escaping + srcdoc framing stays simple
+    const b64 = btoa(unescape(encodeURIComponent(src)));
+    const paletteAttr = palette.join(',');
+    const fixedTime =
+      slide.metadata.shaderTime !== undefined ? slide.metadata.shaderTime : this.defaultShaderTime;
+    const timeAttr = fixedTime !== null ? ` data-shader-time="${fixedTime}"` : '';
+
+    return `<div class="slide-shader" data-shader-src="${b64}" data-shader-palette="${paletteAttr}"${timeAttr}></div>`;
+  }
+
+  /**
+   * Pick a 4-colour palette for shader uniforms from the active theme preset.
+   * Falls back to neutral colours when no theme is loaded.
+   */
+  private resolveShaderPalette(mode: 'light' | 'dark'): string[] {
+    const preset = this.theme?.presets?.[0];
+    if (!preset) {
+      return mode === 'light'
+        ? ['#ffffff', '#e6e8ee', '#9aa3b2', '#2a2d33']
+        : ['#0d1117', '#1a2030', '#3a4564', '#a9b3c9'];
+    }
+    if (mode === 'light') {
+      return [
+        preset.LightBackgroundColor || '#ffffff',
+        preset.LightTitleTextColor || '#000000',
+        preset.LightLinkColor || '#0066cc',
+        preset.LightBodyTextColor || '#333333',
+      ];
+    }
+    return [
+      preset.DarkBackgroundColor || '#1a1a1a',
+      preset.DarkTitleTextColor || '#ffffff',
+      preset.DarkLinkColor || '#66b3ff',
+      preset.DarkBodyTextColor || '#e0e0e0',
+    ];
+  }
+
   private renderSlideBackground(slide: Slide): string {
     if (!slide.metadata.background) {
       return '';
@@ -1890,6 +2099,25 @@ export class SlideRenderer {
         background-position: center;
         background-repeat: no-repeat;
       }
+      .slide-shader {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        z-index: 0;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      .slide-shader canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      /* Anchor shader canvases that replace an inline image inside layout slots. */
+      .image-slot,
+      .half-image-panel,
+      .slot-image .image-slot,
+      .image-figure.shader-figure {
+        position: relative;
+      }
       .slide-image-background img {
         display: block;
         width: 100%;
@@ -2026,7 +2254,13 @@ export class SlideRenderer {
       .header-middle, .footer-middle { justify-content: center; }
       .header-right, .footer-right { justify-content: flex-end; }
       
-      /* Header/Footer in full-image layout: semi-transparent background */
+      /* Header/Footer in full-image layout: semi-transparent background.
+         Negative margins on every edge cancel the box padding so the text
+         glyphs stay at the exact same pixel position as on layouts without
+         the background box. Outer edges shift outward by the corresponding
+         padding amount; inner edges (header-middle, header centre column,
+         …) stay put because the padding there is symmetric and the middle
+         span is centred. */
       .image-container .header-left > span,
       .image-container .header-middle > span,
       .image-container .header-right > span,
@@ -2037,6 +2271,28 @@ export class SlideRenderer {
         padding: calc(var(--slide-unit) * 0.5) calc(var(--slide-unit) * 1);
         border-radius: calc(var(--slide-unit) * 0.5);
         color: #fff;
+      }
+      .image-container .header-left > span,
+      .image-container .header-middle > span,
+      .image-container .header-right > span {
+        /* Pull header boxes upward by the vertical padding */
+        margin-top: calc(var(--slide-unit) * -0.5);
+      }
+      .image-container .footer-left > span,
+      .image-container .footer-middle > span,
+      .image-container .footer-right > span {
+        /* Pull footer boxes downward by the vertical padding */
+        margin-bottom: calc(var(--slide-unit) * -0.5);
+      }
+      .image-container .header-left > span,
+      .image-container .footer-left > span {
+        /* Pull leftmost boxes outward to the left edge */
+        margin-left: calc(var(--slide-unit) * -1);
+      }
+      .image-container .header-right > span,
+      .image-container .footer-right > span {
+        /* Pull rightmost boxes outward to the right edge */
+        margin-right: calc(var(--slide-unit) * -1);
       }
       
       /* ============================================
@@ -2983,45 +3239,56 @@ ${this.getSlideCSS()}
   private generateCSSVariables(frontmatter: PresentationFrontmatter): string {
     const vars: string[] = [];
 
-    // Validate font weights against available weights for each font
-    const validTitleWeight = this.validateFontWeight(
-      frontmatter.titleFont,
-      frontmatter.titleFontWeight
-    );
-    const validBodyWeight = this.validateFontWeight(
-      frontmatter.bodyFont,
-      frontmatter.bodyFontWeight
-    );
-    const validHeaderWeight = this.validateFontWeight(
-      frontmatter.headerFont,
-      frontmatter.headerFontWeight
-    );
-    const validFooterWeight = this.validateFontWeight(
-      frontmatter.footerFont,
-      frontmatter.footerFontWeight
-    );
+    // Frontmatter font fields are canonical family names (post Phase 1a).
+    // Legacy decks may still carry a CSS stack — extractFamilyName is the
+    // single read-boundary that tolerates either form. The CSS stack is
+    // composed exactly once, here, via composeFontStack.
+    const titleFamily = extractFamilyName(frontmatter.titleFont);
+    const bodyFamily = extractFamilyName(frontmatter.bodyFont);
+    const headerFamily = extractFamilyName(frontmatter.headerFont);
+    const footerFamily = extractFamilyName(frontmatter.footerFont);
 
-    // Fonts
-    if (frontmatter.titleFont) {
-      vars.push(`  --title-font: '${frontmatter.titleFont}', sans-serif;`);
+    const validTitleWeight = this.validateFontWeight(titleFamily, frontmatter.titleFontWeight);
+    const validBodyWeight = this.validateFontWeight(bodyFamily, frontmatter.bodyFontWeight);
+    const validHeaderWeight = this.validateFontWeight(headerFamily, frontmatter.headerFontWeight);
+    const validFooterWeight = this.validateFontWeight(footerFamily, frontmatter.footerFontWeight);
+
+    // Phase-2: when the requested family matches a theme-bundled font,
+    // prefer the namespaced render family so the bundled @font-face wins
+    // over a same-named OS font (see DeckFontResolver/composeFontStack).
+    const themeName = this.theme?.template.Name || 'theme';
+    const bundledFamilies = new Map<string, string>();
+    if (this.theme?.themeJsonData?.bundledFonts) {
+      for (const b of this.theme.themeJsonData.bundledFonts) {
+        bundledFamilies.set(b.family.toLowerCase(), b.family);
+      }
+    }
+    const renderFor = (family: string | undefined): string | undefined => {
+      if (!family) {return undefined;}
+      const bundled = bundledFamilies.get(family.toLowerCase());
+      return bundled ? namespaceThemeFont(bundled, themeName) : undefined;
+    };
+
+    if (titleFamily) {
+      vars.push(`  --title-font: ${composeFontStack(titleFamily, renderFor(titleFamily))};`);
     }
     if (validTitleWeight !== undefined) {
       vars.push(`  --title-font-weight: ${validTitleWeight};`);
     }
-    if (frontmatter.bodyFont) {
-      vars.push(`  --body-font: '${frontmatter.bodyFont}', sans-serif;`);
+    if (bodyFamily) {
+      vars.push(`  --body-font: ${composeFontStack(bodyFamily, renderFor(bodyFamily))};`);
     }
     if (validBodyWeight !== undefined) {
       vars.push(`  --body-font-weight: ${validBodyWeight};`);
     }
-    if (frontmatter.headerFont) {
-      vars.push(`  --header-font: '${frontmatter.headerFont}', sans-serif;`);
+    if (headerFamily) {
+      vars.push(`  --header-font: ${composeFontStack(headerFamily, renderFor(headerFamily))};`);
     }
     if (validHeaderWeight !== undefined) {
       vars.push(`  --header-font-weight: ${validHeaderWeight};`);
     }
-    if (frontmatter.footerFont) {
-      vars.push(`  --footer-font: '${frontmatter.footerFont}', sans-serif;`);
+    if (footerFamily) {
+      vars.push(`  --footer-font: ${composeFontStack(footerFamily, renderFor(footerFamily))};`);
     }
     if (validFooterWeight !== undefined) {
       vars.push(`  --footer-font-weight: ${validFooterWeight};`);

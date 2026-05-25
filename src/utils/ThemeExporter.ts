@@ -1,16 +1,16 @@
-import type { App } from 'obsidian';
-import { TFile, TFolder, Modal, Setting, Notice } from 'obsidian';
+import { type App, TFile, TFolder, Modal, Setting, Notice } from 'obsidian';
 import type { PresentationFrontmatter, Theme } from '../types';
-import { ThemePreset, DEFAULT_SEMANTIC_COLORS } from '../types';
-import type { ThemeJsonFile, ThemeModePreset, ThemeBackground } from '../themes/ThemeSchema';
-import {
-  ThemeSemanticColors,
-  DEFAULT_SEMANTIC_COLORS_LIGHT,
-  DEFAULT_SEMANTIC_COLORS_DARK,
+import type {
+  ThemeJsonFile,
+  ThemeModePreset,
+  ThemeBackground,
   ThemeBundledFont,
 } from '../themes/ThemeSchema';
+import { DEFAULT_SEMANTIC_COLORS_LIGHT, DEFAULT_SEMANTIC_COLORS_DARK } from '../themes/ThemeSchema';
 import type { FontManager } from './FontManager';
 import { getTheme } from '../themes';
+import { extractFamilyName } from './FontFamily';
+import { vaultPathBasename, vaultPathJoin } from './VaultPath';
 
 /**
  * Represents an asset reference found in markdown, CSS, or JSON
@@ -254,10 +254,14 @@ export class ThemeExporter {
     const basePreset = baseTheme?.presets?.[0];
     const resolved: PresentationFrontmatter = { ...fm };
 
-    resolved.titleFont = fm.titleFont || baseTheme?.template.TitleFont || 'Helvetica';
-    resolved.bodyFont = fm.bodyFont || baseTheme?.template.BodyFont || 'Helvetica';
-    resolved.headerFont = fm.headerFont || resolved.bodyFont;
-    resolved.footerFont = fm.footerFont || resolved.bodyFont;
+    // Family names only — extractFamilyName tolerates legacy CSS-stack values
+    // in either the frontmatter or the theme template.
+    resolved.titleFont =
+      extractFamilyName(fm.titleFont) ?? extractFamilyName(baseTheme?.template.TitleFont) ?? 'Helvetica';
+    resolved.bodyFont =
+      extractFamilyName(fm.bodyFont) ?? extractFamilyName(baseTheme?.template.BodyFont) ?? 'Helvetica';
+    resolved.headerFont = extractFamilyName(fm.headerFont) ?? resolved.bodyFont;
+    resolved.footerFont = extractFamilyName(fm.footerFont) ?? resolved.bodyFont;
 
     resolved.lightTitleText = fm.lightTitleText || basePreset?.LightTitleTextColor || '#000000';
     resolved.lightBodyText = fm.lightBodyText || basePreset?.LightBodyTextColor || '#333333';
@@ -318,9 +322,11 @@ export class ThemeExporter {
   ): ThemeJsonFile {
     const basePreset = baseTheme?.presets[0];
 
-    // Determine fonts
-    const titleFontName = fm.titleFont || baseTheme?.template.TitleFont || 'Helvetica';
-    const bodyFontName = fm.bodyFont || baseTheme?.template.BodyFont || 'Helvetica';
+    // Determine fonts (family names only — extractFamilyName tolerates legacy stacks)
+    const titleFontName =
+      extractFamilyName(fm.titleFont) ?? extractFamilyName(baseTheme?.template.TitleFont) ?? 'Helvetica';
+    const bodyFontName =
+      extractFamilyName(fm.bodyFont) ?? extractFamilyName(baseTheme?.template.BodyFont) ?? 'Helvetica';
 
     // Build font CSS values
     const titleFontCss = this.getFontCss(titleFontName);
@@ -549,7 +555,14 @@ export class ThemeExporter {
 
     const fontsFolder = `${themePath}/fonts`;
     const fontsToCopy = Array.from(
-      new Set([fm.titleFont, fm.bodyFont, fm.headerFont, fm.footerFont].filter(Boolean) as string[])
+      new Set(
+        [
+          extractFamilyName(fm.titleFont),
+          extractFamilyName(fm.bodyFont),
+          extractFamilyName(fm.headerFont),
+          extractFamilyName(fm.footerFont),
+        ].filter(Boolean) as string[]
+      )
     ).filter((f) => this.fontManager!.isCached(f));
 
     if (fontsToCopy.length === 0) {
@@ -570,8 +583,8 @@ export class ThemeExporter {
       for (const file of cachedFont.files) {
         const sourceFile = this.app.vault.getAbstractFileByPath(file.localPath);
         if (sourceFile instanceof TFile) {
-          const fileName = file.localPath.split('/').pop() || `${fontName}.woff2`;
-          const destPath = `${fontsFolder}/${fileName}`;
+          const fileName = vaultPathBasename(file.localPath) || `${fontName}.woff2`;
+          const destPath = vaultPathJoin(fontsFolder, fileName);
 
           // Check if destination already exists
           const existing = this.app.vault.getAbstractFileByPath(destPath);
@@ -719,11 +732,11 @@ export class ThemeExporter {
     }
 
     // Create parent folders if needed
-    const parts = path.split('/');
+    const parts = path.split('/').filter((p) => p.length > 0);
     let currentPath = '';
 
     for (const part of parts) {
-      currentPath = currentPath ? `${currentPath}/${part}` : part;
+      currentPath = currentPath ? vaultPathJoin(currentPath, part) : part;
       const folder = this.app.vault.getAbstractFileByPath(currentPath);
       if (!folder) {
         try {
@@ -795,10 +808,10 @@ export class ThemeExporter {
     ext: string
   ): 'image' | 'css' | 'json' | 'font' | null {
     const lower = ext.toLowerCase();
-    if (this.isImageExtension(lower)) return 'image';
-    if (lower === 'css') return 'css';
-    if (lower === 'json') return 'json';
-    if (['woff2', 'woff', 'ttf', 'otf'].includes(lower)) return 'font';
+    if (this.isImageExtension(lower)) {return 'image';}
+    if (lower === 'css') {return 'css';}
+    if (lower === 'json') {return 'json';}
+    if (['woff2', 'woff', 'ttf', 'otf'].includes(lower)) {return 'font';}
     return null;
   }
 
@@ -827,8 +840,8 @@ export class ThemeExporter {
     sourceFile: TFile
   ): Promise<Map<string, string>> {
     const pathMap = new Map<string, string>();
-    const folderName = themePath.split('/').pop() || 'theme';
-    const imagesSubfolder = `${themePath}/images`;
+    const folderName = vaultPathBasename(themePath) || 'theme';
+    const imagesSubfolder = vaultPathJoin(themePath, 'images');
 
     // Ensure images subfolder exists
     await this.ensureFolder(imagesSubfolder);
@@ -869,7 +882,7 @@ export class ThemeExporter {
           }
 
           usedFilenames.add(newFileName);
-          const destPath = `${imagesSubfolder}/${newFileName}`;
+          const destPath = vaultPathJoin(imagesSubfolder, newFileName);
 
           // Check if already copied (same original path)
           if (!pathMap.has(ref.originalPath)) {
@@ -904,7 +917,7 @@ export class ThemeExporter {
     fm?: PresentationFrontmatter,
     imagePathMap?: Map<string, string>
   ): Promise<void> {
-    const folderName = themePath.split('/').pop() || 'theme';
+    const folderName = vaultPathBasename(themePath) || 'theme';
 
     // Use provided map or build a fallback (should use provided map)
     const pathMap = imagePathMap || new Map<string, string>();
@@ -917,87 +930,93 @@ export class ThemeExporter {
 
     // Add all available frontmatter parameters from source if provided
     if (fm) {
-      if (fm.title) demoFrontmatter += `title: ${fm.title}\n`;
-      if (fm.author) demoFrontmatter += `author: ${fm.author}\n`;
-      if (fm.date) demoFrontmatter += `date: ${fm.date}\n`;
-      if (fm.contentMode) demoFrontmatter += `contentMode: ${fm.contentMode}\n`;
+      if (fm.title) {demoFrontmatter += `title: ${fm.title}\n`;}
+      if (fm.author) {demoFrontmatter += `author: ${fm.author}\n`;}
+      if (fm.date) {demoFrontmatter += `date: ${fm.date}\n`;}
+      if (fm.contentMode) {demoFrontmatter += `contentMode: ${fm.contentMode}\n`;}
       
       demoFrontmatter += `\n# Typography - Fonts\n`;
-      if (fm.titleFont) demoFrontmatter += `titleFont: ${fm.titleFont}\n`;
-      if (fm.titleFontWeight !== undefined) demoFrontmatter += `titleFontWeight: ${fm.titleFontWeight}\n`;
-      if (fm.bodyFont) demoFrontmatter += `bodyFont: ${fm.bodyFont}\n`;
-      if (fm.bodyFontWeight !== undefined) demoFrontmatter += `bodyFontWeight: ${fm.bodyFontWeight}\n`;
-      if (fm.headerFont) demoFrontmatter += `headerFont: ${fm.headerFont}\n`;
-      if (fm.headerFontWeight !== undefined) demoFrontmatter += `headerFontWeight: ${fm.headerFontWeight}\n`;
-      if (fm.footerFont) demoFrontmatter += `footerFont: ${fm.footerFont}\n`;
-      if (fm.footerFontWeight !== undefined) demoFrontmatter += `footerFontWeight: ${fm.footerFontWeight}\n`;
+      // Always persist canonical family names — keeps generated demos
+      // consistent with the Phase 1a invariant regardless of the source deck.
+      const demoTitleFont = extractFamilyName(fm.titleFont);
+      const demoBodyFont = extractFamilyName(fm.bodyFont);
+      const demoHeaderFont = extractFamilyName(fm.headerFont);
+      const demoFooterFont = extractFamilyName(fm.footerFont);
+      if (demoTitleFont) {demoFrontmatter += `titleFont: ${demoTitleFont}\n`;}
+      if (fm.titleFontWeight !== undefined) {demoFrontmatter += `titleFontWeight: ${fm.titleFontWeight}\n`;}
+      if (demoBodyFont) {demoFrontmatter += `bodyFont: ${demoBodyFont}\n`;}
+      if (fm.bodyFontWeight !== undefined) {demoFrontmatter += `bodyFontWeight: ${fm.bodyFontWeight}\n`;}
+      if (demoHeaderFont) {demoFrontmatter += `headerFont: ${demoHeaderFont}\n`;}
+      if (fm.headerFontWeight !== undefined) {demoFrontmatter += `headerFontWeight: ${fm.headerFontWeight}\n`;}
+      if (demoFooterFont) {demoFrontmatter += `footerFont: ${demoFooterFont}\n`;}
+      if (fm.footerFontWeight !== undefined) {demoFrontmatter += `footerFontWeight: ${fm.footerFontWeight}\n`;}
       
       demoFrontmatter += `\n# Typography - Font Sizes\n`;
-      if (fm.titleFontSize !== undefined) demoFrontmatter += `titleFontSize: ${fm.titleFontSize}\n`;
-      if (fm.bodyFontSize !== undefined) demoFrontmatter += `bodyFontSize: ${fm.bodyFontSize}\n`;
-      if (fm.headerFontSize !== undefined) demoFrontmatter += `headerFontSize: ${fm.headerFontSize}\n`;
-      if (fm.footerFontSize !== undefined) demoFrontmatter += `footerFontSize: ${fm.footerFontSize}\n`;
-      if (fm.textScale !== undefined) demoFrontmatter += `textScale: ${fm.textScale}\n`;
+      if (fm.titleFontSize !== undefined) {demoFrontmatter += `titleFontSize: ${fm.titleFontSize}\n`;}
+      if (fm.bodyFontSize !== undefined) {demoFrontmatter += `bodyFontSize: ${fm.bodyFontSize}\n`;}
+      if (fm.headerFontSize !== undefined) {demoFrontmatter += `headerFontSize: ${fm.headerFontSize}\n`;}
+      if (fm.footerFontSize !== undefined) {demoFrontmatter += `footerFontSize: ${fm.footerFontSize}\n`;}
+      if (fm.textScale !== undefined) {demoFrontmatter += `textScale: ${fm.textScale}\n`;}
       
       demoFrontmatter += `\n# Typography - Spacing\n`;
-      if (fm.headlineSpacingBefore !== undefined) demoFrontmatter += `headlineSpacingBefore: ${fm.headlineSpacingBefore}\n`;
-      if (fm.headlineSpacingAfter !== undefined) demoFrontmatter += `headlineSpacingAfter: ${fm.headlineSpacingAfter}\n`;
-      if (fm.listItemSpacing !== undefined) demoFrontmatter += `listItemSpacing: ${fm.listItemSpacing}\n`;
-      if (fm.lineHeight !== undefined) demoFrontmatter += `lineHeight: ${fm.lineHeight}\n`;
+      if (fm.headlineSpacingBefore !== undefined) {demoFrontmatter += `headlineSpacingBefore: ${fm.headlineSpacingBefore}\n`;}
+      if (fm.headlineSpacingAfter !== undefined) {demoFrontmatter += `headlineSpacingAfter: ${fm.headlineSpacingAfter}\n`;}
+      if (fm.listItemSpacing !== undefined) {demoFrontmatter += `listItemSpacing: ${fm.listItemSpacing}\n`;}
+      if (fm.lineHeight !== undefined) {demoFrontmatter += `lineHeight: ${fm.lineHeight}\n`;}
       
       demoFrontmatter += `\n# Typography - Margins\n`;
-      if (fm.headerTop !== undefined) demoFrontmatter += `headerTop: ${fm.headerTop}\n`;
-      if (fm.footerBottom !== undefined) demoFrontmatter += `footerBottom: ${fm.footerBottom}\n`;
-      if (fm.titleTop !== undefined) demoFrontmatter += `titleTop: ${fm.titleTop}\n`;
-      if (fm.contentTop !== undefined) demoFrontmatter += `contentTop: ${fm.contentTop}\n`;
-      if (fm.contentLeft !== undefined) demoFrontmatter += `contentLeft: ${fm.contentLeft}\n`;
-      if (fm.contentRight !== undefined) demoFrontmatter += `contentRight: ${fm.contentRight}\n`;
+      if (fm.headerTop !== undefined) {demoFrontmatter += `headerTop: ${fm.headerTop}\n`;}
+      if (fm.footerBottom !== undefined) {demoFrontmatter += `footerBottom: ${fm.footerBottom}\n`;}
+      if (fm.titleTop !== undefined) {demoFrontmatter += `titleTop: ${fm.titleTop}\n`;}
+      if (fm.contentTop !== undefined) {demoFrontmatter += `contentTop: ${fm.contentTop}\n`;}
+      if (fm.contentLeft !== undefined) {demoFrontmatter += `contentLeft: ${fm.contentLeft}\n`;}
+      if (fm.contentRight !== undefined) {demoFrontmatter += `contentRight: ${fm.contentRight}\n`;}
       
       demoFrontmatter += `\n# Colors - Light Mode\n`;
-      if (fm.lightBackground) demoFrontmatter += `lightBackground: ${fm.lightBackground}\n`;
-      if (fm.lightTitleText) demoFrontmatter += `lightTitleText: ${fm.lightTitleText}\n`;
-      if (fm.lightBodyText) demoFrontmatter += `lightBodyText: ${fm.lightBodyText}\n`;
-      if (fm.lightH1Color) demoFrontmatter += `lightH1Color: [${fm.lightH1Color.map(c => `'${c}'`).join(', ')}]\n`;
-      if (fm.lightH2Color) demoFrontmatter += `lightH2Color: [${fm.lightH2Color.map(c => `'${c}'`).join(', ')}]\n`;
-      if (fm.lightH3Color) demoFrontmatter += `lightH3Color: [${fm.lightH3Color.map(c => `'${c}'`).join(', ')}]\n`;
-      if (fm.lightH4Color) demoFrontmatter += `lightH4Color: [${fm.lightH4Color.map(c => `'${c}'`).join(', ')}]\n`;
-      if (fm.lightHeaderText) demoFrontmatter += `lightHeaderText: ${fm.lightHeaderText}\n`;
-      if (fm.lightFooterText) demoFrontmatter += `lightFooterText: ${fm.lightFooterText}\n`;
-      if (fm.lightBgCover) demoFrontmatter += `lightBgCover: ${fm.lightBgCover}\n`;
-      if (fm.lightBgTitle) demoFrontmatter += `lightBgTitle: ${fm.lightBgTitle}\n`;
-      if (fm.lightBgSection) demoFrontmatter += `lightBgSection: ${fm.lightBgSection}\n`;
+      if (fm.lightBackground) {demoFrontmatter += `lightBackground: ${fm.lightBackground}\n`;}
+      if (fm.lightTitleText) {demoFrontmatter += `lightTitleText: ${fm.lightTitleText}\n`;}
+      if (fm.lightBodyText) {demoFrontmatter += `lightBodyText: ${fm.lightBodyText}\n`;}
+      if (fm.lightH1Color) {demoFrontmatter += `lightH1Color: [${fm.lightH1Color.map(c => `'${c}'`).join(', ')}]\n`;}
+      if (fm.lightH2Color) {demoFrontmatter += `lightH2Color: [${fm.lightH2Color.map(c => `'${c}'`).join(', ')}]\n`;}
+      if (fm.lightH3Color) {demoFrontmatter += `lightH3Color: [${fm.lightH3Color.map(c => `'${c}'`).join(', ')}]\n`;}
+      if (fm.lightH4Color) {demoFrontmatter += `lightH4Color: [${fm.lightH4Color.map(c => `'${c}'`).join(', ')}]\n`;}
+      if (fm.lightHeaderText) {demoFrontmatter += `lightHeaderText: ${fm.lightHeaderText}\n`;}
+      if (fm.lightFooterText) {demoFrontmatter += `lightFooterText: ${fm.lightFooterText}\n`;}
+      if (fm.lightBgCover) {demoFrontmatter += `lightBgCover: ${fm.lightBgCover}\n`;}
+      if (fm.lightBgTitle) {demoFrontmatter += `lightBgTitle: ${fm.lightBgTitle}\n`;}
+      if (fm.lightBgSection) {demoFrontmatter += `lightBgSection: ${fm.lightBgSection}\n`;}
       
       demoFrontmatter += `\n# Colors - Dark Mode\n`;
-      if (fm.darkBackground) demoFrontmatter += `darkBackground: ${fm.darkBackground}\n`;
-      if (fm.darkTitleText) demoFrontmatter += `darkTitleText: ${fm.darkTitleText}\n`;
-      if (fm.darkBodyText) demoFrontmatter += `darkBodyText: ${fm.darkBodyText}\n`;
-      if (fm.darkH1Color) demoFrontmatter += `darkH1Color: [${fm.darkH1Color.map(c => `'${c}'`).join(', ')}]\n`;
-      if (fm.darkH2Color) demoFrontmatter += `darkH2Color: [${fm.darkH2Color.map(c => `'${c}'`).join(', ')}]\n`;
-      if (fm.darkH3Color) demoFrontmatter += `darkH3Color: [${fm.darkH3Color.map(c => `'${c}'`).join(', ')}]\n`;
-      if (fm.darkH4Color) demoFrontmatter += `darkH4Color: [${fm.darkH4Color.map(c => `'${c}'`).join(', ')}]\n`;
-      if (fm.darkHeaderText) demoFrontmatter += `darkHeaderText: ${fm.darkHeaderText}\n`;
-      if (fm.darkFooterText) demoFrontmatter += `darkFooterText: ${fm.darkFooterText}\n`;
-      if (fm.darkBgCover) demoFrontmatter += `darkBgCover: ${fm.darkBgCover}\n`;
-      if (fm.darkBgTitle) demoFrontmatter += `darkBgTitle: ${fm.darkBgTitle}\n`;
-      if (fm.darkBgSection) demoFrontmatter += `darkBgSection: ${fm.darkBgSection}\n`;
+      if (fm.darkBackground) {demoFrontmatter += `darkBackground: ${fm.darkBackground}\n`;}
+      if (fm.darkTitleText) {demoFrontmatter += `darkTitleText: ${fm.darkTitleText}\n`;}
+      if (fm.darkBodyText) {demoFrontmatter += `darkBodyText: ${fm.darkBodyText}\n`;}
+      if (fm.darkH1Color) {demoFrontmatter += `darkH1Color: [${fm.darkH1Color.map(c => `'${c}'`).join(', ')}]\n`;}
+      if (fm.darkH2Color) {demoFrontmatter += `darkH2Color: [${fm.darkH2Color.map(c => `'${c}'`).join(', ')}]\n`;}
+      if (fm.darkH3Color) {demoFrontmatter += `darkH3Color: [${fm.darkH3Color.map(c => `'${c}'`).join(', ')}]\n`;}
+      if (fm.darkH4Color) {demoFrontmatter += `darkH4Color: [${fm.darkH4Color.map(c => `'${c}'`).join(', ')}]\n`;}
+      if (fm.darkHeaderText) {demoFrontmatter += `darkHeaderText: ${fm.darkHeaderText}\n`;}
+      if (fm.darkFooterText) {demoFrontmatter += `darkFooterText: ${fm.darkFooterText}\n`;}
+      if (fm.darkBgCover) {demoFrontmatter += `darkBgCover: ${fm.darkBgCover}\n`;}
+      if (fm.darkBgTitle) {demoFrontmatter += `darkBgTitle: ${fm.darkBgTitle}\n`;}
+      if (fm.darkBgSection) {demoFrontmatter += `darkBgSection: ${fm.darkBgSection}\n`;}
       
       demoFrontmatter += `\n# Semantic Colors - Light Mode\n`;
-      if (fm.lightLinkColor) demoFrontmatter += `lightLinkColor: ${fm.lightLinkColor}\n`;
-      if (fm.lightBulletColor) demoFrontmatter += `lightBulletColor: ${fm.lightBulletColor}\n`;
-      if (fm.lightBlockquoteBorder) demoFrontmatter += `lightBlockquoteBorder: ${fm.lightBlockquoteBorder}\n`;
-      if (fm.lightTableHeaderBg) demoFrontmatter += `lightTableHeaderBg: ${fm.lightTableHeaderBg}\n`;
-      if (fm.lightCodeBorder) demoFrontmatter += `lightCodeBorder: ${fm.lightCodeBorder}\n`;
-      if (fm.lightProgressBar) demoFrontmatter += `lightProgressBar: ${fm.lightProgressBar}\n`;
-      if (fm.lightBoldColor) demoFrontmatter += `lightBoldColor: ${fm.lightBoldColor}\n`;
+      if (fm.lightLinkColor) {demoFrontmatter += `lightLinkColor: ${fm.lightLinkColor}\n`;}
+      if (fm.lightBulletColor) {demoFrontmatter += `lightBulletColor: ${fm.lightBulletColor}\n`;}
+      if (fm.lightBlockquoteBorder) {demoFrontmatter += `lightBlockquoteBorder: ${fm.lightBlockquoteBorder}\n`;}
+      if (fm.lightTableHeaderBg) {demoFrontmatter += `lightTableHeaderBg: ${fm.lightTableHeaderBg}\n`;}
+      if (fm.lightCodeBorder) {demoFrontmatter += `lightCodeBorder: ${fm.lightCodeBorder}\n`;}
+      if (fm.lightProgressBar) {demoFrontmatter += `lightProgressBar: ${fm.lightProgressBar}\n`;}
+      if (fm.lightBoldColor) {demoFrontmatter += `lightBoldColor: ${fm.lightBoldColor}\n`;}
       
       demoFrontmatter += `\n# Semantic Colors - Dark Mode\n`;
-      if (fm.darkLinkColor) demoFrontmatter += `darkLinkColor: ${fm.darkLinkColor}\n`;
-      if (fm.darkBulletColor) demoFrontmatter += `darkBulletColor: ${fm.darkBulletColor}\n`;
-      if (fm.darkBlockquoteBorder) demoFrontmatter += `darkBlockquoteBorder: ${fm.darkBlockquoteBorder}\n`;
-      if (fm.darkTableHeaderBg) demoFrontmatter += `darkTableHeaderBg: ${fm.darkTableHeaderBg}\n`;
-      if (fm.darkCodeBorder) demoFrontmatter += `darkCodeBorder: ${fm.darkCodeBorder}\n`;
-      if (fm.darkProgressBar) demoFrontmatter += `darkProgressBar: ${fm.darkProgressBar}\n`;
-      if (fm.darkBoldColor) demoFrontmatter += `darkBoldColor: ${fm.darkBoldColor}\n`;
+      if (fm.darkLinkColor) {demoFrontmatter += `darkLinkColor: ${fm.darkLinkColor}\n`;}
+      if (fm.darkBulletColor) {demoFrontmatter += `darkBulletColor: ${fm.darkBulletColor}\n`;}
+      if (fm.darkBlockquoteBorder) {demoFrontmatter += `darkBlockquoteBorder: ${fm.darkBlockquoteBorder}\n`;}
+      if (fm.darkTableHeaderBg) {demoFrontmatter += `darkTableHeaderBg: ${fm.darkTableHeaderBg}\n`;}
+      if (fm.darkCodeBorder) {demoFrontmatter += `darkCodeBorder: ${fm.darkCodeBorder}\n`;}
+      if (fm.darkProgressBar) {demoFrontmatter += `darkProgressBar: ${fm.darkProgressBar}\n`;}
+      if (fm.darkBoldColor) {demoFrontmatter += `darkBoldColor: ${fm.darkBoldColor}\n`;}
       
       demoFrontmatter += `\n# Dynamic Backgrounds\n`;
       if (fm.lightDynamicBackground && fm.lightDynamicBackground.length > 0) {
@@ -1006,28 +1025,28 @@ export class ThemeExporter {
       if (fm.darkDynamicBackground && fm.darkDynamicBackground.length > 0) {
         demoFrontmatter += `darkDynamicBackground: [${fm.darkDynamicBackground.map(c => `'${c}'`).join(', ')}]\n`;
       }
-      if (fm.useDynamicBackground) demoFrontmatter += `useDynamicBackground: ${fm.useDynamicBackground}\n`;
-      if (fm.dynamicBackgroundRestartAtSection !== undefined) demoFrontmatter += `dynamicBackgroundRestartAtSection: ${fm.dynamicBackgroundRestartAtSection}\n`;
+      if (fm.useDynamicBackground) {demoFrontmatter += `useDynamicBackground: ${fm.useDynamicBackground}\n`;}
+      if (fm.dynamicBackgroundRestartAtSection !== undefined) {demoFrontmatter += `dynamicBackgroundRestartAtSection: ${fm.dynamicBackgroundRestartAtSection}\n`;}
       
       demoFrontmatter += `\n# Header/Footer & Logo\n`;
-      if (fm.headerLeft) demoFrontmatter += `headerLeft: ${fm.headerLeft}\n`;
-      if (fm.headerMiddle) demoFrontmatter += `headerMiddle: ${fm.headerMiddle}\n`;
-      if (fm.headerRight) demoFrontmatter += `headerRight: ${fm.headerRight}\n`;
-      if (fm.footerLeft) demoFrontmatter += `footerLeft: ${fm.footerLeft}\n`;
-      if (fm.footerMiddle) demoFrontmatter += `footerMiddle: ${fm.footerMiddle}\n`;
-      if (fm.footerRight) demoFrontmatter += `footerRight: ${fm.footerRight}\n`;
-      if (fm.logo) demoFrontmatter += `logo: ${fm.logo}\n`;
-      if (fm.logoSize) demoFrontmatter += `logoSize: ${fm.logoSize}\n`;
+      if (fm.headerLeft) {demoFrontmatter += `headerLeft: ${fm.headerLeft}\n`;}
+      if (fm.headerMiddle) {demoFrontmatter += `headerMiddle: ${fm.headerMiddle}\n`;}
+      if (fm.headerRight) {demoFrontmatter += `headerRight: ${fm.headerRight}\n`;}
+      if (fm.footerLeft) {demoFrontmatter += `footerLeft: ${fm.footerLeft}\n`;}
+      if (fm.footerMiddle) {demoFrontmatter += `footerMiddle: ${fm.footerMiddle}\n`;}
+      if (fm.footerRight) {demoFrontmatter += `footerRight: ${fm.footerRight}\n`;}
+      if (fm.logo) {demoFrontmatter += `logo: ${fm.logo}\n`;}
+      if (fm.logoSize) {demoFrontmatter += `logoSize: ${fm.logoSize}\n`;}
       
       demoFrontmatter += `\n# Presentation Settings\n`;
-      if (fm.aspectRatio) demoFrontmatter += `aspectRatio: ${fm.aspectRatio}\n`;
-      if (fm.lockAspectRatio !== undefined) demoFrontmatter += `lockAspectRatio: ${fm.lockAspectRatio}\n`;
-      if (fm.showProgress !== undefined) demoFrontmatter += `showProgress: ${fm.showProgress}\n`;
-      if (fm.showSlideNumbers !== undefined) demoFrontmatter += `showSlideNumbers: ${fm.showSlideNumbers}\n`;
-      if (fm.transition) demoFrontmatter += `transition: ${fm.transition}\n`;
-      if (fm.showFootnotesOnSlides !== undefined) demoFrontmatter += `showFootnotesOnSlides: ${fm.showFootnotesOnSlides}\n`;
-      if (fm.enableObsidianLinks !== undefined) demoFrontmatter += `enableObsidianLinks: ${fm.enableObsidianLinks}\n`;
-      if (fm.mode) demoFrontmatter += `mode: ${fm.mode}\n`;
+      if (fm.aspectRatio) {demoFrontmatter += `aspectRatio: ${fm.aspectRatio}\n`;}
+      if (fm.lockAspectRatio !== undefined) {demoFrontmatter += `lockAspectRatio: ${fm.lockAspectRatio}\n`;}
+      if (fm.showProgress !== undefined) {demoFrontmatter += `showProgress: ${fm.showProgress}\n`;}
+      if (fm.showSlideNumbers !== undefined) {demoFrontmatter += `showSlideNumbers: ${fm.showSlideNumbers}\n`;}
+      if (fm.transition) {demoFrontmatter += `transition: ${fm.transition}\n`;}
+      if (fm.showFootnotesOnSlides !== undefined) {demoFrontmatter += `showFootnotesOnSlides: ${fm.showFootnotesOnSlides}\n`;}
+      if (fm.enableObsidianLinks !== undefined) {demoFrontmatter += `enableObsidianLinks: ${fm.enableObsidianLinks}\n`;}
+      if (fm.mode) {demoFrontmatter += `mode: ${fm.mode}\n`;}
     }
     
     demoFrontmatter += `---\n`;

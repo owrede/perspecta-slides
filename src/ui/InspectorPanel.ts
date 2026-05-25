@@ -1,5 +1,14 @@
-import type { WorkspaceLeaf, App } from 'obsidian';
-import { ItemView, Setting, setIcon, Modal, Notice, TFolder, TFile } from 'obsidian';
+import {
+  type WorkspaceLeaf,
+  type App,
+  ItemView,
+  Setting,
+  setIcon,
+  Modal,
+  Notice,
+  TFolder,
+  TFile,
+} from 'obsidian';
 import type {
   Presentation,
   Slide,
@@ -8,10 +17,11 @@ import type {
   PresentationFrontmatter,
   Theme,
 } from '../types';
-import { getThemeNames, getTheme } from '../themes';
+import { getTheme } from '../themes';
 import type { ThemeLoader } from '../themes/ThemeLoader';
 import type { FontManager } from '../utils/FontManager';
 import { SlideParser } from '../parser/SlideParser';
+import { extractFamilyName } from '../utils/FontFamily';
 
 /**
  * Modal dialog showing Markdown editing help for slide creation
@@ -235,7 +245,11 @@ export class InspectorPanelView extends ItemView {
     | ((slideIndex: number, metadata: Partial<SlideMetadata>) => void)
     | null = null;
   private onPresentationChange:
-    | ((frontmatter: Partial<PresentationFrontmatter>, persistent: boolean) => void)
+    | ((
+        frontmatter: Partial<PresentationFrontmatter>,
+        persistent: boolean,
+        domAlreadyLive?: boolean
+      ) => void)
     | null = null;
   private fontManager: FontManager | null = null;
   private themeLoader: ThemeLoader | null = null;
@@ -390,7 +404,11 @@ export class InspectorPanelView extends ItemView {
   }
 
   setOnPresentationChange(
-    callback: (frontmatter: Partial<PresentationFrontmatter>, persistent: boolean) => void
+    callback: (
+      frontmatter: Partial<PresentationFrontmatter>,
+      persistent: boolean,
+      domAlreadyLive?: boolean
+    ) => void
   ) {
     this.onPresentationChange = callback;
   }
@@ -440,10 +458,10 @@ export class InspectorPanelView extends ItemView {
     const headers = contentEl.querySelectorAll('.inspector-section-header');
     headers.forEach((header: Element) => {
       const sectionId = (header as HTMLElement).dataset.sectionId;
-      if (!sectionId) return;
+      if (!sectionId) {return;}
 
       const isCollapsed = this.collapsedSections.has(sectionId);
-      if (!isCollapsed) return; // Only process collapsed sections
+      if (!isCollapsed) {return;} // Only process collapsed sections
 
       // Hide all following content until next section header
       let nextEl = header.nextElementSibling;
@@ -660,7 +678,11 @@ export class InspectorPanelView extends ItemView {
       return font?.styles || [];
     };
 
-    // Helper to render weight dropdown (only if multiple weights available)
+    // Helper to render weight dropdown (only if multiple weights available).
+    // If the deck requests a weight the font doesn't provide, the dropdown
+    // surfaces the fallback so the author can see it explicitly — silent
+    // fallbacks were a long-standing source of "why does it not look bold"
+    // confusion.
     const renderWeightDropdown = (
       parentContainer: HTMLElement,
       fontName: string | undefined,
@@ -672,7 +694,12 @@ export class InspectorPanelView extends ItemView {
         return;
       } // Don't show if only one weight
 
-      new Setting(parentContainer)
+      const hasFallback = currentWeight !== undefined && !weights.includes(currentWeight);
+      const fallbackWeight = hasFallback
+        ? weights.find((w) => w >= currentWeight!) ?? weights[weights.length - 1]
+        : currentWeight;
+
+      const setting = new Setting(parentContainer)
         .setName('Weight')
         .setClass('weight-setting')
         .addDropdown((dropdown) => {
@@ -680,37 +707,51 @@ export class InspectorPanelView extends ItemView {
             const label = this.getWeightLabel(w);
             dropdown.addOption(w.toString(), label);
           });
-          // Only use currentWeight if it's valid for this font, otherwise use first available weight
-          const validWeight =
-            currentWeight && weights.includes(currentWeight) ? currentWeight : weights[0] || 400;
+          const validWeight = fallbackWeight ?? weights[0] ?? 400;
           dropdown.setValue(validWeight.toString());
           dropdown.onChange((value) => onWeightChange(parseInt(value)));
         });
+
+      if (hasFallback) {
+        setting.setDesc(
+          `Requested weight ${currentWeight} is not available for "${fontName}". Using ${fallbackWeight} (closest available).`
+        );
+        setting.settingEl.addClass('perspecta-weight-fallback');
+      }
     };
 
     // ========== FONTS SECTION ==========
     this.createSectionHeader(container, 'FONTS');
 
-    // Get theme's default fonts for display
+    // Get theme's default fonts for display. Theme template fields may still be
+    // CSS stacks (legacy themes) — normalize to family names for the UI label.
     const theme = this.getThemeByName(fm.theme || '');
-    const themeTitleFont = theme?.template.TitleFont || 'Helvetica';
-    const themeBodyFont = theme?.template.BodyFont || 'Helvetica';
+    const themeTitleFont = extractFamilyName(theme?.template.TitleFont) || 'Helvetica';
+    const themeBodyFont = extractFamilyName(theme?.template.BodyFont) || 'Helvetica';
 
-    const titleFontMissing = fm.titleFont && !cachedFontNames.has(fm.titleFont);
-    const bodyFontMissing = fm.bodyFont && !cachedFontNames.has(fm.bodyFont);
+    // Frontmatter font fields are canonical family names (post Phase 1a).
+    // Legacy decks may carry a CSS stack — use extractFamilyName at every
+    // read-boundary so cache lookups by family name still work.
+    const titleFontFamily = extractFamilyName(fm.titleFont);
+    const bodyFontFamily = extractFamilyName(fm.bodyFont);
+    const headerFontFamily = extractFamilyName(fm.headerFont);
+    const footerFontFamily = extractFamilyName(fm.footerFont);
+
+    const titleFontMissing = !!titleFontFamily && !cachedFontNames.has(titleFontFamily);
+    const bodyFontMissing = !!bodyFontFamily && !cachedFontNames.has(bodyFontFamily);
 
     // Title Font
     new Setting(container)
       .setName('Title Font')
       .addDropdown((dropdown) => {
         dropdown.addOption('', `Theme Default (${themeTitleFont})`);
-        if (titleFontMissing && fm.titleFont) {
-          dropdown.addOption(fm.titleFont, `${fm.titleFont} (missing)`);
+        if (titleFontMissing && titleFontFamily) {
+          dropdown.addOption(titleFontFamily, `${titleFontFamily} (missing)`);
         }
         cachedFonts.forEach((font) => {
           dropdown.addOption(font.name, font.displayName);
         });
-        dropdown.setValue(fm.titleFont || '');
+        dropdown.setValue(titleFontFamily || '');
         dropdown.onChange((value) => {
           this.updateFrontmatter({ titleFont: value || undefined, titleFontWeight: undefined });
           this.render(); // Re-render to show/hide weight dropdown
@@ -727,7 +768,7 @@ export class InspectorPanelView extends ItemView {
       );
 
     // Title Font Weight (if applicable)
-    renderWeightDropdown(container, fm.titleFont, fm.titleFontWeight, (weight) =>
+    renderWeightDropdown(container, titleFontFamily, fm.titleFontWeight, (weight) =>
       this.updateFrontmatter({ titleFontWeight: weight })
     );
 
@@ -736,13 +777,13 @@ export class InspectorPanelView extends ItemView {
       .setName('Body Font')
       .addDropdown((dropdown) => {
         dropdown.addOption('', `Theme Default (${themeBodyFont})`);
-        if (bodyFontMissing && fm.bodyFont) {
-          dropdown.addOption(fm.bodyFont, `${fm.bodyFont} (missing)`);
+        if (bodyFontMissing && bodyFontFamily) {
+          dropdown.addOption(bodyFontFamily, `${bodyFontFamily} (missing)`);
         }
         cachedFonts.forEach((font) => {
           dropdown.addOption(font.name, font.displayName);
         });
-        dropdown.setValue(fm.bodyFont || '');
+        dropdown.setValue(bodyFontFamily || '');
         dropdown.onChange((value) => {
           this.updateFrontmatter({ bodyFont: value || undefined, bodyFontWeight: undefined });
           this.render();
@@ -759,12 +800,12 @@ export class InspectorPanelView extends ItemView {
       );
 
     // Body Font Weight (if applicable)
-    renderWeightDropdown(container, fm.bodyFont, fm.bodyFontWeight, (weight) =>
+    renderWeightDropdown(container, bodyFontFamily, fm.bodyFontWeight, (weight) =>
       this.updateFrontmatter({ bodyFontWeight: weight })
     );
 
     // Header Font (inherits from Body by default)
-    const effectiveBodyFont = fm.bodyFont || themeBodyFont;
+    const effectiveBodyFont = bodyFontFamily || themeBodyFont;
     new Setting(container)
       .setName('Header Font')
       .addDropdown((dropdown) => {
@@ -772,7 +813,7 @@ export class InspectorPanelView extends ItemView {
         cachedFonts.forEach((font) => {
           dropdown.addOption(font.name, font.displayName);
         });
-        dropdown.setValue(fm.headerFont || '');
+        dropdown.setValue(headerFontFamily || '');
         dropdown.onChange((value) => {
           this.updateFrontmatter({ headerFont: value || undefined, headerFontWeight: undefined });
           this.render();
@@ -789,7 +830,7 @@ export class InspectorPanelView extends ItemView {
       );
 
     // Header Font Weight (if applicable)
-    renderWeightDropdown(container, fm.headerFont, fm.headerFontWeight, (weight) =>
+    renderWeightDropdown(container, headerFontFamily, fm.headerFontWeight, (weight) =>
       this.updateFrontmatter({ headerFontWeight: weight })
     );
 
@@ -801,7 +842,7 @@ export class InspectorPanelView extends ItemView {
         cachedFonts.forEach((font) => {
           dropdown.addOption(font.name, font.displayName);
         });
-        dropdown.setValue(fm.footerFont || '');
+        dropdown.setValue(footerFontFamily || '');
         dropdown.onChange((value) => {
           this.updateFrontmatter({ footerFont: value || undefined, footerFontWeight: undefined });
           this.render();
@@ -818,7 +859,7 @@ export class InspectorPanelView extends ItemView {
       );
 
     // Footer Font Weight (if applicable)
-    renderWeightDropdown(container, fm.footerFont, fm.footerFontWeight, (weight) =>
+    renderWeightDropdown(container, footerFontFamily, fm.footerFontWeight, (weight) =>
       this.updateFrontmatter({ footerFontWeight: weight })
     );
 
@@ -1430,12 +1471,15 @@ export class InspectorPanelView extends ItemView {
       // Use first preset as the source of truth
       const preset = presets[0];
 
-      // Apply fonts from theme preset
-      if (preset.TitleFont) {
-        update.titleFont = preset.TitleFont;
+      // Frontmatter stores canonical family names. extractFamilyName tolerates
+      // legacy preset values that still ship a full CSS stack.
+      const titleFamily = extractFamilyName(preset.TitleFont);
+      const bodyFamily = extractFamilyName(preset.BodyFont);
+      if (titleFamily) {
+        update.titleFont = titleFamily;
       }
-      if (preset.BodyFont) {
-        update.bodyFont = preset.BodyFont;
+      if (bodyFamily) {
+        update.bodyFont = bodyFamily;
       }
 
       // Apply colors from theme preset
@@ -2829,6 +2873,18 @@ export class InspectorPanelView extends ItemView {
     }
   }
 
+  /**
+   * Tracks whether a live (non-persistent) frontmatter update has patched
+   * the DOM since the last persistent write. Sliders fire many
+   * `persistent=false` updates while dragging, then one `persistent=true`
+   * on pointerup. When the persistent write fires, this flag tells the
+   * parent the DOM is already current, so the post-write redraw can be
+   * skipped — eliminating the slider double-redraw. Controls (dropdowns,
+   * text fields) that fire `persistent=true` directly leave the flag
+   * false, so they still get their redraw.
+   */
+  private liveUpdatedSinceLastPersist = false;
+
   private updateFrontmatter(
     frontmatter: Partial<PresentationFrontmatter>,
     persistent: boolean = true
@@ -2847,10 +2903,16 @@ export class InspectorPanelView extends ItemView {
       }
     }
 
-    // Notify parent - the parent will trigger a full refresh via file modification
-    // and editor-change event, so no need to call this.render() here
+    let domAlreadyLive = false;
+    if (!persistent) {
+      this.liveUpdatedSinceLastPersist = true;
+    } else {
+      domAlreadyLive = this.liveUpdatedSinceLastPersist;
+      this.liveUpdatedSinceLastPersist = false;
+    }
+
     if (this.onPresentationChange) {
-      this.onPresentationChange(frontmatter, persistent);
+      this.onPresentationChange(frontmatter, persistent, domAlreadyLive);
     }
   }
 }

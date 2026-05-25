@@ -74,7 +74,7 @@ async function loadHarfbuzzSubset(): Promise<{
   exports: HbExports;
   heap: Uint8Array;
 }> {
-  if (hbPromise) return hbPromise;
+  if (hbPromise) {return hbPromise;}
   hbPromise = (async () => {
     const wasmBytes = base64ToBytes(hbSubsetWasmBase64);
     const { instance } = await WebAssembly.instantiate(wasmBytes, {});
@@ -133,7 +133,7 @@ export interface FlattenOptions {
  * the font usable in PowerPoint.
  */
 function stripVariationLeftovers(bytes: Uint8Array): Uint8Array {
-  if (bytes.length < 12) return bytes;
+  if (bytes.length < 12) {return bytes;}
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const numTables = dv.getUint16(4);
 
@@ -171,12 +171,12 @@ function stripVariationLeftovers(bytes: Uint8Array): Uint8Array {
     const checksum = dv.getUint32(dirOff + 4);
     const offset = dv.getUint32(dirOff + 8);
     const length = dv.getUint32(dirOff + 12);
-    if (dropTags.has(tag)) continue;
+    if (dropTags.has(tag)) {continue;}
 
     const data = bytes.subarray(offset, offset + length);
     entries.push({ tag, checksum, offset, length, data });
-    if (tag === 'head') headData = data.slice(); // mutable copy
-    if (tag === 'name') nameIdx = entries.length - 1;
+    if (tag === 'head') {headData = data.slice();} // mutable copy
+    if (tag === 'name') {nameIdx = entries.length - 1;}
   }
 
   // Rewrite `name` to keep only records with nameID <= 25.
@@ -193,7 +193,7 @@ function stripVariationLeftovers(bytes: Uint8Array): Uint8Array {
     }
   }
 
-  if (!headData) return bytes; // unexpected; bail.
+  if (!headData) {return bytes;} // unexpected; bail.
 
   // Zero out checkSumAdjustment in head (offset 8 within head table) before
   // computing checksums; we'll patch it in at the end.
@@ -316,15 +316,15 @@ function applyStyleFlags(
       nameDirIdx = i;
     }
   }
-  if (os2Off < 0 || headOff < 0 || nameOff < 0) return bytes;
+  if (os2Off < 0 || headOff < 0 || nameOff < 0) {return bytes;}
 
   // 1. Rewrite OS/2.fsSelection (offset 62, uint16) and weight class (offset 4).
   //    Bit 0 = ITALIC, bit 5 = BOLD, bit 6 = REGULAR.
   //    We always set USE_TYPO_METRICS (bit 7) since the source had it.
   let fsSel = 0;
-  if (isItalic) fsSel |= 0x01;
-  if (isBold) fsSel |= 0x20;
-  if (!isBold && !isItalic) fsSel |= 0x40;
+  if (isItalic) {fsSel |= 0x01;}
+  if (isBold) {fsSel |= 0x20;}
+  if (!isBold && !isItalic) {fsSel |= 0x40;}
   fsSel |= 0x0080; // USE_TYPO_METRICS — inherited from Inter source
 
   const outDv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -333,8 +333,8 @@ function applyStyleFlags(
 
   // 2. head.macStyle (offset 44, uint16) — bit 0 = Bold, bit 1 = Italic.
   let macStyle = 0;
-  if (isBold) macStyle |= 0x01;
-  if (isItalic) macStyle |= 0x02;
+  if (isBold) {macStyle |= 0x01;}
+  if (isItalic) {macStyle |= 0x02;}
   outDv.setUint16(headOff + 44, macStyle);
 
   // 3. Rewrite the name table. We need to update nameID 2 (style) and
@@ -343,13 +343,13 @@ function applyStyleFlags(
   const nameBytes = bytes.subarray(nameOff, nameOff + nameTableLength);
   const newName = rewriteNameStyles(nameBytes, styleName);
 
-  if (!newName) return bytes;
+  if (!newName) {return bytes;}
 
   // Reassemble the font with the new name table. Easiest: walk all tables,
   // recompute offsets, write a new sfnt.
   interface Entry { tag: string; data: Uint8Array; checksum: number; offset: number; }
   const entries: Entry[] = [];
-  let oldNameDataLen = nameTableLength;
+  const oldNameDataLen = nameTableLength;
   for (let i = 0; i < numTables; i++) {
     const dirOff = 12 + i * 16;
     const tag = String.fromCharCode(
@@ -419,7 +419,7 @@ function rewriteNameStyles(name: Uint8Array, styleName: string): Uint8Array | nu
   const format = dv.getUint16(0);
   const count = dv.getUint16(2);
   const stringOffset = dv.getUint16(4);
-  if (format !== 0) return null;
+  if (format !== 0) {return null;}
 
   interface NameRec {
     platformID: number;
@@ -430,7 +430,7 @@ function rewriteNameStyles(name: Uint8Array, styleName: string): Uint8Array | nu
   }
 
   const recs: NameRec[] = [];
-  let familyName: { ascii?: string; utf16be?: string } = {};
+  const familyName: { ascii?: string; utf16be?: string } = {};
   for (let i = 0; i < count; i++) {
     const rec = 6 + i * 12;
     const platformID = dv.getUint16(rec);
@@ -442,8 +442,8 @@ function rewriteNameStyles(name: Uint8Array, styleName: string): Uint8Array | nu
     const str = name.subarray(stringOffset + off, stringOffset + off + length);
     if (nameID === 1) {
       // Cache family per encoding.
-      if (platformID === 1) familyName.ascii = decodeAscii(str);
-      else if (platformID === 0 || platformID === 3) familyName.utf16be = decodeUtf16BE(str);
+      if (platformID === 1) {familyName.ascii = decodeAscii(str);}
+      else if (platformID === 0 || platformID === 3) {familyName.utf16be = decodeUtf16BE(str);}
     }
     recs.push({ platformID, encodingID, languageID, nameID, str });
   }
@@ -478,7 +478,7 @@ function rewriteNameStyles(name: Uint8Array, styleName: string): Uint8Array | nu
     let off = strIndex.get(key);
     if (off === undefined) {
       off = pool.length;
-      for (const b of r.str) pool.push(b);
+      for (const b of r.str) {pool.push(b);}
       strIndex.set(key, off);
     }
     offs.push(off);
@@ -511,7 +511,7 @@ function rewriteNameStyles(name: Uint8Array, styleName: string): Uint8Array | nu
 
 function decodeAscii(bytes: Uint8Array): string {
   let s = '';
-  for (const b of bytes) s += String.fromCharCode(b);
+  for (const b of bytes) {s += String.fromCharCode(b);}
   return s;
 }
 
@@ -527,7 +527,7 @@ function encodeForPlatform(s: string, platformID: number): Uint8Array {
   if (platformID === 1) {
     // Macintosh: ASCII (we keep within ASCII for style names).
     const out = new Uint8Array(s.length);
-    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i) & 0xff;
+    for (let i = 0; i < s.length; i++) {out[i] = s.charCodeAt(i) & 0xff;}
     return out;
   }
   // Windows / Unicode: UTF-16 BE.
@@ -573,12 +573,12 @@ function checksumTable(data: Uint8Array): number {
  * records we compact the string pool and rewrite offsets.
  */
 function rebuildNameTable(name: Uint8Array): Uint8Array | null {
-  if (name.length < 6) return null;
+  if (name.length < 6) {return null;}
   const dv = new DataView(name.buffer, name.byteOffset, name.byteLength);
   const format = dv.getUint16(0);
   const count = dv.getUint16(2);
   const stringOffset = dv.getUint16(4);
-  if (format !== 0) return null; // langTagRecord format 1 is rare; we don't handle it.
+  if (format !== 0) {return null;} // langTagRecord format 1 is rare; we don't handle it.
 
   interface NameRec {
     platformID: number;
@@ -597,12 +597,12 @@ function rebuildNameTable(name: Uint8Array): Uint8Array | null {
     const nameID = dv.getUint16(rec + 6);
     const length = dv.getUint16(rec + 8);
     const off = dv.getUint16(rec + 10);
-    if (nameID > 25) continue;
+    if (nameID > 25) {continue;}
     const str = name.subarray(stringOffset + off, stringOffset + off + length);
     kept.push({ platformID, encodingID, languageID, nameID, str });
   }
 
-  if (kept.length === 0) return null;
+  if (kept.length === 0) {return null;}
 
   // Build a new string pool, deduplicating identical strings.
   const pool: number[] = [];
@@ -613,7 +613,7 @@ function rebuildNameTable(name: Uint8Array): Uint8Array | null {
     let off = strIndex.get(key);
     if (off === undefined) {
       off = pool.length;
-      for (const b of k.str) pool.push(b);
+      for (const b of k.str) {pool.push(b);}
       strIndex.set(key, off);
     }
     recOffsets.push(off);
@@ -650,13 +650,13 @@ function rebuildNameTable(name: Uint8Array): Uint8Array | null {
  * through unchanged.
  */
 export function isVariableFont(bytes: Uint8Array): boolean {
-  if (bytes.length < 12) return false;
+  if (bytes.length < 12) {return false;}
   const nTables = (bytes[4] << 8) | bytes[5];
   for (let i = 0; i < nTables; i++) {
     const off = 12 + i * 16;
-    if (off + 4 > bytes.length) break;
+    if (off + 4 > bytes.length) {break;}
     const tag = String.fromCharCode(bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]);
-    if (tag === 'fvar') return true;
+    if (tag === 'fvar') {return true;}
   }
   return false;
 }

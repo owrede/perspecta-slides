@@ -2,6 +2,17 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.6.0] - 2026-05-26
+
+### Fixed
+- **Built-in Inter is now actually used.** The bundled Inter font (added in 0.5.0) was never emitted at runtime: the font resolver only generated theme font CSS for non-built-in themes, so the Default theme's `Inter` had no matching `@font-face` and fell back to a system font. The resolver now generates font CSS for every theme, so the Default theme renders its bundled Inter consistently across machines.
+- **Theme-bundled font weights are authoritative.** Weight validation read only the global font cache, so a theme supplying its own fonts (including the Default theme's Inter) could load the face but silently drop weight overrides. The resolver now folds theme-bundled weights into the available-weights map.
+- **PPTX export embeds theme-bundled fonts.** Font embedding resolved only globally cached fonts, so self-contained themes weren't self-contained in PowerPoint. The embedder now also reads fonts from the active theme — the built-in Default theme's bundled Inter (from base64) and custom themes' on-disk `fonts/` files.
+- **Theme save invalidates the font resolver.** After saving a theme, the resolver kept serving memoized base64 font CSS; it is now invalidated so updated theme fonts take effect immediately.
+
+### Removed
+- Dead `ThemeLoader.generateCSSVariables()` (unused) and its now-orphaned imports.
+
 ## [0.5.1] - 2026-05-25
 
 ### Fixed

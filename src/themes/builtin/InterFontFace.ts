@@ -67,3 +67,28 @@ export function generateBuiltinInterFontCSS(): string {
 }`
   ).join('\n');
 }
+
+/** A bundled built-in font variant decoded to raw WOFF2 bytes. */
+export interface BuiltinFontVariant {
+  weight: number;
+  style: 'normal' | 'italic';
+  /** Raw WOFF2 bytes (still compressed; callers decompress as needed). */
+  bytes: Uint8Array;
+  format: 'woff2';
+}
+
+/**
+ * Decode the bundled Inter faces to raw WOFF2 bytes. Used by export paths
+ * (e.g. PPTX embedding) that need the actual font files for the built-in
+ * Default theme, which has no on-disk fonts/ folder or global cache entry.
+ */
+export function getBuiltinInterVariants(): BuiltinFontVariant[] {
+  return INTER_FACES.map((face) => {
+    const binary = atob(face.base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return { weight: face.weight, style: face.style, bytes, format: 'woff2' as const };
+  });
+}

@@ -2,7 +2,13 @@ import type { App } from 'obsidian';
 import JSZip from 'jszip';
 import { decompress as woff2Decompress } from 'wawoff2';
 import type { FontManager } from './FontManager';
+import type { Theme } from '../types';
 import { flattenVariableFont, isVariableFont } from './VariableFontFlattener';
+import {
+  BUILTIN_INTER_FAMILY,
+  getBuiltinInterVariants,
+} from '../themes/builtin/InterFontFace';
+import { vaultPathJoin } from './VaultPath';
 
 /**
  * Font format detected from the raw bytes (NOT from filename — we want to be
@@ -59,14 +65,19 @@ export class PptxFontEmbedder {
    *        but render Calibri (the PptxGenJS default theme font) instead.
    * @param minorFont typeface to set as the theme's minor (body) font
    */
+  /** Active theme, set per-call so resolveFont can read theme-bundled files. */
+  private activeTheme: Theme | null = null;
+
   async embedFonts(
     pptxBuffer: ArrayBuffer,
     typefaces: string[],
     majorFont?: string,
-    minorFont?: string
+    minorFont?: string,
+    theme?: Theme | null
   ): Promise<ArrayBuffer> {
     if (typefaces.length === 0) {return pptxBuffer;}
 
+    this.activeTheme = theme ?? null;
     const resolved: ResolvedFont[] = [];
     for (const typeface of typefaces) {
       const font = await this.resolveFont(typeface);
@@ -138,46 +149,103 @@ export class PptxFontEmbedder {
   // ──────────────────────────────────────────────────────────────────────────
 
   private async resolveFont(typeface: string): Promise<ResolvedFont | null> {
+    // Raw source bytes for each variant, before TTF conversion. Collected from
+    // the global font cache first, then from the active theme's bundled fonts
+    // so self-contained themes (and the built-in Default theme's bundled Inter)
+    // embed even when the target vault has no global cache entry.
+    const sources: Array<{ weight: number; italic: boolean; bytes: Uint8Array }> = [];
+
     const cached = this.fontManager.getCachedFont(typeface);
-    if (!cached?.files || cached.files.length === 0) {
-      console.log(`[PptxFontEmbedder] No cached font for "${typeface}"`);
+    if (cached?.files && cached.files.length > 0) {
+      for (const file of cached.files) {
+        try {
+          const raw = await this.app.vault.adapter.readBinary(file.localPath);
+          sources.push({
+            weight: file.weight || 400,
+            italic: (file.style || '').toLowerCase().includes('italic'),
+            bytes: new Uint8Array(raw),
+          });
+        } catch (err) {
+          console.warn(`[PptxFontEmbedder] Failed to read ${file.localPath}:`, err);
+        }
+      }
+    } else {
+      const themeSources = await this.resolveThemeBundledFont(typeface);
+      if (themeSources) {sources.push(...themeSources);}
+    }
+
+    if (sources.length === 0) {
+      console.log(`[PptxFontEmbedder] No font (cache or theme) for "${typeface}"`);
       return null;
     }
 
     const variants: ResolvedFontVariant[] = [];
-
-    for (const file of cached.files) {
-      try {
-        const raw = await this.app.vault.adapter.readBinary(file.localPath);
-        const bytes = new Uint8Array(raw);
-        const format = this.sniffFormat(bytes);
-        if (format === 'unknown') {
-          console.warn(
-            `[PptxFontEmbedder] Unknown font format for ${file.localPath} — skipping`
-          );
-          continue;
-        }
-
-        const ttfBytes = await this.toTTF(bytes, format);
-        if (!ttfBytes) {
-          console.warn(
-            `[PptxFontEmbedder] Could not convert ${file.localPath} (${format}) to TTF — skipping`
-          );
-          continue;
-        }
-
-        variants.push({
-          weight: file.weight || 400,
-          italic: (file.style || '').toLowerCase().includes('italic'),
-          ttfBuffer: ttfBytes,
-        });
-      } catch (err) {
-        console.warn(`[PptxFontEmbedder] Failed to read ${file.localPath}:`, err);
+    for (const src of sources) {
+      const format = this.sniffFormat(src.bytes);
+      if (format === 'unknown') {
+        console.warn(`[PptxFontEmbedder] Unknown font format for "${typeface}" — skipping`);
+        continue;
       }
+      const ttfBytes = await this.toTTF(src.bytes, format);
+      if (!ttfBytes) {
+        console.warn(
+          `[PptxFontEmbedder] Could not convert "${typeface}" (${format}) to TTF — skipping`
+        );
+        continue;
+      }
+      variants.push({ weight: src.weight, italic: src.italic, ttfBuffer: ttfBytes });
     }
 
     if (variants.length === 0) {return null;}
     return { typeface, variants };
+  }
+
+  /**
+   * Resolve a typeface from the active theme's bundled-font manifest. Handles
+   * two cases: the built-in Default theme's Inter (bundled as base64 in the JS
+   * via InterFontFace) and custom themes whose fonts live on disk under
+   * `theme.basePath/fonts/`.
+   *
+   * Matches by the canonical family name; PPTX typefaces are the canonical
+   * (non-namespaced) names, which is what the bundled manifest keys on.
+   */
+  private async resolveThemeBundledFont(
+    typeface: string
+  ): Promise<Array<{ weight: number; italic: boolean; bytes: Uint8Array }> | null> {
+    const theme = this.activeTheme;
+    const bundled = theme?.themeJsonData?.bundledFonts?.find(
+      (b) => b.family.toLowerCase() === typeface.toLowerCase()
+    );
+    if (!theme || !bundled) {return null;}
+
+    // Built-in Default theme's Inter: bytes come from the bundled base64,
+    // not from disk (the file paths are sentinel `builtin:inter-*` refs).
+    const isBuiltinInter =
+      theme.isBuiltIn && bundled.family.toLowerCase() === BUILTIN_INTER_FAMILY.toLowerCase();
+    if (isBuiltinInter) {
+      return getBuiltinInterVariants().map((v) => ({
+        weight: v.weight,
+        italic: v.style === 'italic',
+        bytes: v.bytes,
+      }));
+    }
+
+    // Custom theme: read each declared file from the theme's folder.
+    const out: Array<{ weight: number; italic: boolean; bytes: Uint8Array }> = [];
+    for (const fileRef of bundled.files) {
+      const absolutePath = vaultPathJoin(theme.basePath, fileRef.path);
+      try {
+        const raw = await this.app.vault.adapter.readBinary(absolutePath);
+        out.push({
+          weight: fileRef.weight || 400,
+          italic: (fileRef.style || '').toLowerCase().includes('italic'),
+          bytes: new Uint8Array(raw),
+        });
+      } catch (err) {
+        console.warn(`[PptxFontEmbedder] Failed to read theme font ${absolutePath}:`, err);
+      }
+    }
+    return out.length > 0 ? out : null;
   }
 
   private sniffFormat(bytes: Uint8Array): FontFormat {

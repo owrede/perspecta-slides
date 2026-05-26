@@ -148,7 +148,8 @@ export class PptxExportService {
             arrayBuffer,
             typefaces,
             themeConfig.titleFont,
-            themeConfig.bodyFont
+            themeConfig.bodyFont,
+            theme
           );
         } catch (err) {
           console.warn('[PptxExportService] Font embedding failed:', err);

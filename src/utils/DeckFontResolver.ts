@@ -132,7 +132,9 @@ export class DeckFontResolver {
       if (f && !usedFamilies.includes(f)) {usedFamilies.push(f);}
     }
 
-    // Available weights map.
+    // Available weights map. Sourced from the global font cache and from the
+    // active theme's bundled-font manifest, so weight validation reflects the
+    // fonts the deck can actually render — not just globally cached ones.
     const availableWeights = new Map<string, number[]>();
     if (this.fontManager) {
       for (const family of usedFamilies) {
@@ -140,14 +142,38 @@ export class DeckFontResolver {
         availableWeights.set(family, font?.weights ?? []);
       }
     }
+    // Fold in theme-bundled font weights. A theme can supply a font (incl. the
+    // built-in Default theme's bundled Inter) that has no global cache entry;
+    // its weights still need to be authoritative for renderer validation.
+    if (input.theme?.themeJsonData?.bundledFonts) {
+      for (const b of input.theme.themeJsonData.bundledFonts) {
+        const bundledWeights = Array.from(new Set(b.files.map((f) => f.weight))).sort(
+          (a, z) => a - z
+        );
+        if (bundledWeights.length === 0) {continue;}
+        const merge = (key: string) => {
+          const existing = availableWeights.get(key) ?? [];
+          const union = Array.from(new Set([...existing, ...bundledWeights])).sort(
+            (a, z) => a - z
+          );
+          availableWeights.set(key, union);
+        };
+        // Key by the canonical family and by the namespaced render family,
+        // since SlideRenderer may validate against either form.
+        merge(b.family);
+        merge(namespaceThemeFont(b.family, input.theme.template.Name || 'theme'));
+      }
+    }
 
     // Compose @font-face CSS. Two sources:
-    //   1) Theme-bundled fonts (custom themes only — built-in themes don't
-    //      have a fonts/ folder).
+    //   1) Theme-bundled fonts. Custom themes carry a fonts/ folder; the
+    //      built-in Default theme bundles Inter. ThemeLoader.generateThemeFontCSS
+    //      handles both cases (and returns '' for built-ins that ship no fonts),
+    //      so it's called for every theme — built-in or not.
     //   2) Globally-cached fonts referenced by the deck.
     const cssChunks: string[] = [];
 
-    if (input.theme && this.themeLoader && !input.theme.isBuiltIn) {
+    if (input.theme && this.themeLoader) {
       const themeFontCSS = await this.themeLoader.generateThemeFontCSS(input.theme);
       if (themeFontCSS) {cssChunks.push(themeFontCSS);}
     }

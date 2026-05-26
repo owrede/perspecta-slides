@@ -2167,10 +2167,13 @@ export default class PerspectaSlidesPlugin extends Plugin {
           overwrite
         );
 
-        // Reload themes after saving
+        // Reload themes after saving, then invalidate the font resolver so a
+        // theme whose bundled fonts changed re-resolves its @font-face CSS
+        // instead of serving stale memoized base64.
         if (this.themeLoader) {
           await this.themeLoader.loadThemes();
         }
+        this.fontResolver?.invalidateAll();
       }
     );
 

@@ -6,7 +6,7 @@ import {
   DEFAULT_SEMANTIC_COLORS_DARK,
 } from './ThemeSchema';
 import { builtInThemes } from './builtin';
-import { composeFontStack, extractFamilyName, namespaceThemeFont } from '../utils/FontFamily';
+import { namespaceThemeFont } from '../utils/FontFamily';
 import { vaultPathJoin } from '../utils/VaultPath';
 import {
   BUILTIN_DEFAULT_THEME_NAME,
@@ -337,48 +337,6 @@ export class ThemeLoader {
 
   setCustomThemesFolder(folder: string): void {
     this.customThemesFolder = folder;
-  }
-
-  /**
-   * Generate CSS variables from theme presets
-   */
-  generateCSSVariables(theme: Theme, presetName?: string): string {
-    const preset = presetName ? theme.presets.find((p) => p.Name === presetName) : theme.presets[0];
-
-    if (!preset) {
-      return '';
-    }
-
-    // Preset / template font fields are canonical family names (post Phase 1a).
-    // Legacy theme JSON may still ship a CSS stack — extractFamilyName tolerates
-    // either form. composeFontStack builds the final CSS value exactly once.
-    const titleFamily = extractFamilyName(preset.TitleFont) ?? extractFamilyName(theme.template.TitleFont);
-    const bodyFamily = extractFamilyName(preset.BodyFont) ?? extractFamilyName(theme.template.BodyFont);
-
-    const vars: string[] = [
-      `--title-font: ${composeFontStack(titleFamily)};`,
-      `--body-font: ${composeFontStack(bodyFamily)};`,
-      `--dark-body-text: ${preset.DarkBodyTextColor};`,
-      `--light-body-text: ${preset.LightBodyTextColor};`,
-      `--dark-title-text: ${preset.DarkTitleTextColor};`,
-      `--light-title-text: ${preset.LightTitleTextColor};`,
-      `--dark-background: ${preset.DarkBackgroundColor};`,
-      `--light-background: ${preset.LightBackgroundColor};`,
-      `--light-link-color: ${preset.LightLinkColor};`,
-      `--light-bullet-color: ${preset.LightBulletColor};`,
-      `--light-blockquote-border: ${preset.LightBlockquoteBorder};`,
-      `--light-table-header-bg: ${preset.LightTableHeaderBg};`,
-      `--light-code-border: ${preset.LightCodeBorder};`,
-      `--light-progress-bar: ${preset.LightProgressBar};`,
-      `--dark-link-color: ${preset.DarkLinkColor};`,
-      `--dark-bullet-color: ${preset.DarkBulletColor};`,
-      `--dark-blockquote-border: ${preset.DarkBlockquoteBorder};`,
-      `--dark-table-header-bg: ${preset.DarkTableHeaderBg};`,
-      `--dark-code-border: ${preset.DarkCodeBorder};`,
-      `--dark-progress-bar: ${preset.DarkProgressBar};`,
-    ];
-
-    return `:root {\n  ${vars.join('\n  ')}\n}`;
   }
 
   /**

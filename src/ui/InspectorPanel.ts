@@ -577,6 +577,16 @@ export class InspectorPanelView extends ItemView {
     });
 
     new Setting(container)
+      .setName('Footer Right')
+      .setDesc('Overrides the slide number when set')
+      .addText((text) => {
+        text.setPlaceholder('').setValue(fm.footerRight || '');
+        text.inputEl.addEventListener('blur', () => {
+          this.updateFrontmatter({ footerRight: text.getValue() });
+        });
+      });
+
+    new Setting(container)
       .setName('Show Slide Numbers')
       .addToggle((toggle) =>
         toggle

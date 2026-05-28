@@ -279,6 +279,84 @@ export function tidySlideChunk(chunk: string): string {
   return serializeSlideChunk(meta, content);
 }
 
+/**
+ * Parse a slide's `startlevel` meta into a heading level (1–3). Accepts
+ * either a hash form (`#`, `##`, `###`) or a numeric form (`1`, `2`, `3`).
+ * Returns 1 (the default — slides start at level 1) for missing/invalid
+ * values.
+ */
+export function parseStartLevel(value: string | undefined): number {
+  if (!value) {return 1;}
+  const v = value.trim();
+  const hashes = v.match(/^#{1,3}$/);
+  if (hashes) {return hashes[0].length;}
+  const n = parseInt(v, 10);
+  if (n >= 1 && n <= 3) {return n;}
+  return 1;
+}
+
+/**
+ * Normalise the heading levels inside one slide chunk so the slide's
+ * top-most heading sits at the target level (from the slide's `startlevel`
+ * meta, default 1), shifting every other heading by the same delta to keep
+ * the relative hierarchy intact. Headings inside fenced code blocks are left
+ * untouched, and resulting levels are clamped to the valid `#`..`######`
+ * range.
+ *
+ * Example: a slide whose headings are `## Title` / `### Sub`, with no
+ * `startlevel`, becomes `# Title` / `## Sub` (delta -1). With
+ * `startlevel: ##` it stays `## Title` / `### Sub`.
+ */
+export function lintSlideChunkHeadings(chunk: string): string {
+  const { meta, content } = parseSlideChunk(chunk);
+  if (content === '') {return serializeSlideChunk(meta, content);}
+
+  const targetTop = parseStartLevel(meta['startlevel']);
+  const lines = content.split('\n');
+
+  // First pass: find the minimum heading level present (outside code fences).
+  const headingRe = /^(#{1,6})(\s+\S.*)$/;
+  let fenceChar: string | null = null;
+  let minLevel = Infinity;
+  for (const line of lines) {
+    const fence = line.match(/^(```+|~~~+)/);
+    if (fence) {
+      const ch = fence[1][0];
+      if (fenceChar === null) {fenceChar = ch;}
+      else if (fenceChar === ch) {fenceChar = null;}
+      continue;
+    }
+    if (fenceChar !== null) {continue;}
+    const m = line.match(headingRe);
+    if (m) {minLevel = Math.min(minLevel, m[1].length);}
+  }
+
+  // No headings: nothing to normalise.
+  if (!Number.isFinite(minLevel)) {return serializeSlideChunk(meta, content);}
+
+  const delta = targetTop - minLevel;
+  if (delta === 0) {return serializeSlideChunk(meta, content);}
+
+  // Second pass: shift each heading by delta, clamped to [1, 6].
+  fenceChar = null;
+  const shifted = lines.map((line) => {
+    const fence = line.match(/^(```+|~~~+)/);
+    if (fence) {
+      const ch = fence[1][0];
+      if (fenceChar === null) {fenceChar = ch;}
+      else if (fenceChar === ch) {fenceChar = null;}
+      return line;
+    }
+    if (fenceChar !== null) {return line;}
+    const m = line.match(headingRe);
+    if (!m) {return line;}
+    const newLevel = Math.min(6, Math.max(1, m[1].length + delta));
+    return '#'.repeat(newLevel) + m[2];
+  });
+
+  return serializeSlideChunk(meta, shifted.join('\n'));
+}
+
 /** Return the line index immediately after the closing `---` of the YAML frontmatter, or 0 if none. */
 export function findFrontmatterEnd(lines: string[]): number {
   let inFrontmatter = false;

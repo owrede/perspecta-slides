@@ -23,6 +23,7 @@ import {
   parseSlideChunk,
   serializeSlideChunk,
   tidySlideChunk,
+  lintSlideChunkHeadings,
 } from './SlideChunkSerializer';
 
 /** Split a document into its frontmatter block and body. */
@@ -216,6 +217,46 @@ export class SlideMutationService {
   }
 
   /**
+   * Normalise heading levels across every slide so each slide's top heading
+   * is level 1 (`#`) by default, or the level given by that slide's
+   * `startlevel` meta (`#`/`##`/`###`). Sub-headings shift by the same delta
+   * to preserve relative hierarchy. Frontmatter and separators are preserved.
+   * Returns `already-tidy` (null content) when no slide needed a change.
+   */
+  async lintHeadings(file: TFile): Promise<TidyResult> {
+    let count = 0;
+    let changed = 0;
+    let producedContent: string | null = null;
+
+    await this.app.vault.process(file, (content) => {
+      const { frontmatter, body } = splitFrontmatter(content);
+      const { slideRawContents, separators } = splitBodyAtSeparators(body);
+      const linted = slideRawContents.map((chunk) => {
+        const out = lintSlideChunkHeadings(chunk);
+        if (out !== tidySlideChunk(chunk)) {changed++;}
+        return out;
+      });
+      count = changed;
+
+      const newContent = joinFrontmatter(
+        frontmatter,
+        joinSlideChunksWithSeparators(linted, separators)
+      );
+      if (newContent === content) {
+        return content;
+      }
+      producedContent = newContent;
+      return newContent;
+    });
+
+    return {
+      status: producedContent === null ? 'already-tidy' : 'tidied',
+      content: producedContent,
+      count,
+    };
+  }
+
+  /**
    * Set per-slide metadata keys (layout, mode, background, opacity,
    * hide-overlay, chapter, …). Values of `undefined`/`null`/`''` delete
    * the key. `backgroundOpacity` (0–1) is written as a percentage on the
@@ -348,6 +389,18 @@ export class SlideMutationService {
         }
       }
 
+      // Canonicalise any frontmatter key to the kebab-case form so a key the
+      // file wrote in camelCase (e.g. `showSlideNumbers`) and the kebab form
+      // an update produces (`show-slide-numbers`) resolve to the SAME slot.
+      // Without this, updating a camelCase key appended a second kebab key,
+      // leaving a conflicting duplicate in the YAML — which is why toggles
+      // and header/footer edits appeared to do nothing.
+      const toKebab = (k: string) =>
+        k
+          .replace(/([A-Z])/g, '-$1')
+          .toLowerCase()
+          .replace(/^-/, '');
+
       const existingFM: Record<string, string> = {};
       if (hasFrontmatter && frontmatterEnd > frontmatterStart) {
         for (let i = frontmatterStart + 1; i < frontmatterEnd; i++) {
@@ -362,20 +415,16 @@ export class SlideMutationService {
             ) {
               value = value.slice(1, -1);
             }
-            existingFM[key] = value;
+            existingFM[toKebab(key)] = value;
           }
         }
       }
 
       for (const [key, value] of Object.entries(updates)) {
-        const yamlKey = key
-          .replace(/([A-Z])/g, '-$1')
-          .toLowerCase()
-          .replace(/^-/, '');
+        const yamlKey = toKebab(key);
 
         if (value === undefined || value === null || value === '') {
           delete existingFM[yamlKey];
-          delete existingFM[key];
         } else if (typeof value === 'boolean') {
           existingFM[yamlKey] = value ? 'true' : 'false';
         } else if (Array.isArray(value)) {

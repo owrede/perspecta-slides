@@ -445,6 +445,21 @@ export default class PerspectaSlidesPlugin extends Plugin {
       },
     });
 
+    this.addCommand({
+      id: 'lint-slide-headings',
+      name: 'Lint slide headings (start at level 1, honor startlevel)',
+      checkCallback: (checking: boolean) => {
+        const file = this.app.workspace.getActiveFile();
+        if (file && file.extension === 'md') {
+          if (!checking) {
+            void this.lintSlideHeadings(file);
+          }
+          return true;
+        }
+        return false;
+      },
+    });
+
     this.addRibbonIcon('presentation', 'Open presentation view', () => {
       console.log('[Presentation Button] Clicked');
       const file = this.app.workspace.getActiveFile();
@@ -1851,6 +1866,18 @@ export default class PerspectaSlidesPlugin extends Plugin {
       return;
     }
     new Notice(`Tidied ${result.count} slide${result.count === 1 ? '' : 's'}.`);
+    if (result.content) {
+      this.updateSidebarsIncrementalWithContent(file, result.content);
+    }
+  }
+
+  async lintSlideHeadings(file: TFile) {
+    const result = await this.slideMutations.lintHeadings(file);
+    if (result.status === 'already-tidy') {
+      new Notice('Slide headings already start at the right level.');
+      return;
+    }
+    new Notice(`Adjusted headings on ${result.count} slide${result.count === 1 ? '' : 's'}.`);
     if (result.content) {
       this.updateSidebarsIncrementalWithContent(file, result.content);
     }

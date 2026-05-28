@@ -1714,10 +1714,24 @@ export class SlideRenderer {
 
     const styleAttr = styles.length > 0 ? ` style="${styles.join('; ')}"` : '';
 
-    // If Excalidraw SVG (spinner or converted), use special inline styles to prevent stretching
+    // Excalidraw SVG (spinner or converted drawing): fit the full figure box
+    // while preserving aspect ratio. The img must take width:100%/height:100%
+    // so object-fit:contain scales the drawing to the column box — without an
+    // explicit width/height the <img> would sit at the SVG's intrinsic size
+    // (clamped by max-width), which is why drawings did not fill the column.
+    // The loading spinner is intentionally small, so cap it at its natural
+    // size and just center it instead of scaling it up to the whole box.
     if (isExcalidrawSvg) {
-      const containerStyle = 'display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;';
-      const imgStyle = 'max-width: 95%; max-height: 95%; object-fit: contain; object-position: center;';
+      const containerStyle =
+        'display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;';
+      // Non-loading: the base `.image-figure img` rule (position:absolute;
+      // width/height:100%) already fills the figure box, so object-fit:contain
+      // scales the drawing to fit. Loading spinner: override position to static
+      // so the flex container can center the small spinner instead of the base
+      // rule pinning it to the top-left.
+      const imgStyle = isLoading
+        ? 'position: static; width: auto; height: auto; max-width: 25%; max-height: 25%; object-fit: contain;'
+        : 'width: 100%; height: 100%; object-fit: contain; object-position: center;';
       return `<figure class="image-figure" style="${containerStyle}"><img src="${src}" alt="${alt}" style="${imgStyle}" /></figure>`;
     }
 
@@ -2013,13 +2027,20 @@ export class SlideRenderer {
   private renderFooter(frontmatter: PresentationFrontmatter, index: number, total: number): string {
     const showNumbers = frontmatter.showSlideNumbers !== false;
     const visibleNumber = this.getVisibleSlideNumber(index);
-    const totalVisible = this.getTotalVisibleSlides();
+
+    // Footer-right shows custom text when set, otherwise the slide number
+    // (when enabled). Custom text takes precedence over the number.
+    const footerRight = frontmatter.footerRight
+      ? `<span>${frontmatter.footerRight}</span>`
+      : showNumbers
+        ? `<span>${visibleNumber}</span>`
+        : '';
 
     return `
       <footer class="slide-footer">
         <div class="footer-left">${frontmatter.footerLeft ? `<span>${frontmatter.footerLeft}</span>` : ''}</div>
         <div class="footer-middle">${frontmatter.footerMiddle ? `<span>${frontmatter.footerMiddle}</span>` : ''}</div>
-        <div class="footer-right">${showNumbers ? `<span>${visibleNumber}</span>` : ''}</div>
+        <div class="footer-right">${footerRight}</div>
       </footer>`;
   }
 
@@ -2072,12 +2093,20 @@ export class SlideRenderer {
       .slide.light h3 { color: var(--light-h3-color, var(--light-title-text)); }
       .slide.light h4 { color: var(--light-h4-color, var(--light-title-text)); }
       .slide.light h5, .slide.light h6 { color: var(--light-title-text); }
+      /* Header/footer follow their own theme color, falling back to body
+         text when unset so decks that never set a header/footer color look
+         unchanged. Without these rules the header/footer just inherited the
+         slide body color and the "Header"/"Footer" theme colors did nothing. */
+      .slide.light .slide-header { color: var(--light-header-text, var(--light-body-text)); }
+      .slide.light .slide-footer { color: var(--light-footer-text, var(--light-body-text)); }
       .slide.dark { background: var(--dark-background); color: var(--dark-body-text); }
       .slide.dark h1 { color: var(--dark-h1-color, var(--dark-title-text)); }
       .slide.dark h2 { color: var(--dark-h2-color, var(--dark-title-text)); }
       .slide.dark h3 { color: var(--dark-h3-color, var(--dark-title-text)); }
       .slide.dark h4 { color: var(--dark-h4-color, var(--dark-title-text)); }
       .slide.dark h5, .slide.dark h6 { color: var(--dark-title-text); }
+      .slide.dark .slide-header { color: var(--dark-header-text, var(--dark-body-text)); }
+      .slide.dark .slide-footer { color: var(--dark-footer-text, var(--dark-body-text)); }
       
       /* Layout-specific backgrounds - fall back to normal background if not defined */
       .slide.light.cover-container { background: var(--light-bg-cover, var(--light-background)); }
@@ -2491,33 +2520,41 @@ export class SlideRenderer {
         text-align: left;
       }
       
+      /* Bullet markers are scoped to UL so they never apply inside an OL.
+         These use an [data-level] attribute selector, which outweighs a
+         plain "ol li::before" type selector — scoping to ul is what keeps
+         ordered lists showing numbers instead of bullets. */
       /* Level 0 bullet */
-      li[data-level="0"]::before {
+      ul > li[data-level="0"]::before {
         content: '•';
       }
-      
+
       /* Level 1 bullet (different style) */
-      li[data-level="1"]::before {
+      ul > li[data-level="1"]::before {
         content: '◦';
       }
-      
+
       /* Level 2 bullet (different style) */
-      li[data-level="2"]::before {
+      ul > li[data-level="2"]::before {
         content: '▪';
       }
-      
+
       /* Level 3+ bullet */
-      li[data-level="3"]::before,
-      li[data-level="4"]::before,
-      li[data-level="5"]::before {
+      ul > li[data-level="3"]::before,
+      ul > li[data-level="4"]::before,
+      ul > li[data-level="5"]::before {
         content: '▫';
       }
+      /* Each OL restarts its own counter so nested ordered lists number
+         independently rather than continuing the parent's count. */
       ol { counter-reset: list-counter; }
-      ol li { 
+      ol > li {
         counter-increment: list-counter;
         padding-left: calc(var(--slide-unit) * 3);
       }
-      ol li::before {
+      /* Match the bullet rules' specificity (attribute selector) and order
+         after them so the numbered marker wins for ordered-list items. */
+      ol > li[data-level]::before {
         content: counter(list-counter) '. ';
         width: calc(var(--slide-unit) * 3);
       }

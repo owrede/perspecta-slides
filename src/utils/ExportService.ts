@@ -337,6 +337,22 @@ export class ExportService {
       darkH4 = colorToCss(themeJson.presets.dark.text.h4);
     }
 
+    // Header/footer text colors. Default to body text; the theme's
+    // text.header / text.footer override when present (matches the live
+    // preview, where .slide-header/.slide-footer use --*-header/footer-text).
+    let lightHeaderColor = preset.LightBodyTextColor;
+    let lightFooterColor = preset.LightBodyTextColor;
+    let darkHeaderColor = preset.DarkBodyTextColor;
+    let darkFooterColor = preset.DarkBodyTextColor;
+    if (themeJson?.presets.light.text) {
+      lightHeaderColor = themeJson.presets.light.text.header || lightHeaderColor;
+      lightFooterColor = themeJson.presets.light.text.footer || lightFooterColor;
+    }
+    if (themeJson?.presets.dark.text) {
+      darkHeaderColor = themeJson.presets.dark.text.header || darkHeaderColor;
+      darkFooterColor = themeJson.presets.dark.text.footer || darkFooterColor;
+    }
+
     // Build layout backgrounds (light mode)
     let lightBgCover = 'inherit';
     let lightBgTitle = 'inherit';
@@ -406,6 +422,10 @@ export class ExportService {
         --dark-h3-color: ${darkH3};
         --light-h4-color: ${lightH4};
         --dark-h4-color: ${darkH4};
+        --light-header-text: ${lightHeaderColor};
+        --dark-header-text: ${darkHeaderColor};
+        --light-footer-text: ${lightFooterColor};
+        --dark-footer-text: ${darkFooterColor};
         --light-link-color: ${preset.LightLinkColor};
         --dark-link-color: ${preset.DarkLinkColor};
         --light-bullet-color: ${preset.LightBulletColor};
@@ -603,13 +623,18 @@ export class ExportService {
         background: var(--dark-bg-section, var(--dark-background, #000)) !important;
       }
       
-      /* Dark: Slide structural elements (header, body, footer, content) */
-      html.dark .slide-header,
-      html.dark .slide-footer,
+      /* Dark: Slide structural elements (body, content). Header and footer
+         get their own theme color below, falling back to body text. */
       html.dark .slide-body,
       html.dark .slide-content,
       html.dark .slide-overlay {
         color: var(--dark-body-text, #fff) !important;
+      }
+      html.dark .slide-header {
+        color: var(--dark-header-text, var(--dark-body-text, #fff)) !important;
+      }
+      html.dark .slide-footer {
+        color: var(--dark-footer-text, var(--dark-body-text, #fff)) !important;
       }
       
       /* Dark: Half-image layout panels (excluding dynamic background) */
@@ -755,13 +780,18 @@ export class ExportService {
         background: var(--light-bg-section, var(--light-background, #fff)) !important;
       }
       
-      /* Light: Slide structural elements (header, body, footer, content) */
-      html.light .slide-header,
-      html.light .slide-footer,
+      /* Light: Slide structural elements (body, content). Header and footer
+         get their own theme color below, falling back to body text. */
       html.light .slide-body,
       html.light .slide-content,
       html.light .slide-overlay {
         color: var(--light-body-text, #000) !important;
+      }
+      html.light .slide-header {
+        color: var(--light-header-text, var(--light-body-text, #000)) !important;
+      }
+      html.light .slide-footer {
+        color: var(--light-footer-text, var(--light-body-text, #000)) !important;
       }
       
       /* Light: Half-image layout panels (excluding dynamic background) */
@@ -1048,6 +1078,20 @@ export class ExportService {
       darkH4 = colorToCss(themeJson.presets.dark.text.h4);
     }
 
+    // Header/footer text colors (default to body text; theme overrides).
+    let lightHeaderColor = preset.LightBodyTextColor;
+    let lightFooterColor = preset.LightBodyTextColor;
+    let darkHeaderColor = preset.DarkBodyTextColor;
+    let darkFooterColor = preset.DarkBodyTextColor;
+    if (themeJson?.presets.light.text) {
+      lightHeaderColor = themeJson.presets.light.text.header || lightHeaderColor;
+      lightFooterColor = themeJson.presets.light.text.footer || lightFooterColor;
+    }
+    if (themeJson?.presets.dark.text) {
+      darkHeaderColor = themeJson.presets.dark.text.header || darkHeaderColor;
+      darkFooterColor = themeJson.presets.dark.text.footer || darkFooterColor;
+    }
+
     // Build layout backgrounds
     let lightBgCover = 'inherit';
     let lightBgTitle = 'inherit';
@@ -1115,6 +1159,10 @@ export class ExportService {
         --dark-h3-color: ${darkH3};
         --light-h4-color: ${lightH4};
         --dark-h4-color: ${darkH4};
+        --light-header-text: ${lightHeaderColor};
+        --dark-header-text: ${darkHeaderColor};
+        --light-footer-text: ${lightFooterColor};
+        --dark-footer-text: ${darkFooterColor};
         --light-link-color: ${preset.LightLinkColor};
         --dark-link-color: ${preset.DarkLinkColor};
         --light-bullet-color: ${preset.LightBulletColor};
@@ -1963,18 +2011,27 @@ export class ExportService {
     let darkH2 = preset?.DarkTitleTextColor || '#fff';
     let darkH3 = preset?.DarkTitleTextColor || '#fff';
     let darkH4 = preset?.DarkTitleTextColor || '#fff';
+    // Header/footer text colors (default to body text; theme overrides).
+    let lightHeaderColor = preset?.LightBodyTextColor || '#000';
+    let lightFooterColor = preset?.LightBodyTextColor || '#000';
+    let darkHeaderColor = preset?.DarkBodyTextColor || '#fff';
+    let darkFooterColor = preset?.DarkBodyTextColor || '#fff';
 
     if (themeJson?.presets.light.text) {
       lightH1 = colorToCss(themeJson.presets.light.text.h1);
       lightH2 = colorToCss(themeJson.presets.light.text.h2);
       lightH3 = colorToCss(themeJson.presets.light.text.h3);
       lightH4 = colorToCss(themeJson.presets.light.text.h4);
+      lightHeaderColor = themeJson.presets.light.text.header || lightHeaderColor;
+      lightFooterColor = themeJson.presets.light.text.footer || lightFooterColor;
     }
     if (themeJson?.presets.dark.text) {
       darkH1 = colorToCss(themeJson.presets.dark.text.h1);
       darkH2 = colorToCss(themeJson.presets.dark.text.h2);
       darkH3 = colorToCss(themeJson.presets.dark.text.h3);
       darkH4 = colorToCss(themeJson.presets.dark.text.h4);
+      darkHeaderColor = themeJson.presets.dark.text.header || darkHeaderColor;
+      darkFooterColor = themeJson.presets.dark.text.footer || darkFooterColor;
     }
 
     // Build layout backgrounds
@@ -2045,6 +2102,10 @@ export class ExportService {
         --dark-h3-color: ${darkH3};
         --light-h4-color: ${lightH4};
         --dark-h4-color: ${darkH4};
+        --light-header-text: ${lightHeaderColor};
+        --dark-header-text: ${darkHeaderColor};
+        --light-footer-text: ${lightFooterColor};
+        --dark-footer-text: ${darkFooterColor};
         --light-link-color: ${preset.LightLinkColor};
         --dark-link-color: ${preset.DarkLinkColor};
         --light-bullet-color: ${preset.LightBulletColor};

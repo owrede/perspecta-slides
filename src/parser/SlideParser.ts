@@ -1295,6 +1295,16 @@ export class SlideParser {
         continue;
       }
 
+      // Target top-heading level for the "Lint slide headings" command.
+      // Accepts hash form (#, ##, ###) or numeric (1, 2, 3); default 1.
+      const startLevelMatch = line.match(/^(start-?level):\s*(#{1,3}|[1-3])$/i);
+      if (startLevelMatch) {
+        const v = startLevelMatch[2].trim();
+        metadata.startLevel = v.startsWith('#') ? v.length : parseInt(v, 10);
+        startIndex = i + 1;
+        continue;
+      }
+
       // If line doesn't match any metadata pattern, stop looking
       if (!line.includes(':') || line.startsWith('#')) {
         break;

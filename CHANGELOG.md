@@ -2,6 +2,18 @@
 
 All notable changes to Perspecta Slides will be documented in this file.
 
+## [0.6.1] - 2026-05-27
+
+### Added
+- **"Lint slide headings" command** — normalizes each slide so its top heading is level 1 (`#`) by default, shifting sub-headings by the same delta to preserve relative hierarchy. A per-slide `startlevel:` meta (`#`/`##`/`###` or `1`/`2`/`3`) overrides the target level for that slide. Headings inside code fences are left untouched. Useful when an external linter (e.g. the Obsidian Linter plugin) has demoted slide headings to `##`.
+- **Footer Right field** in the inspector — custom footer-right text now overrides the slide number when set.
+
+### Fixed
+- **Header/footer theme colors are applied.** The "Header" and "Footer" colors in the Theme pane had no effect: the `.slide-header`/`.slide-footer` rules set no text color, so header/footer inherited the body color. They now use the header/footer theme color (with a body-text fallback) in preview, presentation, and HTML export.
+- **Header/footer text and slide-number toggle now persist.** Editing header/footer text or toggling slide numbers wrote a duplicate frontmatter key in a different case (e.g. `show-slide-numbers` alongside an existing `showSlideNumbers`), so the change never took effect. Frontmatter keys are now canonicalized to kebab-case on write, updating the existing key in place.
+- **Numbered lists render as numbers, not bullets.** A bullet `::before` rule using an attribute selector outweighed the ordered-list counter rule, so `<ol>` items showed bullets. Bullet markers are now scoped to `ul`, and each `ol` numbers independently.
+- **Excalidraw sketches fill the column.** In 1-column/default layouts an Excalidraw drawing rendered at its intrinsic size instead of filling the available width. It now scales to fit the content box (aspect ratio preserved, no overflow).
+
 ## [0.6.0] - 2026-05-26
 
 ### Fixed

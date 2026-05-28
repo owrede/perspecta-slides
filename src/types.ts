@@ -202,6 +202,12 @@ export interface SlideMetadata {
   transition?: string;
   notes?: string;
   /**
+   * Target level for this slide's top heading, used by the "Lint slide
+   * headings" command. 1 = `#` (default), 2 = `##`, 3 = `###`. The linter
+   * shifts every heading on the slide so the top one lands at this level.
+   */
+  startLevel?: number;
+  /**
    * Chapter (act) label that this slide belongs to.
    *
    * Set by the parser whenever a slide-separator line of the form

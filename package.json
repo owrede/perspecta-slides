@@ -1,6 +1,6 @@
 {
   "name": "perspecta-slides",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "An Obsidian plugin for creating beautiful presentations from Markdown",
   "main": "main.js",
   "scripts": {
@@ -41,7 +41,7 @@
     "harfbuzzjs": "^1.2.0",
     "lz-string": "^1.5.0",
     "pako": "^2.1.0",
-    "perspecta-ui": "file:../perspecta-ui",
+    "perspecta-ui": "file:./vendor/perspecta-ui",
     "pptxgenjs": "^4.0.1",
     "subset-font": "^2.5.0",
     "wawoff2": "^2.0.1"

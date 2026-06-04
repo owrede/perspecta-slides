@@ -1,0 +1,57 @@
+/* perspecta-ui — shared component styles. Obsidian CSS variables only. */
+
+.perspecta-ui-settings-title { margin-bottom: 2px; }
+.perspecta-ui-settings-version {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  margin: 4px 0 16px;
+}
+.perspecta-ui-settings-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 16px;
+}
+.perspecta-ui-settings-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.perspecta-ui-settings-tab:hover { color: var(--text-normal); }
+.perspecta-ui-settings-tab.is-active {
+  color: var(--text-normal);
+  border-bottom-color: var(--interactive-accent);
+}
+.perspecta-ui-changelog-version { margin-bottom: 12px; }
+
+.perspecta-ui-info-box {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  margin: 12px 0;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+.perspecta-ui-info-box-warning {
+  background: color-mix(in srgb, var(--text-warning) 12%, transparent);
+  border-color: var(--text-warning);
+}
+.perspecta-ui-info-box-icon { flex: 0 0 auto; color: var(--text-muted); }
+.perspecta-ui-info-box-content p { margin: 4px 0 0; }
+
+.perspecta-ui-corner-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: var(--layer-popover);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: var(--font-ui-smaller);
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  pointer-events: none;
+}

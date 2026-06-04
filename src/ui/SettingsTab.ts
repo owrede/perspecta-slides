@@ -21,19 +21,11 @@ import {
   Modal,
 } from 'obsidian';
 import type PerspectaSlidesPlugin from '../../main';
-import { renderChangelogToContainer } from '../changelog';
+import { CHANGELOG } from '../changelog';
+import { renderSettingsShell } from 'perspecta-ui';
 import type { ContentMode } from '../types';
 import { FontManager } from '../utils/FontManager';
 import { FontDiscoveryModal } from './FontDiscoveryModal';
-
-type SettingsTabId =
-  | 'changelog'
-  | 'presentation'
-  | 'themes'
-  | 'fonts'
-  | 'content'
-  | 'export'
-  | 'debug';
 
 /**
  * Modal for renaming a font's display name
@@ -129,7 +121,6 @@ export class CreateDemoModal extends Modal {
 
 export class PerspectaSlidesSettingTab extends PluginSettingTab {
   plugin: PerspectaSlidesPlugin;
-  private currentTab: SettingsTabId = 'changelog';
   private onCreateDemo:
     | ((modalOnOk: () => void, modalOnGoToDemo: () => void) => Promise<void>)
     | null = null;
@@ -144,71 +135,19 @@ export class PerspectaSlidesSettingTab extends PluginSettingTab {
   }
 
   display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
-
-    // Plugin title
-    containerEl.createEl('h1', {
-      text: 'Perspecta Slides',
-      cls: 'perspecta-slides-settings-title',
+    renderSettingsShell(this.containerEl, {
+      plugin: this.plugin,
+      displayName: 'Perspecta Slides',
+      changelog: CHANGELOG,
+      defaultTab: 'presentation',
+      tabs: [
+        { id: 'presentation', label: 'Presentation', render: (el) => this.displayPresentationSettings(el) },
+        { id: 'themes', label: 'Themes', render: (el) => this.displayThemesSettings(el) },
+        { id: 'fonts', label: 'Fonts', render: (el) => this.displayFontsSettings(el) },
+        { id: 'export', label: 'Export', render: (el) => this.displayExportSettings(el) },
+      ],
+      debugTab: { render: (el) => this.displayDebugSettings(el) },
     });
-
-    // Version info
-    const buildInfo = containerEl.createDiv({ cls: 'setting-item-description' });
-    buildInfo.style.marginTop = '6px';
-    buildInfo.style.marginBottom = '18px';
-    buildInfo.setText(`Version: v${this.plugin.manifest.version}`);
-
-    // Create tab navigation
-    const tabNav = containerEl.createDiv({ cls: 'perspecta-slides-settings-tabs' });
-
-    const tabs: { id: SettingsTabId; label: string }[] = [
-      { id: 'changelog', label: 'Changelog' },
-      { id: 'presentation', label: 'Presentation' },
-      { id: 'themes', label: 'Themes' },
-      { id: 'fonts', label: 'Fonts' },
-      { id: 'export', label: 'Export' },
-      { id: 'debug', label: 'Debug' },
-    ];
-
-    tabs.forEach((tab) => {
-      const tabEl = tabNav.createEl('button', {
-        cls: `perspecta-slides-settings-tab ${this.currentTab === tab.id ? 'is-active' : ''}`,
-        text: tab.label,
-      });
-      tabEl.addEventListener('click', () => {
-        this.currentTab = tab.id;
-        this.display();
-      });
-    });
-
-    // Render content based on current tab
-    const content = containerEl.createDiv({ cls: 'perspecta-slides-settings-content' });
-
-    switch (this.currentTab) {
-      case 'changelog':
-        this.displayChangelog(content);
-        break;
-      case 'presentation':
-        this.displayPresentationSettings(content);
-        break;
-      case 'themes':
-        this.displayThemesSettings(content);
-        break;
-      case 'fonts':
-        this.displayFontsSettings(content);
-        break;
-      case 'export':
-        this.displayExportSettings(content);
-        break;
-      case 'debug':
-        this.displayDebugSettings(content);
-        break;
-    }
-  }
-
-  private displayChangelog(containerEl: HTMLElement): void {
-    renderChangelogToContainer(containerEl);
   }
 
   private displayPresentationSettings(containerEl: HTMLElement): void {
